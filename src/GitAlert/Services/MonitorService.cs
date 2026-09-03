@@ -213,6 +213,8 @@ public sealed class MonitorService : IAsyncDisposable
                 SetStatus(new MonitorStatus(ConnectionState.Error, ex.Message, _lastSuccess));
             }
 
+            SettleBeforeIdling();
+
             try
             {
                 await _refreshSignal.WaitAsync(NextDelay(), ct).ConfigureAwait(false);
@@ -223,6 +225,23 @@ public sealed class MonitorService : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Hands back what the poll just finished with, before sitting still for minutes.
+    /// </summary>
+    /// <remarks>
+    /// Inducing a collection is usually a mistake, and this is the case the documentation makes
+    /// the exception for: an application about to become idle. A poll deserialises a burst of
+    /// JSON and then does nothing for the whole interval. The buffers that burst rents come from
+    /// the shared array pools, which only trim on a generation 2 collection - and on an idle
+    /// machine with memory to spare, that collection never comes on its own. The pools are
+    /// per-core, so the wait is worst on exactly the machines with the most cores to keep.
+    ///
+    /// It runs on the poll thread with nothing else waiting on it, and it is what keeps a tray
+    /// app from sitting in Task Manager at several hundred megabytes it is not using.
+    /// </remarks>
+    private static void SettleBeforeIdling() =>
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 
     private TimeSpan NextDelay()
     {
