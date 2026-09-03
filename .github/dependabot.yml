@@ -1,6 +1,7 @@
 # The workflows pin every action to a commit, so a tag moved under a compromised account cannot
 # change what runs here. Pins go stale, though, and this is what keeps them current: one pull
-# request a month for the actions, and one for the NuGet packages.
+# request a month for the actions, and one for the NuGet packages. Grouped, because nine
+# separate pull requests for nine version bumps is nine times the reading for one decision.
 version: 2
 
 updates:
@@ -8,8 +9,16 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: nuget
     directory: /
     schedule:
       interval: monthly
+    groups:
+      nuget:
+        patterns:
+          - "*"
