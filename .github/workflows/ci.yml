@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore GitAlert.sln
+
+      - name: Build
+        run: dotnet build GitAlert.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj -c Release --no-build --logger "trx;LogFileName=results.trx" --results-directory artifacts/test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results
+          if-no-files-found: ignore
+
+      # A quick smoke check that the app starts, renders its vector artwork and exits cleanly.
+      # --export-icon exercises WPF rendering without needing an interactive desktop session.
+      - name: Smoke test the icon pipeline
+        run: |
+          dotnet publish src/GitAlert/GitAlert.csproj -c Release -r win-x64 --self-contained false -o artifacts/smoke
+          $icon = Join-Path (Resolve-Path artifacts/smoke) 'app.ico'
+          $run = Start-Process -FilePath ./artifacts/smoke/GitAlert.exe -ArgumentList '--export-icon', $icon -Wait -PassThru -NoNewWindow
+          if ($run.ExitCode -ne 0) { throw "GitAlert exited with $($run.ExitCode)." }
+          if (-not (Test-Path $icon)) { throw "The icon was not generated." }
+          Write-Host "Icon rendered: $((Get-Item $icon).Length) bytes"
+        shell: pwsh

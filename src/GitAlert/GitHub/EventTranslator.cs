@@ -437,7 +437,7 @@ public static class EventTranslator
     /// Notification subjects carry API URLs. Rewrite the handful of shapes that map cleanly to a
     /// browser URL and fall back to the repository page for the rest.
     /// </summary>
-    internal static string ToBrowserUrl(string? apiUrl, string fallback)
+    public static string ToBrowserUrl(string? apiUrl, string fallback)
     {
         if (string.IsNullOrWhiteSpace(apiUrl)
             || !Uri.TryCreate(apiUrl, UriKind.Absolute, out var uri)

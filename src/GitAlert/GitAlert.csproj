@@ -12,9 +12,9 @@
     <AssemblyTitle>GitAlert</AssemblyTitle>
     <Description>A Windows tray app that watches your GitHub repositories and alerts you on pushes, pull requests, issues, releases and CI runs.</Description>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Platforms>x64</Platforms>
-    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Configuration)' == 'Release'">win-x64</RuntimeIdentifier>
-    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+    <!-- The runtime identifier belongs to `dotnet publish`, not to the project: pinning it here
+         makes a plain restore and a Release build disagree about the assets file. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType Condition="'$(Configuration)' == 'Release'">embedded</DebugType>
   </PropertyGroup>

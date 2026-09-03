@@ -1,0 +1,96 @@
+name: Release
+
+# Tag a commit to cut a release:
+#
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# The workflow builds a self-contained x64 build, packages it with Inno Setup and attaches the
+# installer and the portable archive to a GitHub release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the leading v (for example 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Resolve the version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.version }}'
+          } else {
+            '${{ github.ref_name }}' -replace '^v', ''
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Expected a version like 1.0.0, got '$version'."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building GitAlert $version"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+        shell: pwsh
+
+      - name: Build, test and package
+        shell: pwsh
+        run: |
+          ./build.ps1 -Version ${{ steps.version.outputs.version }} -Installer -Zip
+
+      - name: List artifacts
+        shell: pwsh
+        run: Get-ChildItem artifacts -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitAlert-${{ steps.version.outputs.version }}
+          path: |
+            artifacts/GitAlert-Setup-*.exe
+            artifacts/GitAlert-*-portable.zip
+
+      - name: Publish the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GitAlert ${{ steps.version.outputs.version }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            artifacts/GitAlert-Setup-*.exe
+            artifacts/GitAlert-*-portable.zip
+          body: |
+            ## Install
+
+            Download **GitAlert-Setup-${{ steps.version.outputs.version }}-x64.exe** and run it.
+            The installer is per-user, so Windows will not ask for administrator rights, and
+            everything lands under your own profile.
+
+            Prefer not to install anything? Take the portable `.zip`, unpack it anywhere and run
+            `GitAlert.exe`. Both builds bundle the .NET runtime, so nothing else is required.
+
+            Windows SmartScreen will warn about an unrecognised publisher: the build is not code
+            signed. Choose **More info -> Run anyway**, or check the source and build it yourself.
