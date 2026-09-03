@@ -52,6 +52,13 @@ public sealed class MonitorService : IAsyncDisposable
     private readonly SemaphoreSlim _refreshSignal = new(0, 1);
     private readonly SemaphoreSlim _pollGate = new(1, 1);
 
+    /// <summary>
+    /// Held while the configuration, the per-account clients or the resolved logins are touched.
+    /// Configure and ClientFor are called from the UI thread while the poll loop is running on
+    /// its own, and these are plain dictionaries.
+    /// </summary>
+    private readonly object _sync = new();
+
     /// <summary>One client per account, all sharing a single connection pool.</summary>
     private readonly Dictionary<string, GitHubClient> _clients = new(StringComparer.Ordinal);
 
@@ -97,19 +104,28 @@ public sealed class MonitorService : IAsyncDisposable
 
     public void Configure(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
     {
-        var intervalChanged = _settings.PollIntervalMinutes != settings.PollIntervalMinutes;
-        var credentialsChanged = !SameTokens(_tokens, tokens);
+        bool intervalChanged;
+        bool credentialsChanged;
+        AppSettings applied;
 
-        _settings = settings.Clone();
-        _tokens = new Dictionary<string, string>(tokens, StringComparer.Ordinal);
-        _alerts.MaxHistory = _settings.MaxHistory;
+        lock (_sync)
+        {
+            intervalChanged = _settings.PollIntervalMinutes != settings.PollIntervalMinutes;
+            credentialsChanged = !SameTokens(_tokens, tokens);
 
-        SyncClients();
-        RefreshWatchedList();
+            _settings = settings.Clone();
+            _tokens = new Dictionary<string, string>(tokens, StringComparer.Ordinal);
+            applied = _settings;
+
+            SyncClients();
+            RefreshWatchedList();
+        }
+
+        _alerts.MaxHistory = applied.MaxHistory;
 
         _state.Prune(
-            _settings.Repositories.Select(r => r.StateKey),
-            _settings.Accounts.Select(a => a.Id));
+            applied.Repositories.Select(r => r.StateKey),
+            applied.Accounts.Select(a => a.Id));
 
         if (intervalChanged || credentialsChanged)
         {
@@ -144,7 +160,10 @@ public sealed class MonitorService : IAsyncDisposable
         }
     }
 
-    /// <summary>Creates and drops per-account clients so the set matches the configured accounts.</summary>
+    /// <summary>
+    /// Creates and drops per-account clients so the set matches the configured accounts.
+    /// Callers hold <see cref="_sync"/>.
+    /// </summary>
     private void SyncClients()
     {
         foreach (var account in _settings.Accounts)
@@ -207,8 +226,15 @@ public sealed class MonitorService : IAsyncDisposable
 
     private TimeSpan NextDelay()
     {
+        int minutes;
+
+        lock (_sync)
+        {
+            minutes = _settings.PollIntervalMinutes;
+        }
+
         var configured = TimeSpan.FromMinutes(Math.Clamp(
-            _settings.PollIntervalMinutes,
+            minutes,
             AppSettings.MinimumPollMinutes,
             AppSettings.MaximumPollMinutes));
 
@@ -222,11 +248,26 @@ public sealed class MonitorService : IAsyncDisposable
 
         try
         {
-            var settings = _settings;
+            // One snapshot for the whole cycle: settings can be replaced from the UI thread part
+            // way through, and a poll that changed its mind halfway would report against one
+            // configuration what it had gathered under another.
+            AppSettings settings;
+            List<(GitHubAccount Account, GitHubClient Client)> targets;
 
-            var accounts = settings.Accounts
-                .Where(a => a.Enabled && _tokens.ContainsKey(a.Id))
-                .ToList();
+            lock (_sync)
+            {
+                settings = _settings;
+
+                targets =
+                [
+                    .. settings.Accounts
+                        .Where(a => a.Enabled && _tokens.ContainsKey(a.Id))
+                        .Select(a => (Account: a, Client: _clients.GetValueOrDefault(a.Id)!))
+                        .Where(t => t.Client is not null)
+                ];
+            }
+
+            var accounts = targets.Select(t => t.Account).ToList();
 
             if (accounts.Count == 0)
             {
@@ -251,10 +292,13 @@ public sealed class MonitorService : IAsyncDisposable
             var collected = new List<Alert>();
             var failures = new List<(string Subject, GitHubException Error)>();
 
-            foreach (var account in accounts)
+            // Deliberately one repository at a time: GitHub's own guidance for staying clear of
+            // the secondary rate limits is to make requests for a single user serially, so the
+            // obvious "poll them all at once" would buy latency at the price of being throttled.
+            foreach (var (account, client) in targets)
             {
                 ct.ThrowIfCancellationRequested();
-                await PollAccountAsync(account, settings, collected, failures, ct).ConfigureAwait(false);
+                await PollAccountAsync(account, client, settings, collected, failures, ct).ConfigureAwait(false);
             }
 
             _state.LastSuccessfulPoll = DateTimeOffset.Now;
@@ -271,23 +315,23 @@ public sealed class MonitorService : IAsyncDisposable
 
     private async Task PollAccountAsync(
         GitHubAccount account,
+        GitHubClient client,
         AppSettings settings,
         List<Alert> collected,
         List<(string Subject, GitHubException Error)> failures,
         CancellationToken ct)
     {
-        if (!_clients.TryGetValue(account.Id, out var client))
-        {
-            return;
-        }
-
         // The first call also validates the token and tells us who we are.
-        if (!_logins.ContainsKey(account.Id))
+        if (LoginFor(account.Id) is null)
         {
             try
             {
                 var login = (await client.GetAuthenticatedUserAsync(ct).ConfigureAwait(false)).Login;
-                _logins[account.Id] = login;
+
+                lock (_sync)
+                {
+                    _logins[account.Id] = login;
+                }
 
                 if (!string.Equals(account.Login, login, StringComparison.OrdinalIgnoreCase))
                 {
@@ -568,7 +612,7 @@ public sealed class MonitorService : IAsyncDisposable
         Title = alert.Title,
         Detail = alert.Detail,
         Repository = alert.Repository,
-        Account = _logins.GetValueOrDefault(account.Id, account.Login),
+        Account = LoginFor(account.Id) ?? account.Login,
         AccountId = account.Id,
         Actor = alert.Actor,
         Url = alert.Url,
@@ -583,8 +627,27 @@ public sealed class MonitorService : IAsyncDisposable
     /// The client an account polls with, lent to the detail pane so fetching a diff reuses the
     /// same token and connection pool rather than standing up a second authenticated client.
     /// </summary>
-    public GitHubClient? ClientFor(string? accountId) =>
-        accountId is not null && _clients.TryGetValue(accountId, out var client) ? client : null;
+    public GitHubClient? ClientFor(string? accountId)
+    {
+        if (accountId is null)
+        {
+            return null;
+        }
+
+        lock (_sync)
+        {
+            return _clients.GetValueOrDefault(accountId);
+        }
+    }
+
+    /// <summary>The login behind an account's token, once a poll has resolved it.</summary>
+    private string? LoginFor(string accountId)
+    {
+        lock (_sync)
+        {
+            return _logins.GetValueOrDefault(accountId);
+        }
+    }
 
     /// <summary>
     /// The repositories being polled. Browsing history needs the full watch list, not just the
@@ -592,6 +655,7 @@ public sealed class MonitorService : IAsyncDisposable
     /// </summary>
     public IReadOnlyList<WatchedRepository> Watched { get; private set; } = [];
 
+    /// <summary>Callers hold <see cref="_sync"/>.</summary>
     private void RefreshWatchedList() =>
         Watched =
         [
@@ -615,7 +679,7 @@ public sealed class MonitorService : IAsyncDisposable
             return true;
         }
 
-        return !_logins.TryGetValue(account.Id, out var login)
+        return LoginFor(account.Id) is not { } login
             || !string.Equals(alert.Actor, login, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -638,7 +702,12 @@ public sealed class MonitorService : IAsyncDisposable
     /// <summary>The tightest remaining budget across accounts, which is the one that will bite first.</summary>
     private RateLimitStatus AggregateRateLimit()
     {
-        var known = _clients.Values.Select(c => c.RateLimit).Where(r => r.IsKnown).ToList();
+        List<RateLimitStatus> known;
+
+        lock (_sync)
+        {
+            known = [.. _clients.Values.Select(c => c.RateLimit).Where(r => r.IsKnown)];
+        }
 
         return known.Count == 0
             ? RateLimitStatus.Unknown
@@ -684,7 +753,7 @@ public sealed class MonitorService : IAsyncDisposable
     }
 
     private string Describe(GitHubAccount account) =>
-        _logins.TryGetValue(account.Id, out var login) ? $"@{login}" : account.DisplayName;
+        LoginFor(account.Id) is { } login ? $"@{login}" : account.DisplayName;
 
     private void SetStatus(MonitorStatus status)
     {
@@ -695,8 +764,7 @@ public sealed class MonitorService : IAsyncDisposable
     /// <summary>Forgets every high-water mark, so the next poll re-baselines from scratch.</summary>
     public void ResetState()
     {
-        _state.Repositories.Clear();
-        _state.Inboxes.Clear();
+        _state.Reset();
         _stateStore.Save(_state);
     }
 
@@ -722,12 +790,16 @@ public sealed class MonitorService : IAsyncDisposable
 
         _stateStore.Save(_state);
 
-        foreach (var client in _clients.Values)
+        lock (_sync)
         {
-            client.Dispose();
+            foreach (var client in _clients.Values)
+            {
+                client.Dispose();
+            }
+
+            _clients.Clear();
         }
 
-        _clients.Clear();
         _http.Dispose();
         _refreshSignal.Dispose();
         _pollGate.Dispose();

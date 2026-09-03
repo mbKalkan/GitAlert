@@ -26,4 +26,27 @@ public static class AppPaths
     public static string TraceMarker => Path.Combine(DataDirectory, "trace.on");
 
     public static void EnsureCreated() => Directory.CreateDirectory(DataDirectory);
+
+    /// <summary>
+    /// Rolls a log to <c>.1</c> once it passes <paramref name="limit"/> bytes, keeping one
+    /// previous file and no more.
+    /// </summary>
+    /// <remarks>
+    /// A fault that repeats on every poll writes an entry every couple of minutes for as long as
+    /// the machine is on. Unbounded, that is a tray app quietly filling someone's disk.
+    /// </remarks>
+    public static void Roll(string path, long limit)
+    {
+        try
+        {
+            if (new FileInfo(path) is { Exists: true } file && file.Length > limit)
+            {
+                File.Move(path, path + ".1", overwrite: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best effort. A log that cannot be rolled is not worth an error of its own.
+        }
+    }
 }

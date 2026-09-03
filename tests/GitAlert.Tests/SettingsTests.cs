@@ -103,6 +103,36 @@ public class SettingsTests : IDisposable
         Assert.Single(settings.RepositoriesFor(second.Id));
     }
 
+    /// <summary>
+    /// The id names the account's token file. A hand-edited one that could not be a file name
+    /// has no token to go with it, so the account is not one GitAlert can sign in as.
+    /// </summary>
+    [Fact]
+    public void An_account_whose_id_could_not_name_a_token_file_is_dropped()
+    {
+        var good = GitHubAccount.Create("keeper");
+
+        var settings = new AppSettings
+        {
+            Accounts =
+            [
+                good,
+                new GitHubAccount { Id = @"..\..\escape", Login = "attacker" },
+                new GitHubAccount { Id = "   ", Login = "blank" },
+            ],
+            Repositories = [Repo(good.Id, "acme", "api"), Repo(@"..\..\escape", "acme", "other")],
+        };
+
+        settings.Normalise();
+
+        Assert.Single(settings.Accounts);
+        Assert.Equal(good.Id, settings.Accounts[0].Id);
+
+        // Its repositories go with it: nothing is left pointing at an account that is not there.
+        Assert.Single(settings.Repositories);
+        Assert.Equal("acme/api", settings.Repositories[0].FullName);
+    }
+
     [Fact]
     public void A_repository_whose_account_is_gone_is_dropped()
     {

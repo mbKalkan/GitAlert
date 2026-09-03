@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Net.Http;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Configuration;
@@ -67,6 +68,19 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     private readonly List<DiscoveredRepoViewModel> _discovered = [];
 
     /// <summary>
+    /// Coalesces keystrokes in the search box.
+    /// </summary>
+    /// <remarks>
+    /// The box updates its binding on every character, and rebuilding the view emptied and
+    /// refilled a collection of up to five hundred rows each time. That is felt as the box
+    /// lagging a letter behind the typing rather than as a slow search.
+    /// </remarks>
+    private readonly DispatcherTimer _filterDelay = new(DispatcherPriority.Background)
+    {
+        Interval = TimeSpan.FromMilliseconds(140),
+    };
+
+    /// <summary>
     /// Guards the two lists against fighting each other: ticking a box edits the watched list,
     /// and editing the watched list re-ticks the boxes.
     /// </summary>
@@ -89,6 +103,12 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
         HasStoredToken = !string.IsNullOrEmpty(token);
         _selectedSort = SortOptions[0];
+
+        _filterDelay.Tick += (_, _) =>
+        {
+            _filterDelay.Stop();
+            ApplyRepositoryView();
+        };
     }
 
     public string Id { get; }
@@ -136,7 +156,11 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
         _ => $"{Repositories.Count} repositories",
     };
 
-    partial void OnRepositoryFilterChanged(string value) => ApplyRepositoryView();
+    partial void OnRepositoryFilterChanged(string value)
+    {
+        _filterDelay.Stop();
+        _filterDelay.Start();
+    }
 
     /// <summary>
     /// Asks GitHub what this token can see. Nothing is fetched until the user asks, because a
@@ -376,5 +400,9 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
         IsMessageError = isError;
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        _filterDelay.Stop();
+        _client.Dispose();
+    }
 }

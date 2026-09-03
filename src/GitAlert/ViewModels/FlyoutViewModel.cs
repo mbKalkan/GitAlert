@@ -94,10 +94,15 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private bool _showAccounts;
 
     /// <summary>
-    /// Repositories the user has folded away. Held separately from the groups because the groups
-    /// are rebuilt on every filter change and would otherwise spring open again.
+    /// One section per project, kept for the life of the window rather than rebuilt.
     /// </summary>
-    private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
+    /// <remarks>
+    /// These used to be created afresh on every filter change and every arriving alert, which
+    /// meant a poll landing while you read a project silently discarded the commits you had
+    /// asked it to load and folded the section shut again. Keeping the instance keeps what the
+    /// user did to it.
+    /// </remarks>
+    private readonly Dictionary<string, ProjectGroupViewModel> _sections = new(StringComparer.OrdinalIgnoreCase);
 
     public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell, AppSettings settings)
     {
@@ -338,6 +343,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _store.Clear();
         _store.Save();
         _all.Clear();
+        _sections.Clear();
         UnreadCount = 0;
         ApplyFilter();
 
@@ -508,48 +514,62 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void RebuildGroups()
     {
-        // Remember which sections were open, so a filter change does not fold everything shut.
-        foreach (var existing in Groups)
-        {
-            if (!existing.IsExpanded)
-            {
-                _collapsed.Add(existing.Repository);
-            }
-            else
-            {
-                _collapsed.Remove(existing.Repository);
-            }
-        }
-
-        Groups.Clear();
-
         var byRepository = Alerts
             .GroupBy(a => a.Repository, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
+        Groups.Clear();
+
         foreach (var repository in ProjectsInView())
         {
-            var group = new ProjectGroupViewModel(
-                repository,
-                AccountIdFor(repository),
-                LoadHistoryPageAsync,
-                MoveProject);
+            var accountId = AccountIdFor(repository);
 
-            group.SetAlerts(byRepository.GetValueOrDefault(repository, []));
+            // A project whose account changed has to start over: its history would be fetched
+            // with a token that no longer reaches it.
+            if (_sections.TryGetValue(repository, out var group)
+                && !string.Equals(group.AccountId, accountId, StringComparison.Ordinal))
+            {
+                _sections.Remove(repository);
+                group = null;
+            }
 
-            // A section with nothing to show opens to nothing, so it starts folded and waits to
-            // be asked. Otherwise the user's own last choice wins.
-            group.IsExpanded = !_collapsed.Contains(repository) && group.Items.Count > 0;
+            if (group is null)
+            {
+                group = new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject);
+                _sections[repository] = group;
+
+                group.SetAlerts(byRepository.GetValueOrDefault(repository, []));
+
+                // First sight of a project: open when it has something to say, folded otherwise.
+                // After that it is the user's own choice, held on the section itself.
+                group.IsExpanded = group.Items.Count > 0;
+            }
+            else
+            {
+                group.SetAlerts(byRepository.GetValueOrDefault(repository, []));
+            }
 
             Groups.Add(group);
         }
+
+        PruneSections();
 
         for (var i = 0; i < Groups.Count; i++)
         {
             Groups[i].CanMoveUp = i > 0;
             Groups[i].CanMoveDown = i < Groups.Count - 1;
         }
+    }
 
+    /// <summary>Forgets sections for projects GitAlert no longer knows about.</summary>
+    private void PruneSections()
+    {
+        var known = AllProjects().ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var stale in _sections.Keys.Where(r => !known.Contains(r)).ToList())
+        {
+            _sections.Remove(stale);
+        }
     }
 
     /// <summary>Every project GitAlert knows about, in the user's order.</summary>
@@ -601,12 +621,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             ?.AccountId
         ?? AccountIdOfAlertsIn(repository);
 
-    private static string ShortName(string repository)
-    {
-        var cut = repository.IndexOf('/');
-        return cut > 0 ? repository[(cut + 1)..] : repository;
-    }
-
     /// <summary>Keeps the in-memory list aligned with the trimmed, persisted history.</summary>
     private void TrimToStore()
     {
@@ -631,6 +645,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         _all.Clear();
         _all.AddRange(_store.Snapshot.Select(Create));
+
+        // The rows the sections hold are wrappers around models that have just been replaced.
+        _sections.Clear();
         UnreadCount = _store.UnreadCount;
         ApplyFilter();
 

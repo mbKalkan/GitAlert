@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GitAlert.Core;
 
 namespace GitAlert.Services;
@@ -19,43 +20,70 @@ public sealed class MonitorState
 
     public DateTimeOffset? LastSuccessfulPoll { get; set; }
 
+    /// <summary>
+    /// Held while either dictionary is read or written. The poll loop runs on a background
+    /// thread while saving settings, resetting the sync state and serialising this file all
+    /// happen on the UI thread, and a plain Dictionary written from one thread while another
+    /// reads it does not merely lose an entry: it can spin forever inside a lookup.
+    /// </summary>
+    [JsonIgnore]
+    public object SyncRoot { get; } = new();
+
     public RepoState For(string stateKey)
     {
-        if (!Repositories.TryGetValue(stateKey, out var state))
+        lock (SyncRoot)
         {
-            state = new RepoState();
-            Repositories[stateKey] = state;
-        }
+            if (!Repositories.TryGetValue(stateKey, out var state))
+            {
+                state = new RepoState();
+                Repositories[stateKey] = state;
+            }
 
-        return state;
+            return state;
+        }
     }
 
     public InboxState InboxFor(string accountId)
     {
-        if (!Inboxes.TryGetValue(accountId, out var state))
+        lock (SyncRoot)
         {
-            state = new InboxState();
-            Inboxes[accountId] = state;
-        }
+            if (!Inboxes.TryGetValue(accountId, out var state))
+            {
+                state = new InboxState();
+                Inboxes[accountId] = state;
+            }
 
-        return state;
+            return state;
+        }
+    }
+
+    /// <summary>Forgets every high-water mark, so the next poll re-baselines from scratch.</summary>
+    public void Reset()
+    {
+        lock (SyncRoot)
+        {
+            Repositories.Clear();
+            Inboxes.Clear();
+        }
     }
 
     /// <summary>Drops bookkeeping for repositories the user has since removed.</summary>
     public void Prune(IEnumerable<string> keepRepositories, IEnumerable<string> keepAccounts)
     {
         var liveRepositories = new HashSet<string>(keepRepositories, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var stale in Repositories.Keys.Where(k => !liveRepositories.Contains(k)).ToList())
-        {
-            Repositories.Remove(stale);
-        }
-
         var liveAccounts = new HashSet<string>(keepAccounts, StringComparer.Ordinal);
 
-        foreach (var stale in Inboxes.Keys.Where(k => !liveAccounts.Contains(k)).ToList())
+        lock (SyncRoot)
         {
-            Inboxes.Remove(stale);
+            foreach (var stale in Repositories.Keys.Where(k => !liveRepositories.Contains(k)).ToList())
+            {
+                Repositories.Remove(stale);
+            }
+
+            foreach (var stale in Inboxes.Keys.Where(k => !liveAccounts.Contains(k)).ToList())
+            {
+                Inboxes.Remove(stale);
+            }
         }
     }
 }
@@ -137,8 +165,16 @@ public sealed class StateStore
             {
                 AppPaths.EnsureCreated();
 
+                // Serialising walks both dictionaries, which the poll loop may be adding to.
+                string json;
+
+                lock (state.SyncRoot)
+                {
+                    json = JsonSerializer.Serialize(state, Options);
+                }
+
                 var temp = _path + ".tmp";
-                File.WriteAllText(temp, JsonSerializer.Serialize(state, Options));
+                File.WriteAllText(temp, json);
                 File.Move(temp, _path, overwrite: true);
             }
             catch (IOException)

@@ -34,14 +34,21 @@ jobs:
         with:
           dotnet-version: '9.0.x'
 
+      # The tag name and the dispatch input reach the script through the environment rather than
+      # by expression substitution. Substituting them would paste text somebody else chose
+      # straight into the shell, and a tag name is allowed to contain quotes.
       - name: Resolve the version
         id: version
         shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
-            '${{ inputs.version }}'
+          $version = if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $env:INPUT_VERSION
           } else {
-            '${{ github.ref_name }}' -replace '^v', ''
+            $env:REF_NAME -replace '^v', ''
           }
 
           if ($version -notmatch '^\d+\.\d+\.\d+$') {

@@ -226,6 +226,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            // The probe exists to answer one question. Holding the token after that only widens
+            // where a credential lives for no benefit.
+            _probe.SetToken(null);
             IsBusy = false;
         }
     }

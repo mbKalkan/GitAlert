@@ -126,11 +126,17 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
             .OrderByDescending(i => i.Model.Timestamp)
             .ToList();
 
-        Items.Clear();
-
-        foreach (var item in merged)
+        // A poll that brought nothing for this project still lands here. Clearing and refilling
+        // regardless would throw away every row container the list had built, and take the
+        // user's scroll position with them, to arrive at exactly what was already on screen.
+        if (!Items.SequenceEqual(merged))
         {
-            Items.Add(item);
+            Items.Clear();
+
+            foreach (var item in merged)
+            {
+                Items.Add(item);
+            }
         }
 
         UnreadCount = Items.Count(i => !i.IsRead);

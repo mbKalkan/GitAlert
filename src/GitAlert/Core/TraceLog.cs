@@ -16,6 +16,9 @@ public static class TraceLog
 
     private static readonly object Gate = new();
 
+    /// <summary>Tracing writes a line per tray click, so it needs a ceiling of its own.</summary>
+    private const long MaxBytes = 2 * 1024 * 1024;
+
     public static void Write(string message)
     {
         if (!Enabled)
@@ -27,6 +30,8 @@ public static class TraceLog
         {
             lock (Gate)
             {
+                AppPaths.Roll(AppPaths.TraceFile, MaxBytes);
+
                 File.AppendAllText(
                     AppPaths.TraceFile,
                     $"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");

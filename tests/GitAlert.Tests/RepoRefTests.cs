@@ -48,6 +48,44 @@ public class RepoRefTests
         Assert.Null(repo);
     }
 
+    /// <summary>
+    /// The scheme and host are stripped before the remainder is split, so a link to somewhere
+    /// else used to parse as a repository named after that host - <c>gitlab.com/acme</c> for a
+    /// GitLab link - and was accepted, only to be reported as missing on the next poll.
+    /// </summary>
+    [Theory]
+    [InlineData("https://gitlab.com/acme/api-gateway")]
+    [InlineData("https://bitbucket.org/acme/api-gateway")]
+    [InlineData("https://github.example.com/acme/api-gateway")]
+    [InlineData("git@gitlab.com:acme/api-gateway.git")]
+    public void Rejects_a_link_to_somewhere_that_is_not_github(string input)
+    {
+        Assert.False(RepoRef.TryParse(input, out var repo));
+        Assert.Null(repo);
+    }
+
+    /// <summary>GitHub logins are alphanumerics and inner hyphens, and nothing else.</summary>
+    [Theory]
+    [InlineData("-acme/api-gateway")]
+    [InlineData("acme-/api-gateway")]
+    [InlineData("ac.me/api-gateway")]
+    [InlineData("ac_me/api-gateway")]
+    public void Rejects_an_owner_that_is_not_a_github_login(string input)
+    {
+        Assert.False(RepoRef.TryParse(input, out _));
+    }
+
+    /// <summary>A repository name, unlike an owner, is allowed dots and underscores.</summary>
+    [Theory]
+    [InlineData("acme/api.gateway")]
+    [InlineData("acme/api_gateway")]
+    [InlineData("acme/.github")]
+    public void Accepts_the_punctuation_a_repository_name_may_carry(string input)
+    {
+        Assert.True(RepoRef.TryParse(input, out var repo));
+        Assert.Equal("acme", repo!.Owner);
+    }
+
     [Fact]
     public void Comparison_ignores_case_so_a_repo_cannot_be_added_twice()
     {

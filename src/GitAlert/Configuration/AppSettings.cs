@@ -124,7 +124,9 @@ public sealed class AppSettings
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
 
         Accounts = Accounts
-            .Where(a => !string.IsNullOrWhiteSpace(a.Id))
+            // The id names the account's token file, so an id that cannot be one is not an
+            // account GitAlert can authenticate as.
+            .Where(a => SecureTokenStore.IsValidAccountId(a.Id))
             .GroupBy(a => a.Id, StringComparer.Ordinal)
             .Select(g => g.First())
             .ToList();

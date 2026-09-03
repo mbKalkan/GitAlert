@@ -104,6 +104,24 @@ public class DiffParserTests
     }
 
     /// <summary>
+    /// A patch is repository content, and a repository can be anyone's. A line number too large
+    /// for an int used to throw straight out of the parse, which reached the UI as an unhandled
+    /// exception rather than as one unreadable file.
+    /// </summary>
+    [Theory]
+    [InlineData("@@ -99999999999999999999,1 +1,1 @@\n+x")]
+    [InlineData("@@ -1,1 +99999999999999999999,1 @@\n+x")]
+    [InlineData("@@ nonsense @@\n+x")]
+    [InlineData("@@\n+x")]
+    public void An_unreadable_hunk_header_is_a_row_rather_than_a_crash(string patch)
+    {
+        var lines = DiffParser.Parse(patch);
+
+        Assert.Equal(DiffLineKind.Hunk, lines[0].Kind);
+        Assert.Equal(DiffLineKind.Added, lines[1].Kind);
+    }
+
+    /// <summary>
     /// The gutter shows a blank rather than a zero on the side a line does not exist on, which is
     /// what keeps an added line from looking like it replaced line 0.
     /// </summary>

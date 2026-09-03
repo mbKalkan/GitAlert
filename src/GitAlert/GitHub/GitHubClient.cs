@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -15,6 +16,17 @@ public sealed class GitHubClient : IDisposable
 {
     private const string ApiRoot = "https://api.github.com";
     private const string ApiVersion = "2022-11-28";
+
+    /// <summary>
+    /// The most one response may deserialise into. GitHub is not hostile, but a commit that
+    /// rewrites a generated file returns a patch measured in megabytes, and the deserialiser holds
+    /// all of it plus the objects it builds. A ceiling turns a pathological repository into one
+    /// readable error instead of a process that quietly grows until Windows kills it.
+    /// </summary>
+    private const long MaxResponseBytes = 32L * 1024 * 1024;
+
+    /// <summary>An error body is a sentence. Anything past this is not one.</summary>
+    private const long MaxErrorBytes = 64 * 1024;
 
     private readonly HttpClient _http;
     private readonly bool _ownsClient;
@@ -215,7 +227,9 @@ public sealed class GitHubClient : IDisposable
 
     public async Task MarkThreadReadAsync(string threadId, CancellationToken ct = default)
     {
-        using var request = CreateRequest(HttpMethod.Patch, $"/notifications/threads/{threadId}", etag: null);
+        var path = $"/notifications/threads/{Uri.EscapeDataString(threadId)}";
+
+        using var request = CreateRequest(HttpMethod.Patch, path, etag: null);
         using var response = await ExecuteAsync(request, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, $"thread {threadId}", ct).ConfigureAwait(false);
     }
@@ -250,9 +264,21 @@ public sealed class GitHubClient : IDisposable
         using var request = CreateRequest(method, path, etag);
         var response = await ExecuteAsync(request, ct).ConfigureAwait(false);
 
-        CaptureRateLimit(response);
-        await EnsureSuccessAsync(response, path, ct).ConfigureAwait(false);
-        return response;
+        try
+        {
+            CaptureRateLimit(response);
+            await EnsureSuccessAsync(response, path, ct).ConfigureAwait(false);
+            return response;
+        }
+        catch
+        {
+            // Every non-success leaves here by exception, and a response read with
+            // ResponseHeadersRead holds its pooled connection until it is disposed. Left to the
+            // finaliser, a single repository the token cannot see leaked one connection per poll
+            // for as long as the app ran.
+            response.Dispose();
+            throw;
+        }
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? etag)
@@ -296,11 +322,21 @@ public sealed class GitHubClient : IDisposable
 
     private static async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
-        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var stream = new BoundedStream(body, MaxResponseBytes);
 
         try
         {
             return await JsonSerializer.DeserializeAsync<T>(stream, cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (ResponseTooLargeException)
+        {
+            throw TooLarge();
+        }
+        catch (JsonException ex) when (ex.InnerException is ResponseTooLargeException)
+        {
+            // The deserialiser sometimes surfaces a stream fault wrapped in its own exception.
+            throw TooLarge();
         }
         catch (JsonException ex)
         {
@@ -310,6 +346,10 @@ public sealed class GitHubClient : IDisposable
         {
             response.Dispose();
         }
+
+        static GitHubException TooLarge() => new(
+            GitHubErrorKind.Unknown,
+            "That response from GitHub was too large to read - open it on GitHub instead.");
     }
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, string what, CancellationToken ct)
@@ -354,8 +394,9 @@ public sealed class GitHubClient : IDisposable
     {
         try
         {
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            using var document = JsonDocument.Parse(body);
+            await using var body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            await using var stream = new BoundedStream(body, MaxErrorBytes);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
             return document.RootElement.TryGetProperty("message", out var message)
                 ? message.GetString()
                 : null;
@@ -400,5 +441,63 @@ public sealed class GitHubClient : IDisposable
         {
             _http.Dispose();
         }
+    }
+
+    /// <summary>Thrown when a response runs past its byte budget.</summary>
+    private sealed class ResponseTooLargeException : IOException;
+
+    /// <summary>
+    /// A read-only pass-through that stops at a byte budget. Deserialising straight from the
+    /// socket is what keeps memory flat in the ordinary case, so the limit has to be enforced
+    /// during the read rather than by buffering the whole body first to measure it.
+    /// </summary>
+    private sealed class BoundedStream(Stream inner, long limit) : Stream
+    {
+        private long _read;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => _read;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            Count(inner.Read(buffer, offset, count));
+
+        public override int Read(Span<byte> buffer) => Count(inner.Read(buffer));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+            ReadCountedAsync(buffer.AsMemory(offset, count), ct);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) =>
+            new(ReadCountedAsync(buffer, ct));
+
+        private async Task<int> ReadCountedAsync(Memory<byte> buffer, CancellationToken ct) =>
+            Count(await inner.ReadAsync(buffer, ct).ConfigureAwait(false));
+
+        private int Count(int read)
+        {
+            _read += read;
+
+            return _read <= limit ? read : throw new ResponseTooLargeException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

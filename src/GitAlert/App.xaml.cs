@@ -162,7 +162,9 @@ public partial class App : Application
             {
                 if (handle.WaitOne(TimeSpan.FromMilliseconds(500)) && !token.IsCancellationRequested)
                 {
-                    Dispatcher.InvokeAsync(() => _shell?.PromptForSetup());
+                    // Show the window, not the setup prompt: whoever launched GitAlert again
+                    // wants to see their alerts, and is already past being told to add an account.
+                    Dispatcher.InvokeAsync(() => _shell?.ShowFlyout());
                 }
             }
         })
@@ -190,11 +192,15 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Past this the error log is rolled, so a repeating fault cannot fill the disk.</summary>
+    private const long MaxLogBytes = 1024 * 1024;
+
     private static void Log(Exception exception)
     {
         try
         {
             AppPaths.EnsureCreated();
+            AppPaths.Roll(AppPaths.LogFile, MaxLogBytes);
 
             File.AppendAllText(
                 AppPaths.LogFile,

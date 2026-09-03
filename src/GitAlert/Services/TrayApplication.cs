@@ -125,6 +125,12 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     public void HideFlyout() => _flyout.HideFlyout();
 
     /// <summary>
+    /// Brings the window up beside the tray icon. This is what launching GitAlert a second time
+    /// does: the copy already running is asked to show itself.
+    /// </summary>
+    public void ShowFlyout() => OpenFlyoutAtTray();
+
+    /// <summary>
     /// The order of the projects and whether read alerts are hidden are set in the list itself,
     /// so they are written back from there rather than through the settings window.
     /// </summary>

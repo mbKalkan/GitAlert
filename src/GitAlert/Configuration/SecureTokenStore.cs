@@ -30,25 +30,39 @@ public sealed class SecureTokenStore
         _legacyFile = Path.Combine(root, "token.bin");
     }
 
-    public bool Has(string accountId) => File.Exists(PathFor(accountId));
+    /// <summary>
+    /// Whether an account id may be used as a file name.
+    /// </summary>
+    /// <remarks>
+    /// Ids are generated as a bare GUID and never typed, but they arrive here by way of
+    /// settings.json, which is a text file in a folder the user can open. An id of
+    /// <c>..\..\something</c> would put a token wherever the process can write. There is no
+    /// legitimate id outside this shape, so the answer is to refuse one rather than to repair it.
+    /// </remarks>
+    public static bool IsValidAccountId(string? accountId) =>
+        accountId is { Length: > 0 and <= 64 }
+        && accountId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
 
-    public string? Read(string accountId) => ReadFile(PathFor(accountId));
+    public bool Has(string accountId) => PathFor(accountId) is { } path && File.Exists(path);
+
+    public string? Read(string accountId) => PathFor(accountId) is { } path ? ReadFile(path) : null;
 
     public void Write(string accountId, string token)
     {
+        var path = PathFor(accountId)
+            ?? throw new ArgumentException($"'{accountId}' is not a usable account id.", nameof(accountId));
+
         Directory.CreateDirectory(_directory);
 
         var protectedBytes = Protect(Encoding.UTF8.GetBytes(token))
             ?? throw new InvalidOperationException("Windows refused to encrypt the access token.");
 
-        File.WriteAllBytes(PathFor(accountId), protectedBytes);
+        File.WriteAllBytes(path, protectedBytes);
     }
 
     public void Delete(string accountId)
     {
-        var path = PathFor(accountId);
-
-        if (File.Exists(path))
+        if (PathFor(accountId) is { } path && File.Exists(path))
         {
             File.Delete(path);
         }
@@ -111,7 +125,8 @@ public sealed class SecureTokenStore
         }
     }
 
-    private string PathFor(string accountId) => Path.Combine(_directory, accountId + ".bin");
+    private string? PathFor(string accountId) =>
+        IsValidAccountId(accountId) ? Path.Combine(_directory, accountId + ".bin") : null;
 
     private static string? ReadFile(string path)
     {

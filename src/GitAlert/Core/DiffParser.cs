@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace GitAlert.Core;
 
 public enum DiffLineKind
@@ -32,7 +30,7 @@ public sealed record DiffLine(DiffLineKind Kind, string Text, int? OldLine, int?
 /// patch starts straight at the first hunk header, so there are no <c>---</c>/<c>+++</c> lines to
 /// skip; everything else follows the ordinary unified format.
 /// </summary>
-public static partial class DiffParser
+public static class DiffParser
 {
     /// <summary>
     /// Rendering every line of a very large patch costs more than it tells anyone, so parsing
@@ -46,79 +44,137 @@ public static partial class DiffParser
     /// Parses at most <paramref name="limit"/> rows.
     /// <paramref name="truncated"/> reports how many rows were left unparsed.
     /// </summary>
+    /// <remarks>
+    /// Walks the patch a line at a time rather than splitting it first. Splitting allocated an
+    /// array over the whole patch - every line of a twenty-megabyte generated file - only to read
+    /// the first twelve hundred entries of it.
+    /// </remarks>
     public static IReadOnlyList<DiffLine> Parse(string? patch, int limit, out int truncated)
     {
         truncated = 0;
 
-        if (string.IsNullOrEmpty(patch))
+        if (string.IsNullOrEmpty(patch) || limit <= 0)
         {
             return [];
         }
 
-        var source = patch.Split('\n');
-        var lines = new List<DiffLine>(Math.Min(source.Length, limit));
+        var lines = new List<DiffLine>(Math.Min(limit, 128));
 
         var oldLine = 0;
         var newLine = 0;
+        var cursor = 0;
 
-        for (var i = 0; i < source.Length; i++)
+        while (cursor < patch.Length)
         {
             if (lines.Count >= limit)
             {
-                truncated = source.Length - i;
+                truncated = CountLines(patch.AsSpan(cursor));
                 break;
             }
 
-            // Patches carry \n endings, so a \r survives the split on Windows-authored files.
-            var raw = source[i].TrimEnd('\r');
+            var newline = patch.IndexOf('\n', cursor);
+            var stop = newline < 0 ? patch.Length : newline;
 
-            // A trailing newline in the patch produces one empty element that is not a diff row.
-            if (raw.Length == 0 && i == source.Length - 1)
-            {
-                break;
-            }
+            // Patches carry \n endings, so a \r survives on Windows-authored files.
+            var raw = patch.AsSpan(cursor, stop - cursor).TrimEnd('\r');
+
+            cursor = newline < 0 ? patch.Length : newline + 1;
 
             if (raw.StartsWith("@@", StringComparison.Ordinal))
             {
-                var header = HunkHeader().Match(raw);
-
-                if (header.Success)
+                if (TryReadHunkHeader(raw, out var fromOld, out var fromNew))
                 {
-                    oldLine = int.Parse(header.Groups[1].Value);
-                    newLine = int.Parse(header.Groups[2].Value);
+                    oldLine = fromOld;
+                    newLine = fromNew;
                 }
 
-                lines.Add(new DiffLine(DiffLineKind.Hunk, raw, null, null));
+                lines.Add(new DiffLine(DiffLineKind.Hunk, raw.ToString(), null, null));
                 continue;
             }
 
-            if (raw.StartsWith('\\'))
+            if (raw.StartsWith("\\", StringComparison.Ordinal))
             {
                 // "\ No newline at end of file" belongs to neither side.
-                lines.Add(new DiffLine(DiffLineKind.Note, raw.TrimStart('\\', ' '), null, null));
+                lines.Add(new DiffLine(DiffLineKind.Note, raw.TrimStart(" \\").ToString(), null, null));
                 continue;
             }
 
-            if (raw.StartsWith('+'))
+            if (raw.StartsWith("+", StringComparison.Ordinal))
             {
-                lines.Add(new DiffLine(DiffLineKind.Added, raw[1..], null, newLine++));
+                lines.Add(new DiffLine(DiffLineKind.Added, raw[1..].ToString(), null, newLine++));
                 continue;
             }
 
-            if (raw.StartsWith('-'))
+            if (raw.StartsWith("-", StringComparison.Ordinal))
             {
-                lines.Add(new DiffLine(DiffLineKind.Removed, raw[1..], oldLine++, null));
+                lines.Add(new DiffLine(DiffLineKind.Removed, raw[1..].ToString(), oldLine++, null));
                 continue;
             }
 
             // A context line is prefixed with a single space, but empty context lines are
             // sometimes emitted with the space stripped.
-            lines.Add(new DiffLine(DiffLineKind.Context, raw.Length > 0 ? raw[1..] : raw, oldLine++, newLine++));
+            var text = raw.Length > 0 ? raw[1..].ToString() : string.Empty;
+            lines.Add(new DiffLine(DiffLineKind.Context, text, oldLine++, newLine++));
         }
 
         return lines;
     }
 
-    [GeneratedRegex(@"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")]
-    private static partial Regex HunkHeader();
+    /// <summary>How many lines are left in the tail the parser stopped short of.</summary>
+    private static int CountLines(ReadOnlySpan<char> rest)
+    {
+        var count = 0;
+
+        while (!rest.IsEmpty)
+        {
+            count++;
+
+            var newline = rest.IndexOf('\n');
+
+            if (newline < 0)
+            {
+                break;
+            }
+
+            rest = rest[(newline + 1)..];
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Reads the two starting line numbers out of an <c>@@ -a,b +c,d @@</c> header.
+    /// </summary>
+    /// <remarks>
+    /// By hand rather than by regex, for two reasons. It needs no substring per hunk, and a
+    /// count long enough to overflow an int now makes the header unreadable instead of throwing
+    /// out of a background parse - the patch is repository content, so its shape is not ours
+    /// to trust.
+    /// </remarks>
+    private static bool TryReadHunkHeader(ReadOnlySpan<char> header, out int oldLine, out int newLine)
+    {
+        oldLine = 0;
+        newLine = 0;
+
+        var minus = header.IndexOf('-');
+        var plus = header.IndexOf('+');
+
+        return minus >= 0
+            && plus > minus
+            && TryReadNumber(header[(minus + 1)..], out oldLine)
+            && TryReadNumber(header[(plus + 1)..], out newLine);
+    }
+
+    private static bool TryReadNumber(ReadOnlySpan<char> text, out int value)
+    {
+        var end = 0;
+
+        while (end < text.Length && char.IsAsciiDigit(text[end]))
+        {
+            end++;
+        }
+
+        value = 0;
+        return end > 0 && int.TryParse(text[..end], out value);
+    }
 }

@@ -66,7 +66,7 @@ public sealed partial record RepoRef(string Owner, string Name)
             ? name[..^4]
             : name;
 
-        if (!SegmentPattern().IsMatch(owner) || !SegmentPattern().IsMatch(name))
+        if (!OwnerPattern().IsMatch(owner) || !NamePattern().IsMatch(name))
         {
             return false;
         }
@@ -90,6 +90,19 @@ public sealed partial record RepoRef(string Owner, string Name)
     [GeneratedRegex(@"^(?:[a-z][a-z0-9+.-]*://)?(?:www\.)?(?:github\.com)?/?", RegexOptions.IgnoreCase)]
     private static partial Regex SchemeAndHost();
 
+    /// <summary>
+    /// GitHub's own rule for a login: alphanumerics and hyphens, up to 39 characters, and no
+    /// leading or trailing hyphen.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately strict, because it is also what tells a repository apart from a host. The
+    /// scheme and host are stripped before splitting, so <c>https://gitlab.com/acme/thing</c>
+    /// used to parse as the repository <c>gitlab.com/acme</c> - accepted, then reported later as
+    /// not found. A login cannot contain a dot, so a host cannot pass for one.
+    /// </remarks>
+    [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")]
+    private static partial Regex OwnerPattern();
+
     [GeneratedRegex(@"^[A-Za-z0-9._-]{1,100}$")]
-    private static partial Regex SegmentPattern();
+    private static partial Regex NamePattern();
 }

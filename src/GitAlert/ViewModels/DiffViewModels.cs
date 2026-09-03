@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Core;
@@ -37,6 +38,13 @@ public sealed partial class FileDiffViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    private readonly string? _patch;
+    private readonly int _changes;
+
+    private IReadOnlyList<DiffLineViewModel>? _lines;
+    private string? _note;
+    private int _truncated;
+
     public FileDiffViewModel(GhFileChange file)
     {
         Path = file.Filename;
@@ -49,19 +57,8 @@ public sealed partial class FileDiffViewModel : ObservableObject
         BlobUrl = file.BlobUrl;
         PreviousPath = file.PreviousFilename;
 
-        var lines = DiffParser.Parse(file.Patch, DiffParser.MaxLines, out var dropped);
-        Lines = [.. lines.Select(l => new DiffLineViewModel(l))];
-        TruncatedLines = dropped;
-
-        // GitHub omits the patch for binaries and for diffs it considers too large to inline.
-        // Saying so is the honest thing; rendering nothing would look like an empty change.
-        Note = file.Patch is null
-            ? file.Changes == 0
-                ? "No textual changes."
-                : "GitHub did not return a diff for this file - it is binary or too large to show inline."
-            : dropped > 0
-                ? $"{dropped:N0} more lines not shown. Open the file on GitHub for the whole diff."
-                : null;
+        _patch = file.Patch;
+        _changes = file.Changes;
     }
 
     public string Path { get; }
@@ -89,13 +86,65 @@ public sealed partial class FileDiffViewModel : ObservableObject
 
     public string? BlobUrl { get; }
 
-    public IReadOnlyList<DiffLineViewModel> Lines { get; }
+    /// <summary>
+    /// The rendered rows, parsed the first time something asks for them.
+    /// </summary>
+    /// <remarks>
+    /// One click used to parse every file a commit touched, though the pane only ever shows one
+    /// of them: a merge across three hundred files built a third of a million row objects before
+    /// the first line appeared. The change list binds only the name and the counts, so leaving
+    /// the parse until selection means the work follows what is actually being read.
+    /// </remarks>
+    public IReadOnlyList<DiffLineViewModel> Lines
+    {
+        get
+        {
+            EnsureParsed();
+            return _lines;
+        }
+    }
 
-    public int TruncatedLines { get; }
+    public int TruncatedLines
+    {
+        get
+        {
+            EnsureParsed();
+            return _truncated;
+        }
+    }
 
-    public string? Note { get; }
+    public string? Note
+    {
+        get
+        {
+            EnsureParsed();
+            return _note;
+        }
+    }
 
     public bool HasNote => Note is not null;
+
+    [MemberNotNull(nameof(_lines))]
+    private void EnsureParsed()
+    {
+        if (_lines is not null)
+        {
+            return;
+        }
+
+        var parsed = DiffParser.Parse(_patch, DiffParser.MaxLines, out _truncated);
+        _lines = [.. parsed.Select(l => new DiffLineViewModel(l))];
+
+        // GitHub omits the patch for binaries and for diffs it considers too large to inline.
+        // Saying so is the honest thing; rendering nothing would look like an empty change.
+        _note = _patch is null
+            ? _changes == 0
+                ? "No textual changes."
+                : "GitHub did not return a diff for this file - it is binary or too large to show inline."
+            : _truncated > 0
+                ? $"{_truncated:N0} more lines not shown. Open the file on GitHub for the whole diff."
+                : null;
+    }
 
     /// <summary>The directory part, dimmed in the header so the file name itself stands out.</summary>
     public string Folder
@@ -155,7 +204,20 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     /// <summary>Diffs already fetched, so clicking back and forth does not re-request them.</summary>
     private readonly Dictionary<string, IReadOnlyList<GhFileChange>> _cache = new(StringComparer.Ordinal);
 
+    /// <summary>Insertion order, so the oldest entry is the one that goes when room is needed.</summary>
+    private readonly Queue<string> _cacheOrder = new();
+
+    private long _cachedChars;
+
     private const int CacheLimit = 24;
+
+    /// <summary>
+    /// What the cache may hold, counted in patch characters rather than entries. A count of
+    /// entries says nothing about what is being held: twenty-four one-line commits are nothing,
+    /// and a single commit that regenerated a lock file is tens of megabytes of string on its
+    /// own. Sixteen megabytes keeps a working session of diffs without the app growing all day.
+    /// </summary>
+    private const long CacheBudget = 16L * 1024 * 1024;
 
     private readonly MonitorService _monitor;
 
@@ -293,7 +355,7 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     {
         if (Alert is { } alert)
         {
-            _cache.Remove(alert.Model.Id);
+            Forget(alert.Model.Id);
             await ShowAsync(alert).ConfigureAwait(true);
         }
     }
@@ -390,13 +452,34 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
     private void Remember(string id, IReadOnlyList<GhFileChange> files)
     {
-        if (_cache.Count >= CacheLimit)
+        var size = Weigh(files);
+
+        // No point clearing everything to make room for one thing that would not fit anyway.
+        if (size > CacheBudget || _cache.ContainsKey(id))
         {
-            _cache.Clear();
+            return;
         }
 
         _cache[id] = files;
+        _cacheOrder.Enqueue(id);
+        _cachedChars += size;
+
+        while (_cacheOrder.Count > 0 && (_cacheOrder.Count > CacheLimit || _cachedChars > CacheBudget))
+        {
+            Forget(_cacheOrder.Dequeue());
+        }
     }
+
+    private void Forget(string id)
+    {
+        if (_cache.Remove(id, out var dropped))
+        {
+            _cachedChars = Math.Max(0, _cachedChars - Weigh(dropped));
+        }
+    }
+
+    private static long Weigh(IReadOnlyList<GhFileChange> files) =>
+        files.Sum(f => (long)(f.Patch?.Length ?? 0));
 
     /// <summary>
     /// Alerts stored before diffs existed carry no account id of their own, but every stamped id
