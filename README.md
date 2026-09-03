@@ -72,12 +72,15 @@ list. With more than one account the cards say which identity saw each alert.
 
 **History, not just what it caught**
 Alerts begin the day you point GitAlert at a repository. Switch the list to History and it reads the
-repository's commits straight from GitHub — everything that happened before GitAlert was watching,
-paged as far back as you care to go, each commit opening its diff in the same pane.
+repository's commits straight from GitHub — everything that happened before GitAlert was watching.
+Open a project to read its history, page as far back as you care to go, and each commit opens its
+diff in the same pane. Nothing is fetched until a project is opened, so the list itself costs
+nothing.
 
-**Grouped by project, filtered two ways**
-Alerts are gathered under a collapsible header per repository, each carrying its own unread count,
-so a busy project can be folded away without muting it. Narrow by category, by project, or both.
+**A section per project, in both modes**
+Every watched repository is a collapsible section carrying its own count, so the list is the shape
+of what you watch rather than one that rearranges itself as alerts arrive. Fold a busy project away
+without muting it, sort the rows inside each one, and narrow by category, by project, or both.
 
 **Quiet by design**
 Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it

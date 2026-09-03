@@ -199,11 +199,10 @@
       </Setter>
     </Style>
 
-    <DataTemplate x:Key="AlertGroupTemplate" DataType="{x:Type vm:AlertGroupViewModel}">
+    <DataTemplate x:Key="ProjectGroupTemplate" DataType="{x:Type vm:ProjectGroupViewModel}">
       <StackPanel>
         <Button Style="{StaticResource GroupHeaderButton}"
-                Command="{Binding DataContext.ToggleGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                CommandParameter="{Binding}"
+                Command="{Binding ToggleCommand}"
                 ToolTip="{Binding Repository}">
           <Grid>
             <Grid.ColumnDefinitions>
@@ -238,7 +237,8 @@
                     Height="16"
                     CornerRadius="8"
                     VerticalAlignment="Center"
-                    Background="{DynamicResource ChipBackground}">
+                    Background="{DynamicResource ChipBackground}"
+                    Visibility="{Binding ShowCount, Converter={StaticResource BoolToVisibility}}">
               <TextBlock x:Name="CountText"
                          Text="{Binding CountText}"
                          FontSize="10"
@@ -251,17 +251,34 @@
           </Grid>
         </Button>
 
-        <!-- Bound only while expanded, so a folded repository costs nothing to keep on screen. -->
-        <ItemsControl x:Name="Rows"
-                      Visibility="Collapsed"
-                      ItemTemplate="{StaticResource AlertTemplate}"
-                      Margin="0,0,0,2" />
+        <!-- Everything below only exists while the section is open. -->
+        <StackPanel x:Name="Body" Visibility="Collapsed" Margin="0,0,0,2">
+          <ItemsControl x:Name="Rows" ItemTemplate="{StaticResource AlertTemplate}" />
+
+          <TextBlock Text="Reading&#8230;"
+                     Style="{StaticResource MutedText}"
+                     Margin="26,4,0,4"
+                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+
+          <TextBlock Text="{Binding Message}"
+                     Style="{StaticResource MutedText}"
+                     Margin="26,4,10,4"
+                     TextWrapping="Wrap"
+                     Visibility="{Binding HasMessage, Converter={StaticResource BoolToVisibility}}" />
+
+          <Button Content="Load more"
+                  Style="{StaticResource GhostButton}"
+                  HorizontalAlignment="Left"
+                  Margin="22,2,0,4"
+                  Command="{Binding LoadMoreCommand}"
+                  Visibility="{Binding CanLoadMore, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
       </StackPanel>
 
       <DataTemplate.Triggers>
         <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-          <Setter TargetName="Rows" Property="Visibility" Value="Visible" />
-          <Setter TargetName="Rows" Property="ItemsSource" Value="{Binding Alerts}" />
+          <Setter TargetName="Body" Property="Visibility" Value="Visible" />
+          <Setter TargetName="Rows" Property="ItemsSource" Value="{Binding Items}" />
           <Setter TargetName="Chevron" Property="RenderTransform">
             <Setter.Value>
               <RotateTransform Angle="90" />
@@ -269,7 +286,7 @@
           </Setter>
         </DataTrigger>
 
-        <!-- A group with unread alerts wears the accent, so a folded one still says so. -->
+        <!-- A project with unread alerts wears the accent, so a folded one still says so. -->
         <DataTrigger Binding="{Binding HasUnread}" Value="True">
           <Setter TargetName="CountBadge" Property="Background" Value="{DynamicResource Accent}" />
           <Setter TargetName="CountText" Property="Foreground" Value="{DynamicResource OnAccent}" />
@@ -572,10 +589,27 @@
             </StackPanel>
           </Border>
 
+          <ComboBox Grid.Column="1"
+                    Style="{StaticResource ModernComboBox}"
+                    MinWidth="128"
+                    Height="28"
+                    Margin="8,0,6,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    ItemsSource="{Binding SortOptions}"
+                    SelectedItem="{Binding SelectedSort}"
+                    ToolTip="How rows are ordered inside each project">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
           <ComboBox Grid.Column="2"
                     Style="{StaticResource ModernComboBox}"
-                    MinWidth="150"
-                    MaxWidth="210"
+                    MinWidth="140"
+                    MaxWidth="190"
                     Height="28"
                     VerticalAlignment="Center"
                     ItemsSource="{Binding Projects}"
@@ -639,63 +673,28 @@
 
         <!-- Alerts -->
         <Grid Grid.Column="0">
+          <ScrollViewer Style="{StaticResource SlimScrollViewer}"
+                        Margin="8,0,4,0"
+                        Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
+            <ItemsControl ItemsSource="{Binding Groups}"
+                          ItemTemplate="{StaticResource ProjectGroupTemplate}"
+                          Margin="0,0,4,8" />
+          </ScrollViewer>
 
-          <!-- What GitAlert caught while it was running. -->
-          <Grid Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
-            <ScrollViewer Style="{StaticResource SlimScrollViewer}"
-                          Margin="8,0,4,0"
-                          Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-              <ItemsControl ItemsSource="{Binding Groups}"
-                            ItemTemplate="{StaticResource AlertGroupTemplate}"
-                            Margin="0,0,4,8" />
-            </ScrollViewer>
-
-            <StackPanel VerticalAlignment="Center"
-                        HorizontalAlignment="Center"
-                        Margin="28,24,28,32"
-                        Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
-              <Viewbox Width="34" Height="34" Opacity="0.28" HorizontalAlignment="Center">
-                <Path Data="{x:Static platform:IconArtwork.BellGeometry}" Fill="{DynamicResource TextMuted}" />
-              </Viewbox>
-              <TextBlock Text="{Binding EmptyMessage}"
-                         Style="{StaticResource SecondaryText}"
-                         Margin="0,12,0,0"
-                         TextAlignment="Center"
-                         TextWrapping="Wrap"
-                         MaxWidth="240" />
-            </StackPanel>
-          </Grid>
-
-          <!-- What was there before GitAlert was. -->
-          <Grid Visibility="{Binding IsHistoryMode, Converter={StaticResource BoolToVisibility}}">
-            <ScrollViewer Style="{StaticResource SlimScrollViewer}" Margin="8,0,4,0">
-              <StackPanel Margin="0,0,4,8">
-                <ItemsControl ItemsSource="{Binding History}" ItemTemplate="{StaticResource AlertTemplate}" />
-
-                <TextBlock Text="Reading the history&#8230;"
-                           Style="{StaticResource MutedText}"
-                           Margin="10,8,0,0"
-                           Visibility="{Binding IsLoadingHistory, Converter={StaticResource BoolToVisibility}}" />
-
-                <Button Content="Load more"
-                        Style="{StaticResource GhostButton}"
-                        HorizontalAlignment="Left"
-                        Margin="6,6,0,0"
-                        Command="{Binding LoadMoreHistoryCommand}"
-                        Visibility="{Binding CanLoadMoreHistory, Converter={StaticResource BoolToVisibility}}" />
-              </StackPanel>
-            </ScrollViewer>
-
-            <TextBlock Text="{Binding HistoryMessage}"
+          <StackPanel VerticalAlignment="Center"
+                      HorizontalAlignment="Center"
+                      Margin="28,24,28,32"
+                      Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
+            <Viewbox Width="34" Height="34" Opacity="0.28" HorizontalAlignment="Center">
+              <Path Data="{x:Static platform:IconArtwork.BellGeometry}" Fill="{DynamicResource TextMuted}" />
+            </Viewbox>
+            <TextBlock Text="{Binding EmptyMessage}"
                        Style="{StaticResource SecondaryText}"
-                       Margin="28"
+                       Margin="0,12,0,0"
                        TextAlignment="Center"
                        TextWrapping="Wrap"
-                       MaxWidth="260"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center"
-                       Visibility="{Binding HasHistoryMessage, Converter={StaticResource BoolToVisibility}}" />
-          </Grid>
+                       MaxWidth="240" />
+          </StackPanel>
         </Grid>
 
         <GridSplitter Grid.Column="1"

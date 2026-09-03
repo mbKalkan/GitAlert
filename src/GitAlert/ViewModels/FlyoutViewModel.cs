@@ -89,21 +89,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsAlertMode))]
     private bool _isHistoryMode;
 
-    [ObservableProperty]
-    private bool _isLoadingHistory;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasHistoryMessage))]
-    private string _historyMessage = string.Empty;
-
-    [ObservableProperty]
-    private bool _canLoadMoreHistory;
-
-    /// <summary>Which page of history has been fetched so far.</summary>
-    private int _historyPage;
-
-    /// <summary>The repository the loaded history belongs to, so a project switch reloads it.</summary>
-    private string? _historyRepository;
+    private GroupSortOption _selectedSort = null!;
 
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
@@ -132,6 +118,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ];
 
         Detail = new AlertDetailViewModel(monitor);
+        _selectedSort = SortOptions[0];
 
         _all.AddRange(_store.Snapshot.Select(Create));
         _unreadCount = _store.UnreadCount;
@@ -152,20 +139,44 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// <summary>The filtered alerts, flat. The list on screen renders <see cref="Groups"/>.</summary>
     public ObservableCollection<AlertViewModel> Alerts { get; } = [];
 
-    /// <summary>The same alerts, gathered under one collapsible header per repository.</summary>
-    public ObservableCollection<AlertGroupViewModel> Groups { get; } = [];
+    /// <summary>
+    /// One section per watched project, in both modes. Every project appears whether or not it
+    /// has anything to show, so the list is the shape of what is being watched rather than one
+    /// that rearranges itself as alerts arrive.
+    /// </summary>
+    public ObservableCollection<ProjectGroupViewModel> Groups { get; } = [];
 
     public ObservableCollection<FilterChipViewModel> Filters { get; }
 
     /// <summary>One chip per repository that has alerts, plus the chip that clears the filter.</summary>
     public ObservableCollection<ProjectChipViewModel> Projects { get; } = [];
 
-    /// <summary>Commits read straight from the repository, newest first.</summary>
-    public ObservableCollection<AlertViewModel> History { get; } = [];
-
     public bool IsAlertMode => !IsHistoryMode;
 
-    public bool HasHistoryMessage => !string.IsNullOrEmpty(HistoryMessage);
+    public IReadOnlyList<GroupSortOption> SortOptions { get; } =
+    [
+        new(GroupSort.Newest, "Newest first"),
+        new(GroupSort.Oldest, "Oldest first"),
+        new(GroupSort.UnreadFirst, "Unread first"),
+    ];
+
+    /// <summary>How rows are ordered inside each project.</summary>
+    public GroupSortOption SelectedSort
+    {
+        get => _selectedSort;
+        set
+        {
+            if (value is null || !SetProperty(ref _selectedSort, value))
+            {
+                return;
+            }
+
+            foreach (var group in Groups)
+            {
+                group.ApplySort(value.Sort);
+            }
+        }
+    }
 
     /// <summary>
     /// Whether narrowing by project is worth offering. With a single repository watched, the
@@ -242,11 +253,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         ActiveProject = chip.Repository;
         ApplyFilter();
-
-        if (IsHistoryMode)
-        {
-            _ = LoadHistoryAsync(reset: true);
-        }
     }
 
     [RelayCommand]
@@ -257,95 +263,49 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ApplyFilter();
     }
 
-    /// <summary>Switches to history and loads the selected project's commits.</summary>
     [RelayCommand]
     private async Task ShowHistoryAsync()
     {
         IsHistoryMode = true;
-
-        // History belongs to one repository. With none picked, take the one being watched, or
-        // the first of several, so the pane is never blank for want of a click.
-        ActiveProject ??= _monitor.Watched.FirstOrDefault()?.FullName
-                          ?? _all.FirstOrDefault()?.Repository;
-
+        await ClearSelectionAsync().ConfigureAwait(true);
         ApplyFilter();
-        await LoadHistoryAsync(reset: true).ConfigureAwait(true);
     }
 
-    [RelayCommand]
-    private Task LoadMoreHistoryAsync() => LoadHistoryAsync(reset: false);
-
-    private async Task LoadHistoryAsync(bool reset)
+    /// <summary>
+    /// Reads one page of a project's history. Handed to each group so it can fill itself when
+    /// someone opens it, rather than the whole list costing a request per project up front.
+    /// </summary>
+    private async Task<GroupPage> LoadHistoryPageAsync(ProjectGroupViewModel group, int page)
     {
-        if (ActiveProject is null)
+        if (!RepoRef.TryParse(group.Repository, out var repo))
         {
-            History.Clear();
-            HistoryMessage = "Pick a project to read its history.";
-            CanLoadMoreHistory = false;
-            return;
+            throw new InvalidOperationException($"Cannot work out which repository {group.Repository} refers to.");
         }
 
-        if (reset)
-        {
-            History.Clear();
-            _historyPage = 0;
-            _historyRepository = ActiveProject;
-        }
-
-        if (!RepoRef.TryParse(ActiveProject, out var repo))
-        {
-            HistoryMessage = $"Cannot work out which repository {ActiveProject} refers to.";
-            return;
-        }
-
-        var watched = _monitor.Watched.FirstOrDefault(
-            w => string.Equals(w.FullName, ActiveProject, StringComparison.OrdinalIgnoreCase));
-
-        var accountId = watched?.AccountId ?? AccountIdOfAlertsIn(ActiveProject);
-        var client = _monitor.ClientFor(accountId);
+        var client = _monitor.ClientFor(group.AccountId);
 
         if (client is null)
         {
-            HistoryMessage = "No configured account can reach this repository.";
-            CanLoadMoreHistory = false;
-            return;
+            throw new InvalidOperationException("No configured account can reach this repository.");
         }
 
-        IsLoadingHistory = true;
-        HistoryMessage = string.Empty;
+        var login = _monitor.Watched
+            .FirstOrDefault(w => string.Equals(w.FullName, group.Repository, StringComparison.OrdinalIgnoreCase))
+            ?.Login;
 
         try
         {
-            var page = await client.GetCommitHistoryAsync(repo, _historyPage + 1, HistoryPageSize)
-                                   .ConfigureAwait(true);
+            var commits = await client.GetCommitHistoryAsync(repo, page, HistoryPageSize).ConfigureAwait(true);
 
-            // The project may have been switched while the request was in flight.
-            if (!string.Equals(_historyRepository, ActiveProject, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
+            var items = commits
+                .Select(c => FromCommit(c, group.Repository, group.AccountId!, login))
+                .ToList();
 
-            foreach (var commit in page)
-            {
-                History.Add(FromCommit(commit, ActiveProject, accountId!, watched?.Login));
-            }
-
-            _historyPage++;
-            CanLoadMoreHistory = page.Count == HistoryPageSize;
-
-            if (History.Count == 0)
-            {
-                HistoryMessage = "This repository has no commits yet.";
-            }
+            return new GroupPage(items, commits.Count == HistoryPageSize);
         }
         catch (GitHubException ex)
         {
-            HistoryMessage = ex.UserMessage;
-            CanLoadMoreHistory = false;
-        }
-        finally
-        {
-            IsLoadingHistory = false;
+            throw new InvalidOperationException(ex.UserMessage, ex);
         }
     }
 
@@ -401,26 +361,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         SelectedAlert = null;
         await Detail.ShowAsync(null).ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private void ToggleGroup(AlertGroupViewModel? group)
-    {
-        if (group is null)
-        {
-            return;
-        }
-
-        group.IsExpanded = !group.IsExpanded;
-
-        if (group.IsExpanded)
-        {
-            _collapsed.Remove(group.Repository);
-        }
-        else
-        {
-            _collapsed.Add(group.Repository);
-        }
     }
 
     /// <summary>
@@ -589,7 +529,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         RebuildGroups();
 
-        IsEmpty = Alerts.Count == 0;
+        IsEmpty = Groups.Count == 0;
         UpdateEmptyMessage(_monitor.Status);
     }
 
@@ -650,18 +590,76 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void RebuildGroups()
     {
+        // Remember which sections were open, so a filter change does not fold everything shut.
+        foreach (var existing in Groups)
+        {
+            if (!existing.IsExpanded)
+            {
+                _collapsed.Add(existing.Repository);
+            }
+            else
+            {
+                _collapsed.Remove(existing.Repository);
+            }
+        }
+
         Groups.Clear();
 
-        // Alerts are newest first, so grouping in encounter order puts the repository with the
-        // most recent activity at the top.
-        foreach (var group in Alerts.GroupBy(a => a.Repository, StringComparer.OrdinalIgnoreCase))
+        var byRepository = Alerts
+            .GroupBy(a => a.Repository, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var repository in ProjectsInView())
         {
-            Groups.Add(new AlertGroupViewModel(group.Key, group)
+            var group = new ProjectGroupViewModel(
+                repository,
+                AccountIdFor(repository),
+                SelectedSort.Sort,
+                IsHistoryMode ? LoadHistoryPageAsync : null);
+
+            if (!IsHistoryMode)
             {
-                IsExpanded = !_collapsed.Contains(group.Key),
-            });
+                group.SetItems(byRepository.GetValueOrDefault(repository, []));
+            }
+
+            // A section with nothing in it opens to nothing, so it starts folded. Otherwise the
+            // user's own last choice wins, and a first sight of the project is open.
+            group.IsExpanded = !_collapsed.Contains(repository)
+                               && (IsHistoryMode ? Groups.Count == 0 && OnlyOneProject() : group.Items.Count > 0);
+
+            Groups.Add(group);
+        }
+
+        // Opening history on a single project should not need a click to get going.
+        foreach (var group in Groups.Where(g => g.IsExpanded && IsHistoryMode && !g.IsLoaded))
+        {
+            _ = group.LoadMoreCommand.ExecuteAsync(null);
         }
     }
+
+    private bool OnlyOneProject() => ProjectsInView().Count == 1;
+
+    /// <summary>Which projects the list is showing: everything watched, or just the chosen one.</summary>
+    private List<string> ProjectsInView()
+    {
+        var watched = _monitor.Watched
+            .Select(w => w.FullName)
+            .Concat(_all.Select(a => a.Repository))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        if (ActiveProject is not null)
+        {
+            watched = watched.Where(r => string.Equals(r, ActiveProject, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return [.. watched.OrderBy(r => r, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    private string? AccountIdFor(string repository) =>
+        _monitor.Watched
+            .FirstOrDefault(w => string.Equals(w.FullName, repository, StringComparison.OrdinalIgnoreCase))
+            ?.AccountId
+        ?? AccountIdOfAlertsIn(repository);
 
     private static string ShortName(string repository)
     {
@@ -678,12 +676,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void RefreshAges()
     {
-        foreach (var alert in History)
-        {
-            alert.RefreshAge();
-        }
-
-        foreach (var alert in Alerts)
+        foreach (var alert in Groups.SelectMany(g => g.Items))
         {
             alert.RefreshAge();
         }
