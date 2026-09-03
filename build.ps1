@@ -69,13 +69,33 @@ function Find-InnoSetup {
     $onPath = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
     if ($onPath) { return $onPath.Source }
 
+    # winget installs Inno Setup per-user by default; Chocolatey and the plain installer put it
+    # under Program Files. Check all of them before giving up.
     $candidates = @(
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
         "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
     )
 
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) { return $candidate }
+    }
+
+    # Fall back to whatever the uninstall entry recorded.
+    $keys = @(
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1'
+    )
+
+    foreach ($key in $keys) {
+        if (Test-Path $key) {
+            $location = (Get-ItemProperty $key -ErrorAction SilentlyContinue).InstallLocation
+            if ($location) {
+                $exe = Join-Path $location 'ISCC.exe'
+                if (Test-Path $exe) { return $exe }
+            }
+        }
     }
 
     return $null

@@ -88,7 +88,7 @@ Filename: "{app}\{#AppExeName}"; Description: "Start {#AppName} now"; Flags: now
 
 [UninstallRun]
 ; Stop the tray app before removing its files, so nothing is left locked.
-Filename: "{sys}\taskkill.exe"; Parameters: "/f /im {#AppExeName}"; Flags: runhidden skipifdoesntexist
+Filename: "{sys}\taskkill.exe"; Parameters: "/f /im {#AppExeName}"; RunOnceId: "StopGitAlert"; Flags: runhidden skipifdoesntexist
 
 [UninstallDelete]
 ; The user's settings, encrypted token and alert history live outside {app}; leave them in
