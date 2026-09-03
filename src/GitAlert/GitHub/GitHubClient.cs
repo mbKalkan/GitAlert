@@ -52,6 +52,18 @@ public sealed class GitHubClient : IDisposable
 
     public RateLimitStatus RateLimit { get; private set; } = RateLimitStatus.Unknown;
 
+    /// <summary>
+    /// How long a body may take once its headers have arrived.
+    /// </summary>
+    /// <remarks>
+    /// Responses are read as streams so a diff never has to be buffered twice, and
+    /// <see cref="HttpClient.Timeout"/> only covers a streamed response up to its headers: the
+    /// timer behind it is disposed the moment they are in. A connection that stalled mid-body
+    /// therefore held the poll loop for as long as the app ran, with nothing to say why. Generous,
+    /// because the ceiling on a body is thirty-two megabytes and links are not all fast.
+    /// </remarks>
+    public TimeSpan BodyReadTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
     public bool HasToken => !string.IsNullOrWhiteSpace(_token);
 
     /// <summary>The token this client authenticates with, so callers can tell when it changed.</summary>
@@ -70,7 +82,7 @@ public sealed class GitHubClient : IDisposable
     /// <summary>Confirms the token can see a repository, and reports whether it is private.</summary>
     public async Task<GhRepository> GetRepositoryAsync(RepoRef repo, CancellationToken ct = default)
     {
-        var response = await SendAsync(HttpMethod.Get, $"/repos/{repo.Owner}/{repo.Name}", etag: null, ct).ConfigureAwait(false);
+        var response = await SendAsync(HttpMethod.Get, RepoPath(repo), etag: null, ct).ConfigureAwait(false);
         return await ReadJsonAsync<GhRepository>(response, ct).ConfigureAwait(false)
             ?? throw new GitHubException(GitHubErrorKind.NotFound, $"{repo.FullName} was not found.");
     }
@@ -83,7 +95,7 @@ public sealed class GitHubClient : IDisposable
         RepoRef repo,
         string? etag,
         CancellationToken ct = default) =>
-        GetConditionalAsync<List<GhEvent>>($"/repos/{repo.Owner}/{repo.Name}/events?per_page=50", etag, ct);
+        GetConditionalAsync<List<GhEvent>>($"{RepoPath(repo)}/events?per_page=50", etag, ct);
 
     /// <summary>
     /// Commits on the default branch, newest first.
@@ -98,7 +110,7 @@ public sealed class GitHubClient : IDisposable
         RepoRef repo,
         string? etag,
         CancellationToken ct = default) =>
-        GetConditionalAsync<List<GhCommit>>($"/repos/{repo.Owner}/{repo.Name}/commits?per_page=20", etag, ct);
+        GetConditionalAsync<List<GhCommit>>($"{RepoPath(repo)}/commits?per_page=20", etag, ct);
 
     /// <summary>
     /// A page of a repository's commit history, newest first.
@@ -113,7 +125,7 @@ public sealed class GitHubClient : IDisposable
         int perPage = 30,
         CancellationToken ct = default)
     {
-        var path = $"/repos/{repo.Owner}/{repo.Name}/commits?per_page={perPage}&page={Math.Max(1, page)}";
+        var path = $"{RepoPath(repo)}/commits?per_page={perPage}&page={Math.Max(1, page)}";
         var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
 
         return await ReadJsonAsync<List<GhCommit>>(response, ct).ConfigureAwait(false) ?? [];
@@ -159,7 +171,7 @@ public sealed class GitHubClient : IDisposable
     /// <summary>One commit together with every file it touched and their unified diffs.</summary>
     public async Task<GhCommitWithFiles> GetCommitAsync(RepoRef repo, string sha, CancellationToken ct = default)
     {
-        var path = $"/repos/{repo.Owner}/{repo.Name}/commits/{Uri.EscapeDataString(sha)}";
+        var path = $"{RepoPath(repo)}/commits/{Uri.EscapeDataString(sha)}";
         var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
 
         return await ReadJsonAsync<GhCommitWithFiles>(response, ct).ConfigureAwait(false)
@@ -177,7 +189,7 @@ public sealed class GitHubClient : IDisposable
         CancellationToken ct = default)
     {
         var range = $"{Uri.EscapeDataString(basis)}...{Uri.EscapeDataString(head)}";
-        var path = $"/repos/{repo.Owner}/{repo.Name}/compare/{range}";
+        var path = $"{RepoPath(repo)}/compare/{range}";
         var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
 
         return await ReadJsonAsync<GhComparison>(response, ct).ConfigureAwait(false)
@@ -190,7 +202,7 @@ public sealed class GitHubClient : IDisposable
         int number,
         CancellationToken ct = default)
     {
-        var path = $"/repos/{repo.Owner}/{repo.Name}/pulls/{number}/files?per_page=100";
+        var path = $"{RepoPath(repo)}/pulls/{number}/files?per_page=100";
         var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
 
         return await ReadJsonAsync<List<GhFileChange>>(response, ct).ConfigureAwait(false) ?? [];
@@ -198,13 +210,20 @@ public sealed class GitHubClient : IDisposable
 
     private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
 
+    /// <summary>
+    /// The owner and name are validated on the way in, and escaped here on the way out anyway:
+    /// a request path is the last place to find out a settings file had other ideas.
+    /// </summary>
+    private static string RepoPath(RepoRef repo) =>
+        $"/repos/{Uri.EscapeDataString(repo.Owner)}/{Uri.EscapeDataString(repo.Name)}";
+
     /// <summary>GitHub Actions runs, newest first. Not part of the events timeline.</summary>
     public Task<ConditionalResponse<GhWorkflowRunsPage>> GetWorkflowRunsAsync(
         RepoRef repo,
         string? etag,
         CancellationToken ct = default) =>
         GetConditionalAsync<GhWorkflowRunsPage>(
-            $"/repos/{repo.Owner}/{repo.Name}/actions/runs?per_page=20&exclude_pull_requests=true",
+            $"{RepoPath(repo)}/actions/runs?per_page=20&exclude_pull_requests=true",
             etag,
             ct);
 
@@ -320,14 +339,20 @@ public sealed class GitHubClient : IDisposable
         }
     }
 
-    private static async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response, CancellationToken ct)
+    private async Task<T?> ReadJsonAsync<T>(HttpResponseMessage response, CancellationToken ct)
     {
-        await using var body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        await using var stream = new BoundedStream(body, MaxResponseBytes);
+        using var timeout = BodyTimeout(ct);
 
         try
         {
-            return await JsonSerializer.DeserializeAsync<T>(stream, cancellationToken: ct).ConfigureAwait(false);
+            await using var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+            await using var stream = new BoundedStream(body, MaxResponseBytes);
+
+            return await JsonSerializer.DeserializeAsync<T>(stream, cancellationToken: timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            throw new GitHubException(GitHubErrorKind.Network, "The response from GitHub timed out.", ex);
         }
         catch (ResponseTooLargeException)
         {
@@ -352,6 +377,14 @@ public sealed class GitHubClient : IDisposable
             "That response from GitHub was too large to read - open it on GitHub instead.");
     }
 
+    /// <summary>The caller's token, plus a clock on the body: whichever fires first cancels the read.</summary>
+    private CancellationTokenSource BodyTimeout(CancellationToken ct)
+    {
+        var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(BodyReadTimeout);
+        return timeout;
+    }
+
     private async Task EnsureSuccessAsync(HttpResponseMessage response, string what, CancellationToken ct)
     {
         if (response.IsSuccessStatusCode)
@@ -359,31 +392,48 @@ public sealed class GitHubClient : IDisposable
             return;
         }
 
+        // A secondary limit - too many requests in a burst - arrives as a 403 or 429 with a
+        // retry-after and a primary budget that is nowhere near spent. Read by the remaining
+        // count alone it was "the token lacks a scope", which sends people off to mint a new
+        // token for a problem that goes away on its own in a minute.
+        var retryAfter = RetryAfter(response);
+
         var kind = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized => GitHubErrorKind.Unauthorized,
             HttpStatusCode.NotFound => GitHubErrorKind.NotFound,
             HttpStatusCode.TooManyRequests => GitHubErrorKind.RateLimited,
-            HttpStatusCode.Forbidden when IsRateLimited(response) => GitHubErrorKind.RateLimited,
+            HttpStatusCode.Forbidden when retryAfter is not null || IsRateLimited(response) => GitHubErrorKind.RateLimited,
             HttpStatusCode.Forbidden => GitHubErrorKind.Forbidden,
             >= HttpStatusCode.InternalServerError => GitHubErrorKind.ServerError,
             _ => GitHubErrorKind.Unknown,
         };
 
+        using var timeout = BodyTimeout(ct);
+
         var message = kind switch
         {
             GitHubErrorKind.NotFound => $"{Describe(what)} was not found, or the token cannot see it.",
             GitHubErrorKind.Unauthorized => "GitHub rejected the access token.",
-            GitHubErrorKind.Forbidden => await ReadApiMessageAsync(response, ct).ConfigureAwait(false)
+            GitHubErrorKind.Forbidden => await ReadApiMessageAsync(response, timeout.Token).ConfigureAwait(false)
                 ?? "GitHub refused the request.",
             GitHubErrorKind.RateLimited => "GitHub rate limit reached.",
             GitHubErrorKind.ServerError => $"GitHub returned {(int)response.StatusCode}.",
-            _ => await ReadApiMessageAsync(response, ct).ConfigureAwait(false)
+            _ => await ReadApiMessageAsync(response, timeout.Token).ConfigureAwait(false)
                 ?? $"GitHub returned {(int)response.StatusCode}.",
         };
 
-        throw new GitHubException(kind, message) { RetryAt = ResetTime(response) };
+        throw new GitHubException(kind, message) { RetryAt = retryAfter ?? ResetTime(response) };
     }
+
+    /// <summary>When a <c>retry-after</c> header says the request may be repeated.</summary>
+    private static DateTimeOffset? RetryAfter(HttpResponseMessage response) =>
+        response.Headers.RetryAfter switch
+        {
+            { Delta: { } delta } => DateTimeOffset.UtcNow + delta,
+            { Date: { } date } => date,
+            _ => null,
+        };
 
     private static string Describe(string what) =>
         what.StartsWith("/repos/", StringComparison.Ordinal)

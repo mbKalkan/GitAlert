@@ -29,6 +29,31 @@ public class AlertStoreTests : IDisposable
     };
 
     /// <summary>
+    /// <c>required</c> only guards against a property that is missing. An explicit null in a
+    /// hand-edited history file walks straight through, and the first thing done with a loaded
+    /// alert is to read its id - which used to be the end of startup.
+    /// </summary>
+    [Fact]
+    public void A_history_entry_that_lost_its_id_is_skipped_rather_than_taking_the_load_down()
+    {
+        File.WriteAllText(
+            _path,
+            """
+            [
+              {"id":null,"kind":"Push","title":"Nameless","repository":"acme/api-gateway","timestamp":"2026-01-01T00:00:00Z"},
+              {"id":"acc|event:2","kind":"Push","title":"Homeless","repository":null,"timestamp":"2026-01-01T00:00:00Z"},
+              {"id":"acc|event:1","kind":"Push","title":"Alert 1","repository":"acme/api-gateway","timestamp":"2026-01-01T00:00:00Z"}
+            ]
+            """);
+
+        var store = new AlertStore(_path);
+        store.Load();
+
+        Assert.Equal(["acc|event:1"], store.Snapshot.Select(a => a.Id));
+        Assert.Equal(0, store.RemoveUnwatched(["acme/api-gateway"]));
+    }
+
+    /// <summary>
     /// Removing a repository in settings has to take its alerts with it. Left behind, they kept
     /// the project in the list with a count beside it for something just removed.
     /// </summary>

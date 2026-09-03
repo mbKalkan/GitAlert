@@ -163,7 +163,8 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         // A repository that is no longer watched takes its alerts with it. Without this the
         // project stayed in the list, with a count beside it, for something just removed.
-        if (_alerts.RemoveUnwatched(settings.Repositories.Where(r => r.Enabled).Select(r => r.FullName)) > 0)
+        // One that is only switched off is still watched in the user's mind, so it keeps them.
+        if (_alerts.RemoveUnwatched(settings.Repositories.Select(r => r.FullName)) > 0)
         {
             _alerts.Save();
         }

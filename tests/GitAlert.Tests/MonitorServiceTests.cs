@@ -594,6 +594,55 @@ public class MonitorServiceTests : IDisposable
 
     // ---- Harness -----------------------------------------------------------
 
+    // ---- Being told to slow down -------------------------------------------
+
+    /// <summary>
+    /// A rate limit answers every request the same way until it resets, and each request made
+    /// in the meantime counts against the secondary limit that may be the reason. The account
+    /// is left alone until then, and the status says so rather than "checking".
+    /// </summary>
+    [Fact]
+    public async Task A_rate_limited_account_is_left_alone_until_the_budget_is_back()
+    {
+        var github = new FakeGitHub { Events = Events(Push("1001", "abc1234")) };
+        github.Failures["/repos/acme/api-gateway/events"] = HttpStatusCode.TooManyRequests;
+
+        await using var harness = NewHarness(github);
+
+        var first = await harness.PollAsync();
+        Assert.Equal(ConnectionState.Error, first.State);
+
+        // The cycle stopped at the refusal: nothing after it on this account was asked for.
+        Assert.DoesNotContain(harness.Handler.Requests, r => r.Path.EndsWith("/commits", StringComparison.Ordinal));
+
+        var asked = harness.Handler.Requests.Count;
+        var second = await harness.PollAsync();
+
+        Assert.Equal(ConnectionState.Error, second.State);
+        Assert.Contains("Rate limited until", second.Message);
+        Assert.Equal(asked, harness.Handler.Requests.Count);
+    }
+
+    /// <summary>Replacing the token is a new budget, so the wait does not carry over to it.</summary>
+    [Fact]
+    public async Task A_replaced_token_is_polled_straight_away_even_inside_a_rate_limit()
+    {
+        var github = new FakeGitHub { Events = Events(Push("1001", "abc1234")) };
+        github.Failures["/repos/acme/api-gateway/events"] = HttpStatusCode.TooManyRequests;
+
+        await using var harness = NewHarness(github);
+        await harness.PollAsync();
+
+        github.Failures.Clear();
+        harness.Reconfigure(token: "ghp_another");
+
+        var status = await harness.PollAsync();
+
+        Assert.Equal(ConnectionState.Connected, status.State);
+        Assert.Contains(harness.Handler.Requests, r =>
+            r.Path.EndsWith("/events", StringComparison.Ordinal) && r.Authorization == "Bearer ghp_another");
+    }
+
     private static string Unstamped(string id) => id[(id.IndexOf('|') + 1)..];
 
     private string NewFile()
@@ -665,6 +714,7 @@ public class MonitorServiceTests : IDisposable
             string historyPath)
         {
             Handler = new StubHandler(github.Respond);
+            Settings = settings;
 
             Alerts = new AlertStore(historyPath);
             Monitor = new MonitorService(Alerts, new StateStore(statePath), new HttpClient(Handler));
@@ -683,6 +733,20 @@ public class MonitorServiceTests : IDisposable
         }
 
         public StubHandler Handler { get; }
+
+        public AppSettings Settings { get; }
+
+        /// <summary>
+        /// What saving the settings window does: the same settings, a different token. Configure
+        /// asks for a poll of its own when the credentials change; the next PollAsync queues one
+        /// more behind it, and the status it waits for is from a poll made with the new token
+        /// either way.
+        /// </summary>
+        public void Reconfigure(string token)
+        {
+            var tokens = Settings.Accounts.ToDictionary(a => a.Id, _ => token, StringComparer.Ordinal);
+            Monitor.Configure(Settings, tokens);
+        }
 
         public AlertStore Alerts { get; }
 

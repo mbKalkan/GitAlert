@@ -75,6 +75,35 @@ public class RepoRefTests
         Assert.False(RepoRef.TryParse(input, out _));
     }
 
+    /// <summary>
+    /// Git reserves both, and a URI folds <c>..</c> into the segment before it - so a settings
+    /// file naming a repository <c>..</c> would have sent the token to a different endpoint.
+    /// </summary>
+    [Theory]
+    [InlineData("acme/.")]
+    [InlineData("acme/..")]
+    [InlineData("acme/../user")]
+    [InlineData("https://github.com/acme/..")]
+    public void Rejects_the_names_git_reserves(string input)
+    {
+        Assert.False(RepoRef.TryParse(input, out _));
+    }
+
+    /// <summary>The same rules, exposed for the settings file to check what it loaded.</summary>
+    [Fact]
+    public void The_validation_the_parser_uses_is_available_on_its_own()
+    {
+        Assert.True(RepoRef.IsValidOwner("acme"));
+        Assert.True(RepoRef.IsValidName("api.gateway"));
+
+        Assert.False(RepoRef.IsValidOwner(null));
+        Assert.False(RepoRef.IsValidOwner("ac.me"));
+        Assert.False(RepoRef.IsValidName(null));
+        Assert.False(RepoRef.IsValidName("."));
+        Assert.False(RepoRef.IsValidName(".."));
+        Assert.False(RepoRef.IsValidName("api/../../user"));
+    }
+
     /// <summary>A repository name, unlike an owner, is allowed dots and underscores.</summary>
     [Theory]
     [InlineData("acme/api.gateway")]

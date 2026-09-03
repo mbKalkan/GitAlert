@@ -62,9 +62,19 @@ public sealed class SecureTokenStore
 
     public void Delete(string accountId)
     {
-        if (PathFor(accountId) is { } path && File.Exists(path))
+        if (PathFor(accountId) is not { } path || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
         {
             File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Settings are saved before tokens are deleted, so a file that will not go is
+            // already orphaned: no account names it, and Prune will try again on the next save.
         }
     }
 
@@ -102,9 +112,9 @@ public sealed class SecureTokenStore
                 {
                     File.Delete(file);
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    // A locked file simply lingers; it is inert either way.
+                    // A locked or read-only file simply lingers; it is inert either way.
                 }
             }
         }

@@ -133,6 +133,55 @@ public class SettingsTests : IDisposable
         Assert.Equal("acme/api", settings.Repositories[0].FullName);
     }
 
+    /// <summary>
+    /// The owner and the name go straight into a request path, sent with the account's token.
+    /// The record's constructor does no checking, so the settings file is where it has to happen.
+    /// </summary>
+    [Fact]
+    public void A_repository_whose_owner_or_name_could_not_be_a_path_segment_is_dropped()
+    {
+        var account = GitHubAccount.Create("octocat");
+
+        var settings = new AppSettings
+        {
+            Accounts = [account],
+            Repositories =
+            [
+                Repo(account.Id, "acme", "api"),
+                Repo(account.Id, "acme", ".."),
+                Repo(account.Id, "..", "api"),
+                Repo(account.Id, "acme", "api?per_page=1"),
+                Repo(account.Id, "acme", "api/../../user"),
+                Repo(account.Id, "acme/../../user", "api"),
+            ],
+        };
+
+        settings.Normalise();
+
+        var kept = Assert.Single(settings.Repositories);
+        Assert.Equal("acme/api", kept.FullName);
+    }
+
+    /// <summary>
+    /// Every list in the file is a valid place for a hand-edited <c>null</c>, and every reader
+    /// walks them. Loading used to throw on the first one, past the corrupt-file handling.
+    /// </summary>
+    [Fact]
+    public void Lists_a_hand_edited_file_set_to_null_come_back_empty_rather_than_crashing()
+    {
+        File.WriteAllText(
+            _path,
+            """{"accounts":null,"repositories":[null],"mutedKinds":null,"projectOrder":[null,"acme/api"]}""");
+
+        var settings = new SettingsStore(_path).Load();
+
+        Assert.Empty(settings.Accounts);
+        Assert.Empty(settings.Repositories);
+        Assert.Empty(settings.MutedKinds);
+        Assert.Equal(["acme/api"], settings.ProjectOrder);
+        Assert.False(File.Exists(_path + ".corrupt"));
+    }
+
     [Fact]
     public void A_repository_whose_account_is_gone_is_dropped()
     {

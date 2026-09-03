@@ -183,6 +183,17 @@ public sealed class AlertStore
 
                 foreach (var alert in stored)
                 {
+                    // `required` only guards against a property that is missing; an explicit
+                    // null in a hand-edited file walks straight through, and the first thing
+                    // done with a loaded alert is to read its id and its repository.
+                    if (alert is null
+                        || string.IsNullOrEmpty(alert.Id)
+                        || alert.Repository is null
+                        || alert.Title is null)
+                    {
+                        continue;
+                    }
+
                     if (_seenIds.Add(alert.Id))
                     {
                         _alerts.Add(alert);

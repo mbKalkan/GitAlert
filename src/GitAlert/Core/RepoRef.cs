@@ -66,7 +66,7 @@ public sealed partial record RepoRef(string Owner, string Name)
             ? name[..^4]
             : name;
 
-        if (!OwnerPattern().IsMatch(owner) || !NamePattern().IsMatch(name))
+        if (!IsValidOwner(owner) || !IsValidName(name))
         {
             return false;
         }
@@ -74,6 +74,16 @@ public sealed partial record RepoRef(string Owner, string Name)
         repo = new RepoRef(owner, name);
         return true;
     }
+
+    /// <summary>Whether a string is shaped like a GitHub login.</summary>
+    /// <remarks>
+    /// Public because the record's constructor is: a settings file names repositories by owner
+    /// and name, and both go straight into request paths. Anything that could not be a login
+    /// or a repository name is not a repository GitAlert can ask about.
+    /// </remarks>
+    public static bool IsValidOwner(string? owner) => owner is not null && OwnerPattern().IsMatch(owner);
+
+    public static bool IsValidName(string? name) => name is not null && NamePattern().IsMatch(name);
 
     // Two refs mean the same repo regardless of how the user capitalised them.
     public bool Equals(RepoRef? other) =>
@@ -103,6 +113,10 @@ public sealed partial record RepoRef(string Owner, string Name)
     [GeneratedRegex(@"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")]
     private static partial Regex OwnerPattern();
 
-    [GeneratedRegex(@"^[A-Za-z0-9._-]{1,100}$")]
+    /// <summary>
+    /// Alphanumerics, dots, underscores and hyphens - but not <c>.</c> or <c>..</c>, which git
+    /// reserves and which a URI would fold into the segment before them.
+    /// </summary>
+    [GeneratedRegex(@"^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$")]
     private static partial Regex NamePattern();
 }

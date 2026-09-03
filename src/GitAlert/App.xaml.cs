@@ -70,7 +70,8 @@ public partial class App : Application
 
         // A repository removed while GitAlert was not running leaves its alerts behind in the
         // history file. Reconcile before anything has a chance to count them or list the project.
-        if (_alerts.RemoveUnwatched(settings.Repositories.Where(r => r.Enabled).Select(r => r.FullName)) > 0)
+        // A repository that is merely switched off keeps its history: pausing is not removing.
+        if (_alerts.RemoveUnwatched(settings.Repositories.Select(r => r.FullName)) > 0)
         {
             _alerts.Save();
         }
@@ -132,8 +133,19 @@ public partial class App : Application
 
     private bool ClaimSingleInstance()
     {
-        _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirst);
-        return isFirst;
+        var mutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirst);
+
+        if (isFirst)
+        {
+            _instanceMutex = mutex;
+            return true;
+        }
+
+        // Not ours to release. OnExit runs on this path too, and ReleaseMutex on a mutex this
+        // process never acquired throws - so every second launch used to end in an unhandled
+        // exception right after asking the first one to show itself.
+        mutex.Dispose();
+        return false;
     }
 
     private static void SignalRunningInstance()

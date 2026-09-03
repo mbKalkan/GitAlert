@@ -115,15 +115,31 @@ public sealed class AppSettings
         StartWithWindows = StartWithWindows,
         Theme = Theme,
         MaxHistory = MaxHistory,
+        ProjectOrder = [.. ProjectOrder],
+        UnreadOnly = UnreadOnly,
+        AutoHideWindow = AutoHideWindow,
+        AlwaysOnTop = AlwaysOnTop,
+        WindowLeft = WindowLeft,
+        WindowTop = WindowTop,
+        WindowWidth = WindowWidth,
+        WindowHeight = WindowHeight,
     };
 
     /// <summary>Clamps anything a hand-edited settings file may have got wrong.</summary>
     public void Normalise()
     {
+        // JSON null is a valid value for every one of these, and every reader below walks them.
+        Accounts ??= [];
+        Repositories ??= [];
+        MutedKinds ??= [];
+        ProjectOrder ??= [];
+        ProjectOrder.RemoveAll(string.IsNullOrWhiteSpace);
+
         PollIntervalMinutes = Math.Clamp(PollIntervalMinutes, MinimumPollMinutes, MaximumPollMinutes);
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
 
         Accounts = Accounts
+            .Where(a => a is not null)
             // The id names the account's token file, so an id that cannot be one is not an
             // account GitAlert can authenticate as.
             .Where(a => SecureTokenStore.IsValidAccountId(a.Id))
@@ -131,10 +147,19 @@ public sealed class AppSettings
             .Select(g => g.First())
             .ToList();
 
+        foreach (var account in Accounts)
+        {
+            account.Login ??= string.Empty;
+        }
+
         var known = Accounts.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
 
         Repositories = Repositories
-            .Where(r => !string.IsNullOrWhiteSpace(r.Owner) && !string.IsNullOrWhiteSpace(r.Name))
+            .Where(r => r is not null)
+            // The owner and the name are spliced into request paths and sent with the account's
+            // token. Only what could be a login and a repository name gets that far; a segment
+            // like ".." would otherwise be folded into a different endpoint by the URI itself.
+            .Where(r => RepoRef.IsValidOwner(r.Owner) && RepoRef.IsValidName(r.Name))
             // A repository whose account is gone has nothing to authenticate with. An empty
             // account id is different: that is a repository from a pre-multi-account settings
             // file, waiting for SettingsMigration to adopt it. Normalise runs while loading,
@@ -145,6 +170,11 @@ public sealed class AppSettings
             .GroupBy(r => $"{r.AccountId}|{r.FullName}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();
+
+        foreach (var repository in Repositories)
+        {
+            repository.AccountId ??= string.Empty;
+        }
     }
 }
 

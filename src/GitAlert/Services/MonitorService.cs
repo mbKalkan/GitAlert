@@ -65,6 +65,18 @@ public sealed class MonitorService : IAsyncDisposable
     /// <summary>Logins resolved from each account's token, used to skip the user's own activity.</summary>
     private readonly Dictionary<string, string> _logins = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Accounts GitHub has throttled, and when each may be asked again. Guarded by
+    /// <see cref="_sync"/>: the poll loop writes it, and a token replaced from the UI clears it.
+    /// </summary>
+    private readonly Dictionary<string, DateTimeOffset> _backoff = new(StringComparer.Ordinal);
+
+    /// <summary>How long a rate limit without a reset time is waited out.</summary>
+    private static readonly TimeSpan DefaultBackoff = TimeSpan.FromMinutes(1);
+
+    /// <summary>The primary budget comes back within the hour; nothing should silence an account longer.</summary>
+    private static readonly TimeSpan MaxBackoff = TimeSpan.FromHours(1);
+
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private AppSettings _settings = new();
@@ -188,6 +200,9 @@ public sealed class MonitorService : IAsyncDisposable
             {
                 client.SetToken(token);
                 _logins.Remove(account.Id);
+
+                // A new token is a new budget.
+                _backoff.Remove(account.Id);
             }
         }
 
@@ -198,6 +213,7 @@ public sealed class MonitorService : IAsyncDisposable
             _clients[stale].Dispose();
             _clients.Remove(stale);
             _logins.Remove(stale);
+            _backoff.Remove(stale);
         }
     }
 
@@ -250,6 +266,15 @@ public sealed class MonitorService : IAsyncDisposable
     /// </remarks>
     private static void SettleBeforeIdling() =>
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+    /// <summary>Keeps the most recent interval GitHub asked for. Poll thread only.</summary>
+    private void NoteServerInterval(TimeSpan? requested)
+    {
+        if (requested is { } interval && interval > TimeSpan.Zero)
+        {
+            _serverRequestedInterval = interval;
+        }
+    }
 
     private TimeSpan NextDelay()
     {
@@ -348,6 +373,14 @@ public sealed class MonitorService : IAsyncDisposable
         List<(string Subject, GitHubException Error)> failures,
         CancellationToken ct)
     {
+        // GitHub said no until then. Asking sooner is answered the same way and, once the budget
+        // is back, spends the first of it on finding that out. The status still says so.
+        if (BackoffFor(account.Id) is { } until)
+        {
+            failures.Add((Describe(account), Throttled(until)));
+            return;
+        }
+
         // The first call also validates the token and tells us who we are.
         if (LoginFor(account.Id) is null)
         {
@@ -368,6 +401,7 @@ public sealed class MonitorService : IAsyncDisposable
             catch (GitHubException ex)
             {
                 failures.Add((Describe(account), ex));
+                NoteThrottling(account, ex);
                 return;
             }
         }
@@ -383,6 +417,13 @@ public sealed class MonitorService : IAsyncDisposable
             catch (GitHubException ex)
             {
                 failures.Add((repository.FullName, ex));
+
+                // Every further request with this token is refused the same way, and each one
+                // refused counts against the secondary limit that may be the reason.
+                if (NoteThrottling(account, ex))
+                {
+                    return;
+                }
             }
         }
 
@@ -395,9 +436,66 @@ public sealed class MonitorService : IAsyncDisposable
             catch (GitHubException ex)
             {
                 failures.Add(($"{Describe(account)} inbox", ex));
+                NoteThrottling(account, ex);
             }
         }
     }
+
+    /// <summary>When an account is still inside a rate limit, the moment it may be polled again.</summary>
+    private DateTimeOffset? BackoffFor(string accountId)
+    {
+        lock (_sync)
+        {
+            if (!_backoff.TryGetValue(accountId, out var until))
+            {
+                return null;
+            }
+
+            if (until > DateTimeOffset.UtcNow)
+            {
+                return until;
+            }
+
+            _backoff.Remove(accountId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Records a rate limit against the account so it is left alone until GitHub says the
+    /// budget is back. Returns true when the rest of this account's cycle should be skipped.
+    /// </summary>
+    private bool NoteThrottling(GitHubAccount account, GitHubException error)
+    {
+        if (error.Kind != GitHubErrorKind.RateLimited)
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var until = error.RetryAt ?? now + DefaultBackoff;
+
+        if (until <= now)
+        {
+            // Already reset; nothing to wait for.
+            return false;
+        }
+
+        if (until > now + MaxBackoff)
+        {
+            until = now + MaxBackoff;
+        }
+
+        lock (_sync)
+        {
+            _backoff[account.Id] = until;
+        }
+
+        return true;
+    }
+
+    private static GitHubException Throttled(DateTimeOffset until) =>
+        new(GitHubErrorKind.RateLimited, "GitHub rate limit reached.") { RetryAt = until };
 
     private async Task PollRepositoryAsync(
         GitHubClient client,
@@ -411,6 +509,10 @@ public sealed class MonitorService : IAsyncDisposable
         var reference = repository.Ref;
 
         var events = await client.GetRepositoryEventsAsync(reference, state.EventsETag, ct).ConfigureAwait(false);
+
+        // The events endpoint is the one GitHub documents x-poll-interval for; it was only ever
+        // read off the inbox, which most accounts do not poll at all.
+        NoteServerInterval(events.PollInterval);
 
         if (!events.NotModified && events.Value is { } timeline)
         {
@@ -593,7 +695,7 @@ public sealed class MonitorService : IAsyncDisposable
         var inbox = _state.InboxFor(account.Id);
         var response = await client.GetInboxAsync(inbox.ETag, ct).ConfigureAwait(false);
 
-        _serverRequestedInterval = response.PollInterval ?? _serverRequestedInterval;
+        NoteServerInterval(response.PollInterval);
 
         if (response.NotModified || response.Value is not { } notifications)
         {

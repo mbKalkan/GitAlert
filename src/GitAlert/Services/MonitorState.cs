@@ -67,6 +67,49 @@ public sealed class MonitorState
         }
     }
 
+    /// <summary>
+    /// Repairs what a load left behind.
+    /// </summary>
+    /// <remarks>
+    /// Two things. A hand-edited or truncated file can leave either dictionary, or any entry in
+    /// one, as JSON null, and the poll loop dereferences them without a check - an exception
+    /// there is a poll that never completes rather than a duplicate alert. And the deserialiser
+    /// builds a fresh dictionary with the default comparer, not the case-insensitive one the
+    /// property was declared with, so after a restart a repository re-added as <c>Acme/API</c>
+    /// no longer found the state written for <c>acme/api</c>.
+    /// </remarks>
+    public void Normalise()
+    {
+        lock (SyncRoot)
+        {
+            Repositories = Rebuild(Repositories, StringComparer.OrdinalIgnoreCase);
+            Inboxes = Rebuild(Inboxes, StringComparer.Ordinal);
+        }
+    }
+
+    private static Dictionary<string, T> Rebuild<T>(Dictionary<string, T>? loaded, StringComparer comparer)
+        where T : class
+    {
+        var rebuilt = new Dictionary<string, T>(comparer);
+
+        if (loaded is null)
+        {
+            return rebuilt;
+        }
+
+        foreach (var (key, value) in loaded)
+        {
+            // Two keys that differ only by case collapse to the first; TryAdd rather than the
+            // constructor so that is a lost high-water mark, not a failed load.
+            if (key is not null && value is not null)
+            {
+                rebuilt.TryAdd(key, value);
+            }
+        }
+
+        return rebuilt;
+    }
+
     /// <summary>Drops bookkeeping for repositories the user has since removed.</summary>
     public void Prune(IEnumerable<string> keepRepositories, IEnumerable<string> keepAccounts)
     {
@@ -148,7 +191,9 @@ public sealed class StateStore
 
             try
             {
-                return JsonSerializer.Deserialize<MonitorState>(File.ReadAllText(_path), Options) ?? new MonitorState();
+                var state = JsonSerializer.Deserialize<MonitorState>(File.ReadAllText(_path), Options) ?? new MonitorState();
+                state.Normalise();
+                return state;
             }
             catch (Exception ex) when (ex is JsonException or IOException)
             {

@@ -82,6 +82,18 @@ internal static class Responses
     public static HttpResponseMessage Status(HttpStatusCode status, params (string, string)[] headers) =>
         Json(status, """{"message":"Something GitHub said"}""", headers);
 
+    /// <summary>Headers, and then nothing: a body that never arrives, the way a dead connection reads.</summary>
+    public static HttpResponseMessage Stalled()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new StallingStream()),
+        };
+
+        response.Content.Headers.TryAddWithoutValidation("Content-Type", "application/json");
+        return response;
+    }
+
     /// <summary>A body that never ends, for driving the client into its own size ceiling.</summary>
     public static HttpResponseMessage Endless(string prefix)
     {
@@ -105,6 +117,49 @@ internal sealed class TrackingStream(byte[] bytes) : MemoryStream(bytes)
         Disposed = true;
         base.Dispose(disposing);
     }
+}
+
+/// <summary>
+/// Every read waits until it is cancelled. That is what a connection the other side has silently
+/// dropped looks like from here, and the only way out of it is a clock of the reader's own.
+/// </summary>
+internal sealed class StallingStream : Stream
+{
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => 0;
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException("The client is expected to read bodies asynchronously.");
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
+    {
+        await Task.Delay(Timeout.Infinite, ct);
+        return 0;
+    }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
+        ReadAsync(buffer.AsMemory(offset, count), ct).AsTask();
+
+    public override void Flush()
+    {
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
 
 /// <summary>

@@ -68,6 +68,29 @@ public class GitHubClientTests
         Assert.Contains("Rate limited until", error.UserMessage);
     }
 
+    /// <summary>
+    /// A secondary limit - too many requests in a burst - is a 403 with budget to spare and a
+    /// retry-after. Read by the remaining count alone it was a missing scope, which sends
+    /// people off to mint a new token for a problem that goes away on its own in a minute.
+    /// </summary>
+    [Fact]
+    public async Task A_forbidden_with_a_retry_after_is_throttling_and_says_when_to_come_back()
+    {
+        var (client, _) = Build(_ => Responses.Json(
+            HttpStatusCode.Forbidden,
+            """{"message":"You have exceeded a secondary rate limit."}""",
+            ("retry-after", "45"),
+            ("x-ratelimit-remaining", "4990"),
+            ("x-ratelimit-limit", "5000")));
+
+        var before = DateTimeOffset.UtcNow;
+        var error = await Assert.ThrowsAsync<GitHubException>(() => client.GetRepositoryAsync(Repo));
+
+        Assert.Equal(GitHubErrorKind.RateLimited, error.Kind);
+        Assert.NotNull(error.RetryAt);
+        Assert.InRange(error.RetryAt.Value, before.AddSeconds(44), DateTimeOffset.UtcNow.AddSeconds(46));
+    }
+
     [Fact]
     public async Task A_forbidden_with_budget_left_is_a_missing_scope_and_says_what_github_said()
     {
@@ -131,6 +154,35 @@ public class GitHubClientTests
         await Assert.ThrowsAsync<GitHubException>(() => client.GetAuthenticatedUserAsync());
 
         Assert.True(Responses.LastBody!.Disposed);
+    }
+
+    /// <summary>
+    /// Bodies are streamed, and HttpClient's timeout stops at the headers of a streamed
+    /// response. A connection that went quiet after them used to hold the poll loop for as long
+    /// as the app ran, with the status stuck on "Checking GitHub…".
+    /// </summary>
+    [Fact]
+    public async Task A_body_that_stalls_after_the_headers_is_a_timeout_rather_than_a_hang()
+    {
+        var (client, _) = Build(_ => Responses.Stalled());
+        client.BodyReadTimeout = TimeSpan.FromMilliseconds(200);
+
+        var error = await Assert.ThrowsAsync<GitHubException>(
+            () => client.GetRepositoryAsync(Repo).WaitAsync(TimeSpan.FromSeconds(10)));
+
+        Assert.Equal(GitHubErrorKind.Network, error.Kind);
+        Assert.Contains("timed out", error.Message);
+    }
+
+    /// <summary>The caller's own cancellation is still theirs, not dressed up as a network fault.</summary>
+    [Fact]
+    public async Task Cancelling_a_stalled_read_is_reported_as_a_cancellation()
+    {
+        var (client, _) = Build(_ => Responses.Stalled());
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.GetRepositoryAsync(Repo, cts.Token).WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     // ---- Nonsense on the wire ----------------------------------------------
