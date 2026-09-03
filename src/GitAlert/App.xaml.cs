@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Threading;
 using GitAlert.Configuration;
 using GitAlert.Core;
-using GitAlert.GitHub;
 using GitAlert.Platform;
 using GitAlert.Services;
 
@@ -26,7 +25,6 @@ public partial class App : Application
     private EventWaitHandle? _activationEvent;
     private CancellationTokenSource? _activationListener;
 
-    private GitHubClient? _client;
     private MonitorService? _monitor;
     private TrayApplication? _shell;
     private AlertStore? _alerts;
@@ -58,14 +56,20 @@ public partial class App : Application
         var tokenStore = new SecureTokenStore();
         var settings = settingsStore.Load();
 
+        // An install that predates multi-account support keeps working: its single token becomes
+        // one account and every repository is attached to it.
+        if (SettingsMigration.Apply(settings, tokenStore))
+        {
+            settingsStore.Save(settings);
+        }
+
         ThemeService.Apply(settings.Theme);
 
         _alerts = new AlertStore { MaxHistory = settings.MaxHistory };
         _alerts.Load();
 
-        _client = new GitHubClient();
-        _monitor = new MonitorService(_client, _alerts, new StateStore());
-        _monitor.Configure(settings, tokenStore.Read());
+        _monitor = new MonitorService(_alerts, new StateStore());
+        _monitor.Configure(settings, tokenStore.ReadAll(settings.Accounts.Select(a => a.Id)));
 
         _shell = new TrayApplication(settingsStore, tokenStore, _alerts, _monitor, settings);
 
@@ -77,7 +81,7 @@ public partial class App : Application
         // started us at sign-in, where popping a window would be rude.
         var launchedAtLogon = e.Args.Contains(StartupManager.StartupArgument, StringComparer.OrdinalIgnoreCase);
 
-        if (!launchedAtLogon && (!tokenStore.HasToken || settings.Repositories.Count == 0))
+        if (!launchedAtLogon && (settings.Accounts.Count == 0 || settings.Repositories.Count == 0))
         {
             _shell.PromptForSetup();
         }
@@ -94,7 +98,6 @@ public partial class App : Application
         }
 
         _alerts?.Save();
-        _client?.Dispose();
 
         _activationEvent?.Dispose();
         _instanceMutex?.ReleaseMutex();

@@ -4,7 +4,7 @@ using GitAlert.Core;
 
 namespace GitAlert.ViewModels;
 
-/// <summary>A watched repository as shown in the settings list.</summary>
+/// <summary>A watched repository as shown under its account in the settings list.</summary>
 public sealed partial class RepoItemViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -37,8 +37,10 @@ public sealed partial class RepoItemViewModel : ObservableObject
 
     public string Url => $"https://github.com/{Owner}/{Name}";
 
-    public RepoSubscription ToSubscription() => new()
+    /// <summary>The account id is supplied by the owning account when the settings are saved.</summary>
+    public RepoSubscription ToSubscription(string accountId) => new()
     {
+        AccountId = accountId,
         Owner = Owner,
         Name = Name,
         Enabled = IsEnabled,

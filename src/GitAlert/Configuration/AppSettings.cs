@@ -5,12 +5,19 @@ namespace GitAlert.Configuration;
 
 /// <summary>
 /// Everything the user can configure. Serialised to <c>%APPDATA%\GitAlert\settings.json</c>.
-/// The access token is <em>not</em> part of this file - see <see cref="SecureTokenStore"/>.
+/// Access tokens are <em>not</em> part of this file - see <see cref="SecureTokenStore"/>.
 /// </summary>
 public sealed class AppSettings
 {
     public const int MinimumPollMinutes = 1;
     public const int MaximumPollMinutes = 180;
+
+    /// <summary>
+    /// The GitHub accounts GitAlert signs in as. Each one has its own token, and every watched
+    /// repository is polled with the token of the account it was added under - which is what
+    /// makes a work account and a personal account work side by side.
+    /// </summary>
+    public List<GitHubAccount> Accounts { get; set; } = [];
 
     public List<RepoSubscription> Repositories { get; set; } = [];
 
@@ -20,8 +27,11 @@ public sealed class AppSettings
     /// <summary>Kinds the user has switched off; anything absent is delivered.</summary>
     public HashSet<AlertKind> MutedKinds { get; set; } = [];
 
-    /// <summary>Also poll the personal inbox (<c>/notifications</c>): mentions, review requests, assignments.</summary>
-    public bool IncludeInbox { get; set; } = true;
+    /// <summary>
+    /// Pre-multi-account setting, kept only so an existing settings file can be migrated onto
+    /// the account it belonged to. <see cref="SettingsMigration"/> clears it.
+    /// </summary>
+    public bool? IncludeInbox { get; set; }
 
     /// <summary>Poll GitHub Actions runs for each repository.</summary>
     public bool WatchWorkflowRuns { get; set; } = true;
@@ -29,7 +39,7 @@ public sealed class AppSettings
     /// <summary>When set, only failed / cancelled CI runs raise an alert.</summary>
     public bool OnlyFailedWorkflowRuns { get; set; }
 
-    /// <summary>Ignore activity produced by the signed-in user themselves.</summary>
+    /// <summary>Ignore activity produced by the signed-in account itself.</summary>
     public bool IgnoreOwnActivity { get; set; } = true;
 
     public bool ShowToasts { get; set; } = true;
@@ -45,8 +55,18 @@ public sealed class AppSettings
 
     public bool IsMuted(AlertKind kind) => MutedKinds.Contains(kind);
 
+    /// <summary>The repositories watched under one account.</summary>
+    public IEnumerable<RepoSubscription> RepositoriesFor(string accountId) =>
+        Repositories.Where(r => string.Equals(r.AccountId, accountId, StringComparison.Ordinal));
+
+    public GitHubAccount? FindAccount(string? accountId) =>
+        accountId is null
+            ? null
+            : Accounts.FirstOrDefault(a => string.Equals(a.Id, accountId, StringComparison.Ordinal));
+
     public AppSettings Clone() => new()
     {
+        Accounts = Accounts.Select(a => a.Clone()).ToList(),
         Repositories = Repositories.Select(r => r.Clone()).ToList(),
         PollIntervalMinutes = PollIntervalMinutes,
         MutedKinds = [.. MutedKinds],
@@ -66,17 +86,67 @@ public sealed class AppSettings
     {
         PollIntervalMinutes = Math.Clamp(PollIntervalMinutes, MinimumPollMinutes, MaximumPollMinutes);
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
+
+        Accounts = Accounts
+            .Where(a => !string.IsNullOrWhiteSpace(a.Id))
+            .GroupBy(a => a.Id, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .ToList();
+
+        var known = Accounts.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+
         Repositories = Repositories
             .Where(r => !string.IsNullOrWhiteSpace(r.Owner) && !string.IsNullOrWhiteSpace(r.Name))
-            .GroupBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
+            // A repository whose account is gone has nothing to authenticate with.
+            .Where(r => known.Contains(r.AccountId))
+            // The same repository may be watched once per account, but not twice under one.
+            .GroupBy(r => $"{r.AccountId}|{r.FullName}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();
     }
 }
 
-/// <summary>A repository the user asked GitAlert to watch.</summary>
+/// <summary>A GitHub account GitAlert holds a token for.</summary>
+public sealed class GitHubAccount
+{
+    /// <summary>
+    /// Stable identity, generated when the account is added. It links repositories to the
+    /// account and names the account's token file, so it must never change.
+    /// </summary>
+    public required string Id { get; set; }
+
+    /// <summary>The GitHub login, resolved from the token. Empty until the first successful call.</summary>
+    public string Login { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Watch this account's notification inbox: mentions, review requests, assignments.</summary>
+    public bool IncludeInbox { get; set; } = true;
+
+    [JsonIgnore]
+    public string DisplayName => string.IsNullOrWhiteSpace(Login) ? "Unverified account" : $"@{Login}";
+
+    public static GitHubAccount Create(string login) => new()
+    {
+        Id = Guid.NewGuid().ToString("N"),
+        Login = login,
+    };
+
+    public GitHubAccount Clone() => new()
+    {
+        Id = Id,
+        Login = Login,
+        Enabled = Enabled,
+        IncludeInbox = IncludeInbox,
+    };
+}
+
+/// <summary>A repository the user asked GitAlert to watch, under a particular account.</summary>
 public sealed class RepoSubscription
 {
+    /// <summary>The <see cref="GitHubAccount.Id"/> whose token is used to poll this repository.</summary>
+    public string AccountId { get; set; } = string.Empty;
+
     public required string Owner { get; set; }
 
     public required string Name { get; set; }
@@ -92,10 +162,16 @@ public sealed class RepoSubscription
     [JsonIgnore]
     public RepoRef Ref => new(Owner, Name);
 
-    public static RepoSubscription From(RepoRef repo) => new() { Owner = repo.Owner, Name = repo.Name };
+    /// <summary>Key for per-repository sync state: the same repo under two accounts is two subjects.</summary>
+    [JsonIgnore]
+    public string StateKey => $"{AccountId}|{FullName}";
+
+    public static RepoSubscription From(string accountId, RepoRef repo) =>
+        new() { AccountId = accountId, Owner = repo.Owner, Name = repo.Name };
 
     public RepoSubscription Clone() => new()
     {
+        AccountId = AccountId,
         Owner = Owner,
         Name = Name,
         Enabled = Enabled,

@@ -20,6 +20,9 @@ public sealed class GitHubClient : IDisposable
     private readonly bool _ownsClient;
     private string? _token;
 
+    private static readonly string UserAgent =
+        $"GitAlert/{typeof(GitHubClient).Assembly.GetName().Version?.ToString(3) ?? "1.0.0"}";
+
     public GitHubClient(HttpClient? http = null)
     {
         _ownsClient = http is null;
@@ -29,17 +32,18 @@ public sealed class GitHubClient : IDisposable
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         });
 
-        _http.Timeout = TimeSpan.FromSeconds(30);
-
-        var version = typeof(GitHubClient).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd($"GitAlert/{version}");
-        _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-        _http.DefaultRequestHeaders.Add("X-GitHub-Api-Version", ApiVersion);
+        if (_ownsClient)
+        {
+            _http.Timeout = TimeSpan.FromSeconds(30);
+        }
     }
 
     public RateLimitStatus RateLimit { get; private set; } = RateLimitStatus.Unknown;
 
     public bool HasToken => !string.IsNullOrWhiteSpace(_token);
+
+    /// <summary>The token this client authenticates with, so callers can tell when it changed.</summary>
+    public string? Token => _token;
 
     public void SetToken(string? token) => _token = string.IsNullOrWhiteSpace(token) ? null : token.Trim();
 
@@ -141,6 +145,11 @@ public sealed class GitHubClient : IDisposable
     private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? etag)
     {
         var request = new HttpRequestMessage(method, ApiRoot + path);
+
+        // Set on the request rather than the client: one HttpClient is shared by every account.
+        request.Headers.UserAgent.ParseAdd(UserAgent);
+        request.Headers.Accept.ParseAdd("application/vnd.github+json");
+        request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", ApiVersion);
 
         if (_token is not null)
         {

@@ -11,17 +11,12 @@ public partial class SettingsWindow : Window
 {
     private readonly SettingsViewModel _viewModel;
 
-    /// <summary>Guards against writing the password box back into the view model on load.</summary>
-    private bool _syncingToken;
-
     public SettingsWindow(SettingsViewModel viewModel)
     {
         InitializeComponent();
 
         _viewModel = viewModel;
         DataContext = viewModel;
-
-        Loaded += OnLoaded;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -45,39 +40,5 @@ public partial class SettingsWindow : Window
         }
 
         base.OnKeyDown(e);
-    }
-
-    private void OnLoaded(object sender, RoutedEventArgs e)
-    {
-        // A PasswordBox deliberately refuses to expose its content to data binding, so the two
-        // directions are wired up by hand.
-        _syncingToken = true;
-        TokenBox.Password = _viewModel.Token;
-        _syncingToken = false;
-
-        TokenBox.Focus();
-    }
-
-    private void OnTokenChanged(object sender, RoutedEventArgs e)
-    {
-        if (!_syncingToken)
-        {
-            _viewModel.Token = TokenBox.Password;
-        }
-    }
-
-    private void OnRepoInputKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter)
-        {
-            return;
-        }
-
-        if (_viewModel.AddRepositoryCommand.CanExecute(null))
-        {
-            _viewModel.AddRepositoryCommand.Execute(null);
-        }
-
-        e.Handled = true;
     }
 }

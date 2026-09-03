@@ -13,6 +13,14 @@ public sealed partial class AlertViewModel : ObservableObject
     [ObservableProperty]
     private string _age;
 
+    /// <summary>
+    /// Set by the flyout when more than one account is configured. With a single account the
+    /// login would be the same on every card, so it is left off.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Meta))]
+    private bool _showAccount;
+
     public AlertViewModel(Alert model)
     {
         Model = model;
@@ -38,11 +46,26 @@ public sealed partial class AlertViewModel : ObservableObject
 
     public Brush Accent => AlertGlyphs.BrushFor(Model.Kind, Model.Severity);
 
-    /// <summary>The dimmed line under the title: repository, and who caused the event.</summary>
-    public string Meta =>
-        string.IsNullOrWhiteSpace(Model.Actor)
-            ? Model.Repository
-            : $"{Model.Repository} · {Model.Actor}";
+    /// <summary>The dimmed line under the title: repository, who caused it, and which account saw it.</summary>
+    public string Meta
+    {
+        get
+        {
+            var parts = new List<string> { Model.Repository };
+
+            if (!string.IsNullOrWhiteSpace(Model.Actor))
+            {
+                parts.Add(Model.Actor!);
+            }
+
+            if (ShowAccount && !string.IsNullOrWhiteSpace(Model.Account))
+            {
+                parts.Add($"via @{Model.Account}");
+            }
+
+            return string.Join(" · ", parts);
+        }
+    }
 
     /// <summary>Full text for the tooltip, where there is room for everything.</summary>
     public string Tooltip =>

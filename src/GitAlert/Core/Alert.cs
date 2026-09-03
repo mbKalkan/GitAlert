@@ -23,6 +23,12 @@ public sealed class Alert
 
     public required string Repository { get; init; }
 
+    /// <summary>
+    /// The login of the account this alert arrived through. Shown on the card once more than one
+    /// account is configured, so it is obvious which identity saw it.
+    /// </summary>
+    public string? Account { get; set; }
+
     public string? Actor { get; init; }
 
     public string? Url { get; init; }

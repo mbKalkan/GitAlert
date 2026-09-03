@@ -65,6 +65,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private AlertFilter _activeFilter = AlertFilter.All;
 
+    /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
+    private bool _showAccounts;
+
     public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell)
     {
         _store = store;
@@ -82,7 +85,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             new FilterChipViewModel(AlertFilter.More, "More"),
         ];
 
-        _all.AddRange(_store.Snapshot.Select(a => new AlertViewModel(a)));
+        _all.AddRange(_store.Snapshot.Select(Create));
         _unreadCount = _store.UnreadCount;
         ApplyFilter();
 
@@ -205,7 +208,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         {
             foreach (var alert in alerts)
             {
-                _all.Insert(0, new AlertViewModel(alert));
+                _all.Insert(0, Create(alert));
             }
 
             TrimToStore();
@@ -228,6 +231,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             ConnectionState.Error => ErrorBrush,
             _ => IdleBrush,
         };
+
+        if (_showAccounts != status.AccountCount > 1)
+        {
+            _showAccounts = status.AccountCount > 1;
+
+            foreach (var alert in _all)
+            {
+                alert.ShowAccount = _showAccounts;
+            }
+        }
 
         RateLimitText = status.RateLimit.IsKnown
             ? $"{status.RateLimit.Remaining}/{status.RateLimit.Limit} API calls left this hour"
@@ -291,11 +304,13 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         UpdateLastUpdated();
     }
 
+    private AlertViewModel Create(Alert alert) => new(alert) { ShowAccount = _showAccounts };
+
     /// <summary>Re-reads the store after settings changed the history size or cleared it.</summary>
     public void Reload()
     {
         _all.Clear();
-        _all.AddRange(_store.Snapshot.Select(a => new AlertViewModel(a)));
+        _all.AddRange(_store.Snapshot.Select(Create));
         UnreadCount = _store.UnreadCount;
         ApplyFilter();
     }

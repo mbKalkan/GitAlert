@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Net;
+using System.Net.Http;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Configuration;
@@ -11,7 +13,7 @@ namespace GitAlert.ViewModels;
 /// <summary>What the settings window needs from the application shell.</summary>
 public interface ISettingsHost
 {
-    void ApplySettings(AppSettings settings, string? token);
+    void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens);
 
     void ResetMonitorState();
 
@@ -21,8 +23,9 @@ public interface ISettingsHost
 }
 
 /// <summary>
-/// Backs the settings window: the access token, the watched repositories, what counts as an alert
-/// and how often GitAlert checks. Nothing is persisted until <c>Save</c>, so cancelling is safe.
+/// Backs the settings window: the GitHub accounts and the repositories watched under each of them,
+/// what counts as an alert, and how often GitAlert checks. Nothing is persisted until <c>Save</c>,
+/// so cancelling is safe.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 {
@@ -33,20 +36,28 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly SettingsStore _settingsStore;
     private readonly SecureTokenStore _tokenStore;
     private readonly ISettingsHost _host;
-    private readonly GitHubClient _client = new();
     private readonly AppSettings _settings;
 
-    [ObservableProperty]
-    private string _token = string.Empty;
+    /// <summary>Shared by every account's validation client, so they pool one set of connections.</summary>
+    private readonly HttpClient _http = new(new SocketsHttpHandler
+    {
+        AutomaticDecompression = DecompressionMethods.All,
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(30),
+    };
+
+    private readonly GitHubClient _probe;
+    private readonly List<string> _removedAccountIds = [];
 
     [ObservableProperty]
-    private string _newRepositoryInput = string.Empty;
+    private bool _isAddingAccount;
+
+    [ObservableProperty]
+    private string _newAccountToken = string.Empty;
 
     [ObservableProperty]
     private int _pollIntervalMinutes = 2;
-
-    [ObservableProperty]
-    private bool _includeInbox = true;
 
     [ObservableProperty]
     private bool _watchWorkflowRuns = true;
@@ -82,10 +93,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isMessageError;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsSignedIn))]
-    private string? _signedInAs;
-
     public SettingsViewModel(SettingsStore settingsStore, SecureTokenStore tokenStore, ISettingsHost host)
     {
         _settingsStore = settingsStore;
@@ -93,10 +100,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _host = host;
 
         _settings = settingsStore.Load();
+        SettingsMigration.Apply(_settings, tokenStore);
 
-        _token = tokenStore.Read() ?? string.Empty;
+        _probe = new GitHubClient(_http);
+
         _pollIntervalMinutes = _settings.PollIntervalMinutes;
-        _includeInbox = _settings.IncludeInbox;
         _watchWorkflowRuns = _settings.WatchWorkflowRuns;
         _onlyFailedWorkflowRuns = _settings.OnlyFailedWorkflowRuns;
         _ignoreOwnActivity = _settings.IgnoreOwnActivity;
@@ -106,7 +114,17 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _theme = _settings.Theme;
         _maxHistory = _settings.MaxHistory;
 
-        Repositories = [.. _settings.Repositories.Select(r => new RepoItemViewModel(r))];
+        foreach (var account in _settings.Accounts)
+        {
+            var viewModel = new AccountViewModel(account, tokenStore.Read(account.Id), _http, RemoveAccount);
+
+            foreach (var repository in _settings.RepositoriesFor(account.Id))
+            {
+                viewModel.Repositories.Add(new RepoItemViewModel(repository));
+            }
+
+            Accounts.Add(viewModel);
+        }
 
         Kinds =
         [
@@ -124,7 +142,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ];
     }
 
-    public ObservableCollection<RepoItemViewModel> Repositories { get; }
+    public ObservableCollection<AccountViewModel> Accounts { get; } = [];
 
     public ObservableCollection<KindToggleViewModel> Kinds { get; }
 
@@ -136,7 +154,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
-    public bool IsSignedIn => !string.IsNullOrEmpty(SignedInAs);
+    public bool HasNoAccounts => Accounts.Count == 0;
 
     public string Version =>
         typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
@@ -144,12 +162,27 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public string DataDirectory => AppPaths.DataDirectory;
 
     [RelayCommand]
-    private async Task ValidateTokenAsync()
+    private void BeginAddAccount()
     {
-        if (string.IsNullOrWhiteSpace(Token))
+        NewAccountToken = string.Empty;
+        IsAddingAccount = true;
+        Message = string.Empty;
+    }
+
+    [RelayCommand]
+    private void CancelAddAccount()
+    {
+        NewAccountToken = string.Empty;
+        IsAddingAccount = false;
+    }
+
+    /// <summary>Validates the pasted token, then adds the account it belongs to.</summary>
+    [RelayCommand]
+    private async Task AddAccountAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewAccountToken))
         {
             Report("Paste a personal access token first.", isError: true);
-            SignedInAs = null;
             return;
         }
 
@@ -157,50 +190,27 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            _client.SetToken(Token);
-            var user = await _client.GetAuthenticatedUserAsync().ConfigureAwait(true);
+            _probe.SetToken(NewAccountToken);
+            var user = await _probe.GetAuthenticatedUserAsync().ConfigureAwait(true);
 
-            SignedInAs = user.Login;
-            Report($"Signed in as {user.Login}.", isError: false);
-        }
-        catch (GitHubException ex)
-        {
-            SignedInAs = null;
-            Report(ex.UserMessage, isError: true);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
+            if (Accounts.Any(a => string.Equals(a.Login, user.Login, StringComparison.OrdinalIgnoreCase)))
+            {
+                Report($"@{user.Login} is already added. Use Replace token to update its token.", isError: true);
+                return;
+            }
 
-    [RelayCommand]
-    private async Task AddRepositoryAsync()
-    {
-        if (!RepoRef.TryParse(NewRepositoryInput, out var repo))
-        {
-            Report("Paste a GitHub repository link, or type owner/repo.", isError: true);
-            return;
-        }
+            var account = GitHubAccount.Create(user.Login);
+            var viewModel = new AccountViewModel(account, NewAccountToken.Trim(), _http, RemoveAccount)
+            {
+                PendingToken = NewAccountToken.Trim(),
+            };
 
-        if (Repositories.Any(r => string.Equals(r.FullName, repo.FullName, StringComparison.OrdinalIgnoreCase)))
-        {
-            Report($"{repo.FullName} is already on the list.", isError: true);
-            return;
-        }
+            Accounts.Add(viewModel);
+            OnPropertyChanged(nameof(HasNoAccounts));
 
-        IsBusy = true;
-
-        try
-        {
-            // Check the token can actually see the repository before adding it, so a typo or a
-            // missing scope surfaces here rather than as a silent failure during polling.
-            _client.SetToken(Token);
-            var details = await _client.GetRepositoryAsync(repo).ConfigureAwait(true);
-
-            Repositories.Add(new RepoItemViewModel(repo, details.IsPrivate));
-            NewRepositoryInput = string.Empty;
-            Report($"Watching {repo.FullName}.", isError: false);
+            NewAccountToken = string.Empty;
+            IsAddingAccount = false;
+            Report($"Added @{user.Login}. Now add the repositories you want to watch.", isError: false);
         }
         catch (GitHubException ex)
         {
@@ -212,17 +222,20 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
-    private void RemoveRepository(RepoItemViewModel? repository)
+    private void RemoveAccount(AccountViewModel account)
     {
-        if (repository is not null)
+        if (!Accounts.Remove(account))
         {
-            Repositories.Remove(repository);
+            return;
         }
-    }
 
-    [RelayCommand]
-    private static void OpenRepository(RepoItemViewModel? repository) => Browser.Open(repository?.Url);
+        // The token file is only deleted on save, so cancelling leaves everything untouched.
+        _removedAccountIds.Add(account.Id);
+        account.Dispose();
+
+        OnPropertyChanged(nameof(HasNoAccounts));
+        Report($"Removed {account.DisplayName} and the repositories watched under it.", isError: false);
+    }
 
     [RelayCommand]
     private static void CreateToken() => Browser.Open(TokenUrl);
@@ -252,7 +265,6 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private void Save()
     {
         _settings.PollIntervalMinutes = PollIntervalMinutes;
-        _settings.IncludeInbox = IncludeInbox;
         _settings.WatchWorkflowRuns = WatchWorkflowRuns;
         _settings.OnlyFailedWorkflowRuns = OnlyFailedWorkflowRuns;
         _settings.IgnoreOwnActivity = IgnoreOwnActivity;
@@ -261,28 +273,34 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings.StartWithWindows = StartWithWindows;
         _settings.Theme = Theme;
         _settings.MaxHistory = MaxHistory;
-        _settings.Repositories = [.. Repositories.Select(r => r.ToSubscription())];
         _settings.MutedKinds = [.. Kinds.Where(k => !k.IsEnabled).Select(k => k.Kind)];
+
+        _settings.Accounts = [.. Accounts.Select(a => a.ToAccount())];
+        _settings.Repositories = [.. Accounts.SelectMany(a => a.ToSubscriptions())];
 
         _settingsStore.Save(_settings);
 
-        var token = Token.Trim();
+        foreach (var id in _removedAccountIds)
+        {
+            _tokenStore.Delete(id);
+        }
 
-        if (string.IsNullOrEmpty(token))
+        _removedAccountIds.Clear();
+
+        foreach (var account in Accounts.Where(a => !string.IsNullOrWhiteSpace(a.PendingToken)))
         {
-            _tokenStore.Clear();
+            _tokenStore.Write(account.Id, account.PendingToken!);
+            account.PendingToken = null;
         }
-        else
-        {
-            _tokenStore.Write(token);
-        }
+
+        _tokenStore.Prune(_settings.Accounts.Select(a => a.Id));
 
         if (StartWithWindows != StartupManager.IsEnabled && !StartupManager.SetEnabled(StartWithWindows))
         {
             Report("Could not change the Windows startup entry.", isError: true);
         }
 
-        _host.ApplySettings(_settings, string.IsNullOrEmpty(token) ? null : token);
+        _host.ApplySettings(_settings, _tokenStore.ReadAll(_settings.Accounts.Select(a => a.Id)));
         _host.CloseSettings();
     }
 
@@ -295,7 +313,16 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         IsMessageError = isError;
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        foreach (var account in Accounts)
+        {
+            account.Dispose();
+        }
+
+        _probe.Dispose();
+        _http.Dispose();
+    }
 }
 
 /// <summary>One "notify me about this" switch.</summary>

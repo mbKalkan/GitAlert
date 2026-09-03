@@ -11,35 +11,62 @@ namespace GitAlert.Services;
 /// </summary>
 public sealed class MonitorState
 {
+    /// <summary>Keyed by <see cref="Configuration.RepoSubscription.StateKey"/>: account plus repository.</summary>
     public Dictionary<string, RepoState> Repositories { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public string? InboxETag { get; set; }
-
-    public DateTimeOffset? InboxHighWater { get; set; }
+    /// <summary>Keyed by account id - each account has its own notification inbox.</summary>
+    public Dictionary<string, InboxState> Inboxes { get; set; } = new(StringComparer.Ordinal);
 
     public DateTimeOffset? LastSuccessfulPoll { get; set; }
 
-    public RepoState For(string fullName)
+    public RepoState For(string stateKey)
     {
-        if (!Repositories.TryGetValue(fullName, out var state))
+        if (!Repositories.TryGetValue(stateKey, out var state))
         {
             state = new RepoState();
-            Repositories[fullName] = state;
+            Repositories[stateKey] = state;
+        }
+
+        return state;
+    }
+
+    public InboxState InboxFor(string accountId)
+    {
+        if (!Inboxes.TryGetValue(accountId, out var state))
+        {
+            state = new InboxState();
+            Inboxes[accountId] = state;
         }
 
         return state;
     }
 
     /// <summary>Drops bookkeeping for repositories the user has since removed.</summary>
-    public void Prune(IEnumerable<string> keep)
+    public void Prune(IEnumerable<string> keepRepositories, IEnumerable<string> keepAccounts)
     {
-        var live = new HashSet<string>(keep, StringComparer.OrdinalIgnoreCase);
+        var liveRepositories = new HashSet<string>(keepRepositories, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var stale in Repositories.Keys.Where(k => !live.Contains(k)).ToList())
+        foreach (var stale in Repositories.Keys.Where(k => !liveRepositories.Contains(k)).ToList())
         {
             Repositories.Remove(stale);
         }
+
+        var liveAccounts = new HashSet<string>(keepAccounts, StringComparer.Ordinal);
+
+        foreach (var stale in Inboxes.Keys.Where(k => !liveAccounts.Contains(k)).ToList())
+        {
+            Inboxes.Remove(stale);
+        }
     }
+}
+
+/// <summary>Per-account inbox bookkeeping.</summary>
+public sealed class InboxState
+{
+    public string? ETag { get; set; }
+
+    /// <summary>Null until the first poll, which only records a baseline.</summary>
+    public DateTimeOffset? HighWater { get; set; }
 }
 
 public sealed class RepoState

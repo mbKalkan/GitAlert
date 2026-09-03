@@ -66,6 +66,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         _monitor.AlertsReceived += OnAlertsReceived;
         _monitor.StatusChanged += OnStatusChanged;
+        _monitor.AccountResolved += OnAccountResolved;
 
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         ThemeService.Applied += OnThemeApplied;
@@ -80,7 +81,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         _tray.ShowBalloon(
             "GitAlert is running",
-            "Add your GitHub token and the repositories you want to watch.",
+            "Add a GitHub account, then the repositories you want to watch.",
             BalloonIcon.Info,
             playSound: false);
     }
@@ -120,15 +121,34 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
     // ---- ISettingsHost -----------------------------------------------------
 
-    public void ApplySettings(AppSettings settings, string? token)
+    public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
     {
         _settings = settings;
 
         ThemeService.Apply(settings.Theme);
         _alerts.MaxHistory = settings.MaxHistory;
-        _monitor.Configure(settings, token);
+        _monitor.Configure(settings, tokens);
         _monitor.RequestRefresh();
     }
+
+    /// <summary>
+    /// The monitor learned an account's login by using its token. Record it so the settings list
+    /// shows a name rather than "Unverified account", which matters most right after the
+    /// single-token settings file has been migrated.
+    /// </summary>
+    private void OnAccountResolved(object? sender, AccountIdentity identity) =>
+        _dispatcher.InvokeAsync(() =>
+        {
+            var account = _settings.FindAccount(identity.AccountId);
+
+            if (account is null || string.Equals(account.Login, identity.Login, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            account.Login = identity.Login;
+            _settingsStore.Save(_settings);
+        });
 
     public void ResetMonitorState()
     {
@@ -350,6 +370,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         ThemeService.Applied -= OnThemeApplied;
         _monitor.AlertsReceived -= OnAlertsReceived;
         _monitor.StatusChanged -= OnStatusChanged;
+        _monitor.AccountResolved -= OnAccountResolved;
 
         _flyoutViewModel.Dispose();
         _flyout.CloseForGood();

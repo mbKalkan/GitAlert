@@ -2,11 +2,12 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:platform="clr-namespace:GitAlert.Platform"
+        xmlns:views="clr-namespace:GitAlert.Views"
         Title="GitAlert settings"
-        Width="780"
-        Height="580"
-        MinWidth="700"
-        MinHeight="500"
+        Width="820"
+        Height="640"
+        MinWidth="720"
+        MinHeight="520"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource Surface}"
         UseLayoutRounding="True"
@@ -37,7 +38,7 @@
       <Setter Property="FontSize" Value="12.5" />
       <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
       <Setter Property="TextWrapping" Value="Wrap" />
-      <Setter Property="Margin" Value="0,0,0,20" />
+      <Setter Property="Margin" Value="0,0,0,18" />
     </Style>
 
     <Style x:Key="FieldLabel" TargetType="TextBlock">
@@ -47,6 +48,230 @@
       <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
       <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
+
+    <!-- The note under an account card, red when it reports a problem. -->
+    <Style x:Key="InlineMessage" TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,8,0,0" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsMessageError}" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource Danger}" />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
+
+    <!-- One repository row inside an account card. The nearest ItemsControl ancestor is the
+         repository list, whose DataContext is the owning account. -->
+    <DataTemplate x:Key="RepositoryRow">
+      <Border Background="Transparent" CornerRadius="6" Padding="8,6" Margin="0,1">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <CheckBox Grid.Column="0"
+                    Style="{StaticResource ModernCheckBox}"
+                    Margin="0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding IsEnabled}"
+                    ToolTip="Check this repository during each poll" />
+
+          <TextBlock Grid.Column="1"
+                     Text="{Binding FullName}"
+                     FontSize="12.5"
+                     Margin="10,0,0,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis" />
+
+          <Border Grid.Column="2"
+                  Background="{DynamicResource ChipBackground}"
+                  CornerRadius="9"
+                  Padding="7,2"
+                  Margin="0,0,6,0"
+                  VerticalAlignment="Center"
+                  Visibility="{Binding IsPrivate, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="Private" Style="{StaticResource MutedText}" FontSize="10.5" />
+          </Border>
+
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Style="{StaticResource GhostButton}"
+                    Content="Open"
+                    Padding="7,3"
+                    Command="{Binding DataContext.OpenRepositoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding}" />
+            <Button Style="{StaticResource GhostButton}"
+                    Content="Remove"
+                    Padding="7,3"
+                    Command="{Binding DataContext.RemoveRepositoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- One GitHub account, with the repositories watched under it. -->
+    <DataTemplate x:Key="AccountCard">
+      <Border Background="{DynamicResource SurfaceElevated}"
+              BorderBrush="{DynamicResource BorderSubtle}"
+              BorderThickness="1"
+              CornerRadius="10"
+              Padding="16,14"
+              Margin="0,0,0,12">
+        <StackPanel>
+
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Width="30"
+                    Height="30"
+                    CornerRadius="15"
+                    Background="{DynamicResource AccentSubtle}"
+                    VerticalAlignment="Center">
+              <Path Data="M8,2 A3.2,3.2 0 1 1 8,8.4 A3.2,3.2 0 1 1 8,2 Z M2.4,14.4 C2.4,11.3 4.9,9.6 8,9.6 C11.1,9.6 13.6,11.3 13.6,14.4 Z"
+                    Fill="{DynamicResource Accent}"
+                    Width="15"
+                    Height="15"
+                    Stretch="Uniform"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center">
+              <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding RepositorySummary}" Style="{StaticResource MutedText}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+              <CheckBox Style="{StaticResource ModernCheckBox}"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center"
+                        IsChecked="{Binding IsEnabled}"
+                        Content="Active"
+                        ToolTip="Uncheck to pause this account without removing it" />
+              <Button Style="{StaticResource GhostButton}"
+                      Content="Replace token"
+                      Command="{Binding BeginReplaceTokenCommand}" />
+              <Button Style="{StaticResource GhostButton}"
+                      Content="Remove"
+                      Command="{Binding RemoveCommand}" />
+            </StackPanel>
+          </Grid>
+
+          <!-- Shown when the stored token could not be decrypted, which needs a new one. -->
+          <Border Background="{DynamicResource ChipBackground}"
+                  CornerRadius="7"
+                  Padding="10,7"
+                  Margin="0,12,0,0">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers>
+                  <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                      <Condition Binding="{Binding HasStoredToken}" Value="False" />
+                      <Condition Binding="{Binding IsReplacingToken}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                  </MultiDataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+            <TextBlock Style="{StaticResource SecondaryText}"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource Danger}"
+                       Text="No usable token for this account. Choose Replace token to sign in again." />
+          </Border>
+
+          <!-- Replace-token panel. -->
+          <Grid Margin="0,12,0,0" Visibility="{Binding IsReplacingToken, Converter={StaticResource BoolToVisibility}}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <PasswordBox Grid.Column="0"
+                         Style="{StaticResource ModernPasswordBox}"
+                         views:PasswordBoxBinder.BoundPassword="{Binding PendingToken, Mode=TwoWay}">
+              <PasswordBox.InputBindings>
+                <KeyBinding Key="Enter" Command="{Binding ApplyTokenCommand}" />
+              </PasswordBox.InputBindings>
+            </PasswordBox>
+
+            <Button Grid.Column="1"
+                    Content="Save token"
+                    Style="{StaticResource PrimaryButton}"
+                    Margin="8,0,0,0"
+                    Command="{Binding ApplyTokenCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+
+            <Button Grid.Column="2"
+                    Content="Cancel"
+                    Style="{StaticResource GhostButton}"
+                    Margin="4,0,0,0"
+                    Command="{Binding CancelReplaceTokenCommand}" />
+          </Grid>
+
+          <CheckBox Style="{StaticResource ModernCheckBox}"
+                    Margin="0,14,0,4"
+                    IsChecked="{Binding IncludeInbox}"
+                    Content="Watch this account's inbox (mentions, review requests, assignments)" />
+
+          <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,8,0,12" />
+
+          <TextBlock Text="REPOSITORIES" Style="{StaticResource SectionHeader}" />
+
+          <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0">
+              <TextBox Style="{StaticResource ModernTextBox}"
+                       Text="{Binding NewRepositoryInput, UpdateSourceTrigger=PropertyChanged}">
+                <TextBox.InputBindings>
+                  <KeyBinding Key="Enter" Command="{Binding AddRepositoryCommand}" />
+                </TextBox.InputBindings>
+              </TextBox>
+              <TextBlock Text="https://github.com/owner/repository"
+                         Style="{StaticResource MutedText}"
+                         Margin="12,0,0,0"
+                         VerticalAlignment="Center"
+                         IsHitTestVisible="False"
+                         Visibility="{Binding NewRepositoryInput, Converter={StaticResource EmptyStringToVisibility}}" />
+            </Grid>
+
+            <Button Grid.Column="1"
+                    Content="Add repository"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="8,0,0,0"
+                    Command="{Binding AddRepositoryCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+          </Grid>
+
+          <ItemsControl ItemsSource="{Binding Repositories}" ItemTemplate="{StaticResource RepositoryRow}" />
+
+          <TextBlock Text="Nothing watched under this account yet."
+                     Style="{StaticResource MutedText}"
+                     Margin="8,4,0,0"
+                     Visibility="{Binding Repositories.Count, Converter={StaticResource EmptyCountToVisibility}}" />
+
+          <TextBlock Style="{StaticResource InlineMessage}"
+                     Text="{Binding Message}"
+                     Visibility="{Binding HasMessage, Converter={StaticResource BoolToVisibility}}" />
+
+        </StackPanel>
+      </Border>
+    </DataTemplate>
   </Window.Resources>
 
   <Grid>
@@ -79,8 +304,7 @@
                  BorderThickness="0"
                  SelectedIndex="0"
                  ItemContainerStyle="{StaticResource NavItem}">
-          <ListBoxItem Content="Account" />
-          <ListBoxItem Content="Repositories" />
+          <ListBoxItem Content="Accounts" />
           <ListBoxItem Content="Notifications" />
           <ListBoxItem Content="General" />
           <ListBoxItem Content="About" />
@@ -101,182 +325,105 @@
                   Style="{StaticResource HeadlessTabs}"
                   SelectedIndex="{Binding SelectedIndex, ElementName=Navigation}">
 
-        <!-- ========== Account ========== -->
+        <!-- ========== Accounts ========== -->
         <TabItem>
-          <ScrollViewer Style="{StaticResource SlimScrollViewer}" Padding="0">
-            <StackPanel Margin="28,26,28,20">
-              <TextBlock Text="GitHub account" Style="{StaticResource PageTitle}" />
-              <TextBlock Style="{StaticResource PageSubtitle}"
-                         Text="GitAlert talks to GitHub as you, using a personal access token. The token is encrypted with your Windows account and never leaves this machine." />
-
-              <TextBlock Text="Personal access token" Style="{StaticResource FieldLabel}" />
-
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <PasswordBox x:Name="TokenBox"
-                             Grid.Column="0"
-                             Style="{StaticResource ModernPasswordBox}"
-                             PasswordChanged="OnTokenChanged" />
-
-                <Button Grid.Column="1"
-                        Content="Validate"
-                        Style="{StaticResource SecondaryButton}"
-                        Margin="8,0,0,0"
-                        Command="{Binding ValidateTokenCommand}"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
-              </Grid>
-
-              <StackPanel Orientation="Horizontal"
-                          Margin="0,10,0,0"
-                          Visibility="{Binding IsSignedIn, Converter={StaticResource BoolToVisibility}}">
-                <Ellipse Width="8" Height="8" Fill="{DynamicResource Success}" VerticalAlignment="Center" />
-                <TextBlock Margin="7,0,0,0"
-                           Style="{StaticResource SecondaryText}"
-                           Text="{Binding SignedInAs, StringFormat=Signed in as {0}}" />
-              </StackPanel>
-
-              <Border Margin="0,22,0,0"
-                      Background="{DynamicResource SurfaceElevated}"
-                      BorderBrush="{DynamicResource BorderSubtle}"
-                      BorderThickness="1"
-                      CornerRadius="9"
-                      Padding="16,14">
-                <StackPanel>
-                  <TextBlock Text="Which scopes do I need?" Style="{StaticResource FieldLabel}" />
-                  <TextBlock Style="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,4">
-                    <Run Text="•" />
-                    <Run Text="repo" FontWeight="SemiBold" />
-                    <Run Text=" - only if you want to watch private repositories." />
-                  </TextBlock>
-                  <TextBlock Style="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,4">
-                    <Run Text="•" />
-                    <Run Text="notifications" FontWeight="SemiBold" />
-                    <Run Text=" - only if you want mentions and review requests from your inbox." />
-                  </TextBlock>
-                  <TextBlock Style="{StaticResource MutedText}"
-                             TextWrapping="Wrap"
-                             Margin="0,4,0,12"
-                             Text="Public repositories need no scopes at all." />
-                  <Button Content="Create a token on GitHub"
-                          Style="{StaticResource SecondaryButton}"
-                          HorizontalAlignment="Left"
-                          Command="{Binding CreateTokenCommand}" />
-                </StackPanel>
-              </Border>
-            </StackPanel>
-          </ScrollViewer>
-        </TabItem>
-
-        <!-- ========== Repositories ========== -->
-        <TabItem>
-          <Grid Margin="28,26,28,20">
+          <Grid Margin="28,26,28,16">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0">
-              <TextBlock Text="Watched repositories" Style="{StaticResource PageTitle}" />
-              <TextBlock Style="{StaticResource PageSubtitle}"
-                         Text="Paste a repository link from your browser. GitAlert checks that your token can see it before adding it to the list." />
-            </StackPanel>
-
-            <Grid Grid.Row="1" Margin="0,0,0,16">
+            <Grid Grid.Row="0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
 
-              <Grid Grid.Column="0">
-                <TextBox x:Name="RepoInput"
-                         Style="{StaticResource ModernTextBox}"
-                         Text="{Binding NewRepositoryInput, UpdateSourceTrigger=PropertyChanged}"
-                         KeyDown="OnRepoInputKeyDown" />
-                <TextBlock Text="https://github.com/owner/repository"
-                           Style="{StaticResource MutedText}"
-                           Margin="12,0,0,0"
-                           VerticalAlignment="Center"
-                           IsHitTestVisible="False"
-                           Visibility="{Binding NewRepositoryInput, Converter={StaticResource EmptyStringToVisibility}}" />
-              </Grid>
+              <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                <TextBlock Text="GitHub accounts" Style="{StaticResource PageTitle}" />
+                <TextBlock Style="{StaticResource PageSubtitle}"
+                           Text="Add an account for each token you have, then add repositories under the account whose token can see them. A work account and a personal account sit side by side." />
+              </StackPanel>
 
               <Button Grid.Column="1"
-                      Content="Add"
+                      Content="Add account"
                       Style="{StaticResource PrimaryButton}"
-                      Margin="8,0,0,0"
-                      Command="{Binding AddRepositoryCommand}" />
+                      VerticalAlignment="Top"
+                      Command="{Binding BeginAddAccountCommand}"
+                      Visibility="{Binding IsAddingAccount, Converter={StaticResource InverseBoolToVisibility}}" />
             </Grid>
 
-            <Border Grid.Row="2"
-                    Background="{DynamicResource SurfaceSunken}"
-                    BorderBrush="{DynamicResource BorderSubtle}"
+            <!-- Add-account panel. -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource SurfaceElevated}"
+                    BorderBrush="{DynamicResource Accent}"
                     BorderThickness="1"
-                    CornerRadius="9">
-              <Grid>
-                <ScrollViewer Style="{StaticResource SlimScrollViewer}" Margin="6,6,4,6">
-                  <ItemsControl ItemsSource="{Binding Repositories}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate>
-                        <Border Background="Transparent" CornerRadius="7" Padding="10,8" Margin="0,1">
-                          <Grid>
-                            <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="Auto" />
-                              <ColumnDefinition Width="*" />
-                              <ColumnDefinition Width="Auto" />
-                              <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                    CornerRadius="10"
+                    Padding="16,14"
+                    Margin="0,0,0,14"
+                    Visibility="{Binding IsAddingAccount, Converter={StaticResource BoolToVisibility}}">
+              <StackPanel>
+                <TextBlock Text="Personal access token" Style="{StaticResource FieldLabel}" />
+                <TextBlock Style="{StaticResource MutedText}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,10"
+                           Text="Public repositories need no scopes. Add repo for private repositories, and notifications for mentions and review requests. The token is encrypted with your Windows account." />
 
-                            <CheckBox Grid.Column="0"
-                                      Style="{StaticResource ModernCheckBox}"
-                                      Margin="0"
-                                      VerticalAlignment="Center"
-                                      IsChecked="{Binding IsEnabled}"
-                                      ToolTip="Check this repository during each poll" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                              <TextBlock Text="{Binding FullName}" FontSize="13" FontWeight="Medium" />
-                              <TextBlock Text="{Binding Url}" Style="{StaticResource MutedText}" />
-                            </StackPanel>
+                  <PasswordBox Grid.Column="0"
+                               Style="{StaticResource ModernPasswordBox}"
+                               views:PasswordBoxBinder.BoundPassword="{Binding NewAccountToken, Mode=TwoWay}">
+                    <PasswordBox.InputBindings>
+                      <KeyBinding Key="Enter" Command="{Binding AddAccountCommand}" />
+                    </PasswordBox.InputBindings>
+                  </PasswordBox>
 
-                            <Border Grid.Column="2"
-                                    Background="{DynamicResource ChipBackground}"
-                                    CornerRadius="10"
-                                    Padding="8,3"
-                                    VerticalAlignment="Center"
-                                    Margin="0,0,6,0"
-                                    Visibility="{Binding IsPrivate, Converter={StaticResource BoolToVisibility}}">
-                              <TextBlock Text="Private" Style="{StaticResource MutedText}" />
-                            </Border>
+                  <Button Grid.Column="1"
+                          Content="Add"
+                          Style="{StaticResource PrimaryButton}"
+                          Margin="8,0,0,0"
+                          Command="{Binding AddAccountCommand}"
+                          IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
 
-                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                              <Button Style="{StaticResource GhostButton}"
-                                      Content="Open"
-                                      Command="{Binding DataContext.OpenRepositoryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                      CommandParameter="{Binding}" />
-                              <Button Style="{StaticResource GhostButton}"
-                                      Content="Remove"
-                                      Command="{Binding DataContext.RemoveRepositoryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                      CommandParameter="{Binding}" />
-                            </StackPanel>
-                          </Grid>
-                        </Border>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </ScrollViewer>
+                  <Button Grid.Column="2"
+                          Content="Cancel"
+                          Style="{StaticResource GhostButton}"
+                          Margin="4,0,0,0"
+                          Command="{Binding CancelAddAccountCommand}" />
+                </Grid>
 
-                <TextBlock Text="No repositories yet. Paste a link above to start watching one."
-                           Style="{StaticResource MutedText}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           Visibility="{Binding Repositories.Count, Converter={StaticResource EmptyCountToVisibility}}" />
-              </Grid>
+                <Button Content="Create a token on GitHub"
+                        Style="{StaticResource GhostButton}"
+                        HorizontalAlignment="Left"
+                        Margin="-9,8,0,0"
+                        Command="{Binding CreateTokenCommand}" />
+              </StackPanel>
             </Border>
+
+            <Grid Grid.Row="2">
+              <ScrollViewer Style="{StaticResource SlimScrollViewer}" Margin="0,0,4,0">
+                <ItemsControl ItemsSource="{Binding Accounts}" ItemTemplate="{StaticResource AccountCard}" />
+              </ScrollViewer>
+
+              <StackPanel VerticalAlignment="Center"
+                          HorizontalAlignment="Center"
+                          Visibility="{Binding HasNoAccounts, Converter={StaticResource BoolToVisibility}}">
+                <Viewbox Width="34" Height="34" Opacity="0.25" HorizontalAlignment="Center">
+                  <Path Data="{x:Static platform:IconArtwork.BellGeometry}" Fill="{DynamicResource TextMuted}" />
+                </Viewbox>
+                <TextBlock Text="No accounts yet. Add one to get started."
+                           Style="{StaticResource SecondaryText}"
+                           Margin="0,12,0,0"
+                           TextAlignment="Center" />
+              </StackPanel>
+            </Grid>
           </Grid>
         </TabItem>
 
@@ -286,7 +433,7 @@
             <StackPanel Margin="28,26,28,20">
               <TextBlock Text="What to tell me about" Style="{StaticResource PageTitle}" />
               <TextBlock Style="{StaticResource PageSubtitle}"
-                         Text="Switch off anything you would rather not hear about. Muted kinds are neither shown as a toast nor added to the list." />
+                         Text="Switch off anything you would rather not hear about. Muted kinds are neither shown as a toast nor added to the list. These apply to every account." />
 
               <ItemsControl ItemsSource="{Binding Kinds}" Margin="0,0,0,10">
                 <ItemsControl.ItemsPanel>
@@ -297,7 +444,7 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <CheckBox Style="{StaticResource ModernCheckBox}"
-                              Width="220"
+                              Width="230"
                               Content="{Binding Label}"
                               IsChecked="{Binding IsEnabled}" />
                   </DataTemplate>
@@ -308,9 +455,10 @@
 
               <TextBlock Text="SOURCES" Style="{StaticResource SectionHeader}" />
 
-              <CheckBox Style="{StaticResource ModernCheckBox}"
-                        IsChecked="{Binding IncludeInbox}"
-                        Content="Include my GitHub inbox (mentions, review requests, assignments)" />
+              <TextBlock Style="{StaticResource MutedText}"
+                         TextWrapping="Wrap"
+                         Margin="0,0,0,12"
+                         Text="Each account decides for itself whether its inbox is watched; that switch lives on the account card." />
 
               <CheckBox Style="{StaticResource ModernCheckBox}"
                         IsChecked="{Binding WatchWorkflowRuns}"
@@ -453,7 +601,7 @@
                 <TextBlock Style="{StaticResource SecondaryText}" TextWrapping="Wrap" Margin="0,0,0,6"
                            Text="Built because tabbing back to GitHub to find out whether anything happened is a poor use of a working day." />
                 <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap"
-                           Text="Your token stays on this machine, encrypted with your Windows account. GitAlert talks to api.github.com and nowhere else." />
+                           Text="Your tokens stay on this machine, encrypted with your Windows account. GitAlert talks to api.github.com and nowhere else." />
               </StackPanel>
             </Border>
           </StackPanel>

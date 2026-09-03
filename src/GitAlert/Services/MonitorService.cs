@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Http;
 using GitAlert.Configuration;
 using GitAlert.Core;
 using GitAlert.GitHub;
@@ -6,7 +8,7 @@ namespace GitAlert.Services;
 
 public enum ConnectionState
 {
-    /// <summary>No access token, or no repositories to watch yet.</summary>
+    /// <summary>No account, or nothing to watch yet.</summary>
     NotConfigured,
 
     Connecting,
@@ -24,38 +26,52 @@ public sealed record MonitorStatus(
     string Message,
     DateTimeOffset? LastSuccess = null,
     RateLimitStatus RateLimit = default,
-    string? Login = null);
+    int AccountCount = 0);
+
+/// <summary>A login GitAlert learned by using an account's token.</summary>
+public sealed record AccountIdentity(string AccountId, string Login);
 
 /// <summary>
-/// The polling engine. Runs one background loop that walks every watched repository, translates
-/// whatever is new into alerts and raises them. All GitHub access is funnelled through here so the
-/// UI never has to think about ETags, rate limits or partial failures.
+/// The polling engine. Runs one background loop that walks every account, polls the repositories
+/// watched under it with that account's token, and translates whatever is new into alerts. All
+/// GitHub access is funnelled through here so the UI never has to think about ETags, rate limits,
+/// per-account credentials or partial failures.
 /// </summary>
 public sealed class MonitorService : IAsyncDisposable
 {
-    private readonly GitHubClient _client;
     private readonly AlertStore _alerts;
     private readonly StateStore _stateStore;
     private readonly MonitorState _state;
+    private readonly HttpClient _http;
     private readonly SemaphoreSlim _refreshSignal = new(0, 1);
     private readonly SemaphoreSlim _pollGate = new(1, 1);
+
+    /// <summary>One client per account, all sharing a single connection pool.</summary>
+    private readonly Dictionary<string, GitHubClient> _clients = new(StringComparer.Ordinal);
+
+    /// <summary>Logins resolved from each account's token, used to skip the user's own activity.</summary>
+    private readonly Dictionary<string, string> _logins = new(StringComparer.Ordinal);
 
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private AppSettings _settings = new();
-    private string? _token;
-    private string? _login;
+    private Dictionary<string, string> _tokens = new(StringComparer.Ordinal);
     private DateTimeOffset? _lastSuccess;
 
     /// <summary>Honours GitHub's <c>x-poll-interval</c> when it asks us to slow down.</summary>
     private TimeSpan? _serverRequestedInterval;
 
-    public MonitorService(GitHubClient client, AlertStore alerts, StateStore stateStore)
+    public MonitorService(AlertStore alerts, StateStore stateStore, HttpClient? http = null)
     {
-        _client = client;
         _alerts = alerts;
         _stateStore = stateStore;
         _state = stateStore.Load();
+
+        _http = http ?? new HttpClient(new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        });
     }
 
     /// <summary>Raised on a background thread whenever new alerts arrive, newest first.</summary>
@@ -64,27 +80,31 @@ public sealed class MonitorService : IAsyncDisposable
     /// <summary>Raised on a background thread whenever the connection status changes.</summary>
     public event EventHandler<MonitorStatus>? StatusChanged;
 
+    /// <summary>
+    /// Raised the first time an account's login is learned, so the settings file can record it
+    /// and the UI can show a name instead of "Unverified account".
+    /// </summary>
+    public event EventHandler<AccountIdentity>? AccountResolved;
+
     public MonitorStatus Status { get; private set; } =
         new(ConnectionState.NotConfigured, "Not configured yet.");
 
-    public void Configure(AppSettings settings, string? token)
+    public void Configure(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
     {
         var intervalChanged = _settings.PollIntervalMinutes != settings.PollIntervalMinutes;
-        var tokenChanged = !string.Equals(_token, token, StringComparison.Ordinal);
+        var credentialsChanged = !SameTokens(_tokens, tokens);
 
         _settings = settings.Clone();
-        _token = string.IsNullOrWhiteSpace(token) ? null : token;
+        _tokens = new Dictionary<string, string>(tokens, StringComparer.Ordinal);
         _alerts.MaxHistory = _settings.MaxHistory;
 
-        if (tokenChanged)
-        {
-            _login = null;
-            _client.SetToken(_token);
-        }
+        SyncClients();
 
-        _state.Prune(_settings.Repositories.Select(r => r.FullName));
+        _state.Prune(
+            _settings.Repositories.Select(r => r.StateKey),
+            _settings.Accounts.Select(a => a.Id));
 
-        if (intervalChanged || tokenChanged)
+        if (intervalChanged || credentialsChanged)
         {
             RequestRefresh();
         }
@@ -117,6 +137,39 @@ public sealed class MonitorService : IAsyncDisposable
         }
     }
 
+    /// <summary>Creates and drops per-account clients so the set matches the configured accounts.</summary>
+    private void SyncClients()
+    {
+        foreach (var account in _settings.Accounts)
+        {
+            if (!_clients.TryGetValue(account.Id, out var client))
+            {
+                client = new GitHubClient(_http);
+                _clients[account.Id] = client;
+            }
+
+            var token = _tokens.GetValueOrDefault(account.Id);
+
+            if (!string.Equals(client.Token, token, StringComparison.Ordinal))
+            {
+                client.SetToken(token);
+                _logins.Remove(account.Id);
+            }
+        }
+
+        var live = _settings.Accounts.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var stale in _clients.Keys.Where(id => !live.Contains(id)).ToList())
+        {
+            _clients[stale].Dispose();
+            _clients.Remove(stale);
+            _logins.Remove(stale);
+        }
+    }
+
+    private static bool SameTokens(IReadOnlyDictionary<string, string> a, IReadOnlyDictionary<string, string> b) =>
+        a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var value) && value == pair.Value);
+
     private async Task RunAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -131,7 +184,7 @@ public sealed class MonitorService : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                SetStatus(new MonitorStatus(ConnectionState.Error, ex.Message, _lastSuccess, _client.RateLimit, _login));
+                SetStatus(new MonitorStatus(ConnectionState.Error, ex.Message, _lastSuccess));
             }
 
             try
@@ -164,69 +217,44 @@ public sealed class MonitorService : IAsyncDisposable
         {
             var settings = _settings;
 
-            if (_token is null)
+            var accounts = settings.Accounts
+                .Where(a => a.Enabled && _tokens.ContainsKey(a.Id))
+                .ToList();
+
+            if (accounts.Count == 0)
             {
-                SetStatus(new MonitorStatus(ConnectionState.NotConfigured, "Add a personal access token to start."));
+                SetStatus(new MonitorStatus(
+                    ConnectionState.NotConfigured,
+                    settings.Accounts.Count == 0
+                        ? "Add a GitHub account to start."
+                        : "No account has a usable token."));
                 return;
             }
 
             var watched = settings.Repositories.Where(r => r.Enabled).ToList();
 
-            if (watched.Count == 0 && !settings.IncludeInbox)
+            if (watched.Count == 0 && !accounts.Any(a => a.IncludeInbox))
             {
                 SetStatus(new MonitorStatus(ConnectionState.NotConfigured, "Add a repository to watch."));
                 return;
             }
 
-            SetStatus(new MonitorStatus(ConnectionState.Connecting, "Checking GitHub…", _lastSuccess, _client.RateLimit, _login));
-
-            if (_login is null)
-            {
-                try
-                {
-                    _login = (await _client.GetAuthenticatedUserAsync(ct).ConfigureAwait(false)).Login;
-                }
-                catch (GitHubException ex) when (ex.Kind is GitHubErrorKind.Unauthorized or GitHubErrorKind.Forbidden)
-                {
-                    SetStatus(new MonitorStatus(ConnectionState.Error, ex.UserMessage, _lastSuccess, _client.RateLimit));
-                    return;
-                }
-            }
+            SetStatus(new MonitorStatus(ConnectionState.Connecting, "Checking GitHub…", _lastSuccess, AggregateRateLimit(), accounts.Count));
 
             var collected = new List<Alert>();
-            var failures = new List<(string Repository, GitHubException Error)>();
+            var failures = new List<(string Subject, GitHubException Error)>();
 
-            foreach (var repository in watched)
+            foreach (var account in accounts)
             {
                 ct.ThrowIfCancellationRequested();
-
-                try
-                {
-                    await PollRepositoryAsync(repository, settings, collected, ct).ConfigureAwait(false);
-                }
-                catch (GitHubException ex)
-                {
-                    failures.Add((repository.FullName, ex));
-                }
-            }
-
-            if (settings.IncludeInbox)
-            {
-                try
-                {
-                    await PollInboxAsync(settings, collected, ct).ConfigureAwait(false);
-                }
-                catch (GitHubException ex)
-                {
-                    failures.Add(("inbox", ex));
-                }
+                await PollAccountAsync(account, settings, collected, failures, ct).ConfigureAwait(false);
             }
 
             _state.LastSuccessfulPoll = DateTimeOffset.Now;
             _stateStore.Save(_state);
 
             Publish(collected);
-            SetStatus(BuildStatus(watched.Count, failures));
+            SetStatus(BuildStatus(watched.Count, accounts.Count, failures));
         }
         finally
         {
@@ -234,16 +262,77 @@ public sealed class MonitorService : IAsyncDisposable
         }
     }
 
+    private async Task PollAccountAsync(
+        GitHubAccount account,
+        AppSettings settings,
+        List<Alert> collected,
+        List<(string Subject, GitHubException Error)> failures,
+        CancellationToken ct)
+    {
+        if (!_clients.TryGetValue(account.Id, out var client))
+        {
+            return;
+        }
+
+        // The first call also validates the token and tells us who we are.
+        if (!_logins.ContainsKey(account.Id))
+        {
+            try
+            {
+                var login = (await client.GetAuthenticatedUserAsync(ct).ConfigureAwait(false)).Login;
+                _logins[account.Id] = login;
+
+                if (!string.Equals(account.Login, login, StringComparison.OrdinalIgnoreCase))
+                {
+                    AccountResolved?.Invoke(this, new AccountIdentity(account.Id, login));
+                }
+            }
+            catch (GitHubException ex)
+            {
+                failures.Add((Describe(account), ex));
+                return;
+            }
+        }
+
+        foreach (var repository in settings.RepositoriesFor(account.Id).Where(r => r.Enabled))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                await PollRepositoryAsync(client, account, repository, settings, collected, ct).ConfigureAwait(false);
+            }
+            catch (GitHubException ex)
+            {
+                failures.Add((repository.FullName, ex));
+            }
+        }
+
+        if (account.IncludeInbox)
+        {
+            try
+            {
+                await PollInboxAsync(client, account, settings, collected, ct).ConfigureAwait(false);
+            }
+            catch (GitHubException ex)
+            {
+                failures.Add(($"{Describe(account)} inbox", ex));
+            }
+        }
+    }
+
     private async Task PollRepositoryAsync(
+        GitHubClient client,
+        GitHubAccount account,
         RepoSubscription repository,
         AppSettings settings,
         List<Alert> collected,
         CancellationToken ct)
     {
-        var state = _state.For(repository.FullName);
+        var state = _state.For(repository.StateKey);
         var reference = repository.Ref;
 
-        var events = await _client.GetRepositoryEventsAsync(reference, state.EventsETag, ct).ConfigureAwait(false);
+        var events = await client.GetRepositoryEventsAsync(reference, state.EventsETag, ct).ConfigureAwait(false);
 
         if (!events.NotModified && events.Value is { } timeline)
         {
@@ -267,9 +356,9 @@ public sealed class MonitorService : IAsyncDisposable
                 }
 
                 var alert = EventTranslator.FromEvent(item);
-                if (alert is not null && ShouldDeliver(alert, settings))
+                if (alert is not null && ShouldDeliver(alert, account, settings))
                 {
-                    collected.Add(alert);
+                    collected.Add(Stamp(alert, account));
                 }
             }
 
@@ -279,18 +368,20 @@ public sealed class MonitorService : IAsyncDisposable
 
         if (settings.WatchWorkflowRuns && !settings.IsMuted(AlertKind.Workflow))
         {
-            await PollWorkflowRunsAsync(reference, state, settings, collected, ct).ConfigureAwait(false);
+            await PollWorkflowRunsAsync(client, account, reference, state, settings, collected, ct).ConfigureAwait(false);
         }
     }
 
     private async Task PollWorkflowRunsAsync(
+        GitHubClient client,
+        GitHubAccount account,
         RepoRef reference,
         RepoState state,
         AppSettings settings,
         List<Alert> collected,
         CancellationToken ct)
     {
-        var runs = await _client.GetWorkflowRunsAsync(reference, state.RunsETag, ct).ConfigureAwait(false);
+        var runs = await client.GetWorkflowRunsAsync(reference, state.RunsETag, ct).ConfigureAwait(false);
 
         if (runs.NotModified || runs.Value is not { } page)
         {
@@ -332,9 +423,9 @@ public sealed class MonitorService : IAsyncDisposable
                 continue;
             }
 
-            if (ShouldDeliver(alert, settings))
+            if (ShouldDeliver(alert, account, settings))
             {
-                collected.Add(alert);
+                collected.Add(Stamp(alert, account));
             }
         }
 
@@ -348,21 +439,28 @@ public sealed class MonitorService : IAsyncDisposable
         state.LastWorkflowRunId = highWater;
     }
 
-    private async Task PollInboxAsync(AppSettings settings, List<Alert> collected, CancellationToken ct)
+    private async Task PollInboxAsync(
+        GitHubClient client,
+        GitHubAccount account,
+        AppSettings settings,
+        List<Alert> collected,
+        CancellationToken ct)
     {
-        var inbox = await _client.GetInboxAsync(_state.InboxETag, ct).ConfigureAwait(false);
+        var inbox = _state.InboxFor(account.Id);
+        var response = await client.GetInboxAsync(inbox.ETag, ct).ConfigureAwait(false);
 
-        _serverRequestedInterval = inbox.PollInterval ?? _serverRequestedInterval;
+        _serverRequestedInterval = response.PollInterval ?? _serverRequestedInterval;
 
-        if (inbox.NotModified || inbox.Value is not { } notifications)
+        if (response.NotModified || response.Value is not { } notifications)
         {
             return;
         }
 
-        _state.InboxETag = inbox.ETag;
+        inbox.ETag = response.ETag;
 
-        var isBaseline = _state.InboxHighWater is null;
-        var highWater = _state.InboxHighWater ?? DateTimeOffset.MinValue;
+        var previous = inbox.HighWater;
+        var isBaseline = previous is null;
+        var highWater = previous ?? DateTimeOffset.MinValue;
 
         foreach (var notification in notifications)
         {
@@ -371,32 +469,53 @@ public sealed class MonitorService : IAsyncDisposable
                 highWater = notification.UpdatedAt;
             }
 
-            if (isBaseline || notification.UpdatedAt <= _state.InboxHighWater)
+            if (isBaseline || notification.UpdatedAt <= previous)
             {
                 continue;
             }
 
             var alert = EventTranslator.FromNotification(notification);
-            if (ShouldDeliver(alert, settings))
+            if (ShouldDeliver(alert, account, settings))
             {
-                collected.Add(alert);
+                collected.Add(Stamp(alert, account));
             }
         }
 
-        _state.InboxHighWater = highWater == DateTimeOffset.MinValue ? DateTimeOffset.Now : highWater;
+        inbox.HighWater = highWater == DateTimeOffset.MinValue ? DateTimeOffset.Now : highWater;
     }
 
-    private bool ShouldDeliver(Alert alert, AppSettings settings)
+    /// <summary>
+    /// Records which account saw the alert, and makes the id unique per account so the same event
+    /// watched under two accounts is not silently swallowed by de-duplication.
+    /// </summary>
+    private Alert Stamp(Alert alert, GitHubAccount account) => new()
+    {
+        Id = $"{account.Id}|{alert.Id}",
+        Kind = alert.Kind,
+        Title = alert.Title,
+        Detail = alert.Detail,
+        Repository = alert.Repository,
+        Account = _logins.GetValueOrDefault(account.Id, account.Login),
+        Actor = alert.Actor,
+        Url = alert.Url,
+        Timestamp = alert.Timestamp,
+        Severity = alert.Severity,
+    };
+
+    private bool ShouldDeliver(Alert alert, GitHubAccount account, AppSettings settings)
     {
         if (settings.IsMuted(alert.Kind))
         {
             return false;
         }
 
-        return !settings.IgnoreOwnActivity
-            || alert.Actor is null
-            || _login is null
-            || !string.Equals(alert.Actor, _login, StringComparison.OrdinalIgnoreCase);
+        if (!settings.IgnoreOwnActivity || alert.Actor is null)
+        {
+            return true;
+        }
+
+        return !_logins.TryGetValue(account.Id, out var login)
+            || !string.Equals(alert.Actor, login, StringComparison.OrdinalIgnoreCase);
     }
 
     private void Publish(List<Alert> collected)
@@ -415,20 +534,36 @@ public sealed class MonitorService : IAsyncDisposable
         }
     }
 
-    private MonitorStatus BuildStatus(int watchedCount, List<(string Repository, GitHubException Error)> failures)
+    /// <summary>The tightest remaining budget across accounts, which is the one that will bite first.</summary>
+    private RateLimitStatus AggregateRateLimit()
+    {
+        var known = _clients.Values.Select(c => c.RateLimit).Where(r => r.IsKnown).ToList();
+
+        return known.Count == 0
+            ? RateLimitStatus.Unknown
+            : known.MinBy(r => r.Remaining);
+    }
+
+    private MonitorStatus BuildStatus(
+        int watchedCount,
+        int accountCount,
+        List<(string Subject, GitHubException Error)> failures)
     {
         _lastSuccess = failures.Count == 0 ? DateTimeOffset.Now : _lastSuccess;
+        var rateLimit = AggregateRateLimit();
 
         if (failures.Count == 0)
         {
-            var message = watchedCount switch
+            var repositories = watchedCount switch
             {
                 0 => "Watching your inbox",
                 1 => "Watching 1 repository",
                 _ => $"Watching {watchedCount} repositories",
             };
 
-            return new MonitorStatus(ConnectionState.Connected, message, _lastSuccess, _client.RateLimit, _login);
+            var message = accountCount > 1 ? $"{repositories} across {accountCount} accounts" : repositories;
+
+            return new MonitorStatus(ConnectionState.Connected, message, _lastSuccess, rateLimit, accountCount);
         }
 
         var fatal = failures.FirstOrDefault(f =>
@@ -436,15 +571,19 @@ public sealed class MonitorService : IAsyncDisposable
 
         if (fatal.Error is not null)
         {
-            return new MonitorStatus(ConnectionState.Error, fatal.Error.UserMessage, _lastSuccess, _client.RateLimit, _login);
+            var prefix = accountCount > 1 ? $"{fatal.Subject}: " : string.Empty;
+            return new MonitorStatus(ConnectionState.Error, prefix + fatal.Error.UserMessage, _lastSuccess, rateLimit, accountCount);
         }
 
         var summary = failures.Count == 1
-            ? failures[0].Error.UserMessage
-            : $"{failures.Count} repositories could not be checked.";
+            ? $"{failures[0].Subject}: {failures[0].Error.UserMessage}"
+            : $"{failures.Count} of the things being watched could not be checked.";
 
-        return new MonitorStatus(ConnectionState.Warning, summary, _lastSuccess, _client.RateLimit, _login);
+        return new MonitorStatus(ConnectionState.Warning, summary, _lastSuccess, rateLimit, accountCount);
     }
+
+    private string Describe(GitHubAccount account) =>
+        _logins.TryGetValue(account.Id, out var login) ? $"@{login}" : account.DisplayName;
 
     private void SetStatus(MonitorStatus status)
     {
@@ -456,33 +595,39 @@ public sealed class MonitorService : IAsyncDisposable
     public void ResetState()
     {
         _state.Repositories.Clear();
-        _state.InboxETag = null;
-        _state.InboxHighWater = null;
+        _state.Inboxes.Clear();
         _stateStore.Save(_state);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_cts is null)
+        if (_cts is not null)
         {
-            return;
-        }
+            await _cts.CancelAsync().ConfigureAwait(false);
 
-        await _cts.CancelAsync().ConfigureAwait(false);
+            if (_loop is not null)
+            {
+                try
+                {
+                    await _loop.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
 
-        if (_loop is not null)
-        {
-            try
-            {
-                await _loop.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            _cts.Dispose();
         }
 
         _stateStore.Save(_state);
-        _cts.Dispose();
+
+        foreach (var client in _clients.Values)
+        {
+            client.Dispose();
+        }
+
+        _clients.Clear();
+        _http.Dispose();
         _refreshSignal.Dispose();
         _pollGate.Dispose();
     }

@@ -39,9 +39,13 @@ little app and an honest sample of what that way of working produces.
 <tr>
 <td width="50%" valign="top">
 
+**One app, several GitHub accounts**
+Add an account per token, then add repositories under the account whose token can see them. Work
+and personal sit side by side, each with its own credentials and its own inbox.
+
 **Watches what you point it at**
 Paste a repository link from your browser — `https://github.com/owner/repo`, an SSH clone URL or
-just `owner/repo`. GitAlert checks your token can see it before adding it.
+just `owner/repo`. GitAlert checks that account's token can see it before adding it.
 
 **Covers the whole timeline**
 Pushes (with the commit message and a link to the diff), pull requests opened, merged and closed,
@@ -55,7 +59,8 @@ Failures are red, and you can ask to hear about failures only.
 <td width="50%" valign="top">
 
 **Your inbox, optionally**
-Mentions, review requests and assignments from `/notifications`, folded into the same list.
+Mentions, review requests and assignments from `/notifications`, per account, folded into the same
+list. With more than one account the cards say which identity saw each alert.
 
 **Quiet by design**
 Mute any category you do not care about. Ignore activity you caused yourself. Choose how often it
@@ -71,9 +76,9 @@ crisp at every DPI, adapts to a light or dark taskbar, and carries a badge when 
 
 <div align="center">
 
-| Light theme | Repositories | Notifications |
+| Light theme | Accounts and repositories | Notifications |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/flyout-light.png" width="250"> | <img src="docs/screenshots/settings-repositories.png" width="250"> | <img src="docs/screenshots/settings-notifications.png" width="250"> |
+| <img src="docs/screenshots/flyout-light.png" width="250"> | <img src="docs/screenshots/settings-accounts.png" width="250"> | <img src="docs/screenshots/settings-notifications.png" width="250"> |
 
 </div>
 
@@ -109,8 +114,8 @@ too, install Inno Setup 6 (`winget install JRSoftware.InnoSetup`) and run `.\bui
 
 ## Setting it up
 
-1. **Create a token.** Settings → Account → *Create a token on GitHub*. The link pre-selects the
-   scopes; pick an expiry you are comfortable with.
+1. **Create a token.** Settings → Accounts → *Add account* → *Create a token on GitHub*. The link
+   pre-selects the scopes; pick an expiry you are comfortable with.
 
    | You want | Scope needed |
    |---|---|
@@ -118,11 +123,17 @@ too, install Inno Setup 6 (`winget install JRSoftware.InnoSetup`) and run `.\bui
    | Private repositories | `repo` |
    | Mentions, review requests, assignments | `notifications` |
 
-2. **Paste it in and hit Validate.** GitAlert tells you which account it signed in as.
+2. **Paste it in and hit Add.** GitAlert verifies the token and names the account it belongs to.
 
-3. **Add repositories.** Settings → Repositories → paste a link → *Add*.
+3. **Add repositories under that account.** Paste a link → *Add repository*.
 
-4. **Pick an interval.** Two minutes is a sensible default; see below for why that is cheap.
+4. **Repeat for any other account** — a work account, an organisation-scoped token, whatever you
+   have. Each keeps its own token, its own repositories and its own inbox switch.
+
+5. **Pick an interval.** Two minutes is a sensible default; see below for why that is cheap.
+
+A token that expires does not cost you the setup: choose *Replace token* on the account card and
+the repositories stay exactly as they were.
 
 The first check of a repository only records where things stand — you are not buried under weeks of
 history the moment you add one. From then on, only genuinely new activity is reported.
@@ -141,13 +152,17 @@ GitAlert is a polling client that tries hard to be a well-behaved one.
 - **Failures are local.** A repository you lost access to does not stop the others from being
   checked; the flyout says how many could not be reached and why.
 
+- **Every account is polled with its own token**, and one account failing (an expired token, a lost
+  permission) never stops the others from being checked.
+
 Three endpoints do the work: `/repos/{owner}/{repo}/events` for the timeline,
-`/repos/{owner}/{repo}/actions/runs` for CI, and `/notifications` for your inbox.
+`/repos/{owner}/{repo}/actions/runs` for CI, and `/notifications` for each account's inbox.
 
 ## Your data
 
-- The access token is encrypted with **DPAPI**, scoped to your Windows user account. The blob on
-  disk is useless to another user or on another machine.
+- Each account's access token is encrypted with **DPAPI**, scoped to your Windows user account, and
+  kept in its own file under `%APPDATA%\GitAlert	okens`. A blob on disk is useless to another user
+  or on another machine, and one account's token is never used for another's repositories.
 - Settings, sync state and alert history live in `%APPDATA%\GitAlert` as plain JSON you can read.
 - GitAlert talks to `api.github.com` and nothing else. No telemetry, no analytics, no update pings.
 
