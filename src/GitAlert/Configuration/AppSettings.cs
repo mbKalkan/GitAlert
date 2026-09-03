@@ -57,6 +57,28 @@ public sealed class AppSettings
     /// <summary>How many alerts are kept on disk and shown in the flyout.</summary>
     public int MaxHistory { get; set; } = 300;
 
+    /// <summary>
+    /// Close the window as soon as focus moves elsewhere. Off by default: the window is a place to
+    /// read a diff in, and a panel that vanishes the moment you reach for another window cannot be
+    /// read in at all.
+    /// </summary>
+    public bool AutoHideWindow { get; set; }
+
+    /// <summary>Keep the window above other windows, for watching a build while working.</summary>
+    public bool AlwaysOnTop { get; set; }
+
+    /// <summary>
+    /// Where the window was last left. Null until it has been moved or resized once, which is the
+    /// signal to open it beside the tray icon instead.
+    /// </summary>
+    public double? WindowLeft { get; set; }
+
+    public double? WindowTop { get; set; }
+
+    public double? WindowWidth { get; set; }
+
+    public double? WindowHeight { get; set; }
+
     public bool IsMuted(AlertKind kind) => MutedKinds.Contains(kind);
 
     /// <summary>The repositories watched under one account.</summary>

@@ -31,6 +31,17 @@
   <SolidColorBrush x:Key="ScrollThumb" Color="#3B444F" />
   <SolidColorBrush x:Key="ScrollThumbHover" Color="#4C5866" />
 
+  <!-- Diff colours. Deliberately close to what GitHub itself uses, so a diff read here and a
+       diff read in a browser do not look like two different changes. -->
+  <SolidColorBrush x:Key="DiffAddedBackground" Color="#12261E" />
+  <SolidColorBrush x:Key="DiffAddedAccent" Color="#2EA043" />
+  <SolidColorBrush x:Key="DiffRemovedBackground" Color="#25171C" />
+  <SolidColorBrush x:Key="DiffRemovedAccent" Color="#F85149" />
+  <SolidColorBrush x:Key="DiffHunkBackground" Color="#151B23" />
+  <SolidColorBrush x:Key="DiffHunkText" Color="#6E8BB0" />
+  <SolidColorBrush x:Key="DiffGutterText" Color="#5A636D" />
+  <SolidColorBrush x:Key="DiffCodeText" Color="#D5DEE7" />
+
   <Color x:Key="ShadowColor">#000000</Color>
   <system:Double xmlns:system="clr-namespace:System;assembly=System.Runtime" x:Key="ShadowOpacity">0.55</system:Double>
 

@@ -84,6 +84,12 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private int _maxHistory = 300;
 
     [ObservableProperty]
+    private bool _autoHideWindow;
+
+    [ObservableProperty]
+    private bool _alwaysOnTop;
+
+    [ObservableProperty]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -113,6 +119,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _startWithWindows = StartupManager.IsEnabled;
         _theme = _settings.Theme;
         _maxHistory = _settings.MaxHistory;
+        _autoHideWindow = _settings.AutoHideWindow;
+        _alwaysOnTop = _settings.AlwaysOnTop;
 
         foreach (var account in _settings.Accounts)
         {
@@ -273,6 +281,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings.StartWithWindows = StartWithWindows;
         _settings.Theme = Theme;
         _settings.MaxHistory = MaxHistory;
+        _settings.AutoHideWindow = AutoHideWindow;
+        _settings.AlwaysOnTop = AlwaysOnTop;
         _settings.MutedKinds = [.. Kinds.Where(k => !k.IsEnabled).Select(k => k.Kind)];
 
         _settings.Accounts = [.. Accounts.Select(a => a.ToAccount())];

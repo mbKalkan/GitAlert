@@ -29,6 +29,29 @@ public sealed class Alert
     /// </summary>
     public string? Account { get; set; }
 
+    /// <summary>
+    /// Which configured account saw this, so the detail pane can borrow that account's token when
+    /// it goes back to GitHub for the diff. Alerts stored before diffs existed leave this empty;
+    /// <see cref="Id"/> still carries the account as a prefix in that case.
+    /// </summary>
+    public string? AccountId { get; set; }
+
+    /// <summary>The commit this alert is about, when it is about one.</summary>
+    public string? DiffHead { get; init; }
+
+    /// <summary>
+    /// What <see cref="DiffHead"/> should be compared against. Null means the alert covers a
+    /// single commit, which is its own diff.
+    /// </summary>
+    public string? DiffBase { get; init; }
+
+    /// <summary>Set on pull request alerts, whose changed files come from a different endpoint.</summary>
+    public int? PullRequestNumber { get; init; }
+
+    /// <summary>Whether the detail pane has something to fetch changed files for.</summary>
+    [JsonIgnore]
+    public bool HasDiff => DiffHead is not null || PullRequestNumber is not null;
+
     public string? Actor { get; init; }
 
     public string? Url { get; init; }

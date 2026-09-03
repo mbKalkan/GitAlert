@@ -115,6 +115,90 @@ public sealed class GhCommitAuthor
     public DateTimeOffset Date { get; set; }
 }
 
+/// <summary>One file touched by a commit, comparison or pull request.</summary>
+public sealed class GhFileChange
+{
+    [JsonPropertyName("filename")]
+    public string Filename { get; set; } = string.Empty;
+
+    /// <summary>added | removed | modified | renamed | copied | changed | unchanged</summary>
+    [JsonPropertyName("status")]
+    public string? Status { get; set; }
+
+    [JsonPropertyName("additions")]
+    public int Additions { get; set; }
+
+    [JsonPropertyName("deletions")]
+    public int Deletions { get; set; }
+
+    [JsonPropertyName("changes")]
+    public int Changes { get; set; }
+
+    /// <summary>
+    /// The unified diff for this file. Absent for binary files and for files whose diff GitHub
+    /// considers too large to inline, which the detail pane has to say out loud rather than
+    /// rendering as an empty file.
+    /// </summary>
+    [JsonPropertyName("patch")]
+    public string? Patch { get; set; }
+
+    [JsonPropertyName("previous_filename")]
+    public string? PreviousFilename { get; set; }
+
+    [JsonPropertyName("blob_url")]
+    public string? BlobUrl { get; set; }
+}
+
+public sealed class GhChangeStats
+{
+    [JsonPropertyName("additions")]
+    public int Additions { get; set; }
+
+    [JsonPropertyName("deletions")]
+    public int Deletions { get; set; }
+
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+}
+
+/// <summary>A single commit with its file list, from <c>/repos/{o}/{r}/commits/{sha}</c>.</summary>
+public sealed class GhCommitWithFiles
+{
+    [JsonPropertyName("sha")]
+    public string Sha { get; set; } = string.Empty;
+
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("commit")]
+    public GhCommitDetail? Commit { get; set; }
+
+    [JsonPropertyName("author")]
+    public GhUser? Author { get; set; }
+
+    [JsonPropertyName("stats")]
+    public GhChangeStats? Stats { get; set; }
+
+    [JsonPropertyName("files")]
+    public List<GhFileChange> Files { get; set; } = [];
+}
+
+/// <summary>A range of commits, from <c>/repos/{o}/{r}/compare/{base}...{head}</c>.</summary>
+public sealed class GhComparison
+{
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("total_commits")]
+    public int TotalCommits { get; set; }
+
+    [JsonPropertyName("commits")]
+    public List<GhCommit> Commits { get; set; } = [];
+
+    [JsonPropertyName("files")]
+    public List<GhFileChange> Files { get; set; } = [];
+}
+
 public sealed class GhWorkflowRun
 {
     [JsonPropertyName("id")]

@@ -90,6 +90,45 @@ public class EventTranslatorTests
         Assert.Equal("New commit", alert.Title);
     }
 
+    [Fact]
+    public void A_push_carries_the_commit_range_so_its_diff_can_be_fetched()
+    {
+        var many = EventTranslator.FromCommits(
+            [Commit("ccc", "second"), Commit("bbb", "first")], "acme/api-gateway", "main", previousSha: "aaa");
+
+        Assert.Equal("ccc", many.DiffHead);
+        Assert.Equal("aaa", many.DiffBase);
+        Assert.True(many.HasDiff);
+
+        // A single commit is its own diff, so there is no range to compare against.
+        var one = EventTranslator.FromCommits([Commit("ccc", "only")], "acme/api-gateway", "main", "bbb");
+
+        Assert.Equal("ccc", one.DiffHead);
+        Assert.Null(one.DiffBase);
+    }
+
+    [Fact]
+    public void A_pull_request_alert_remembers_its_number_for_the_file_list()
+    {
+        var alert = EventTranslator.FromEvent(Event("PullRequestEvent", """
+        { "action": "opened", "number": 88,
+          "pull_request": { "number": 88, "title": "Add pagination" } }
+        """));
+
+        Assert.Equal(88, alert!.PullRequestNumber);
+        Assert.True(alert.HasDiff);
+    }
+
+    [Fact]
+    public void An_alert_about_nothing_diffable_says_so()
+    {
+        var alert = EventTranslator.FromWorkflowRun(
+            new GhWorkflowRun { Id = 1, Name = "ci", Status = "completed", Conclusion = "success" },
+            "acme/api-gateway");
+
+        Assert.False(alert.HasDiff);
+    }
+
     /// <summary>
     /// GitHub fills the events timeline in lazily, so a push often reaches us through the commits
     /// endpoint first and through the timeline hours later. Both must resolve to one alert.

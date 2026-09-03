@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using GitAlert.Core;
 
 namespace GitAlert.Platform;
 
@@ -31,6 +32,15 @@ public sealed class TrayIcon : IDisposable
     private const int CallbackMessage = NativeMethods.WM_APP + 1;
     private const int IconId = 1;
 
+    /// <summary>
+    /// One click on the icon does not always reach us as one message. Depending on the Windows
+    /// build the shell can follow <c>NIN_SELECT</c> with the legacy <c>WM_LBUTTONUP</c> for the
+    /// same click, and since the click is a toggle the second message closed what the first had
+    /// just opened - the flyout appeared and vanished again. Anything this close behind the
+    /// previous activation is that echo rather than a second click.
+    /// </summary>
+    private static readonly TimeSpan ActivationEcho = TimeSpan.FromMilliseconds(250);
+
     private readonly HwndSource _window;
     private readonly uint _taskbarCreatedMessage;
     private readonly DispatcherTimer _retryTimer;
@@ -43,6 +53,7 @@ public sealed class TrayIcon : IDisposable
     private bool _added;
     private bool _disposed;
     private int _retries;
+    private DateTime _lastActivation = DateTime.MinValue;
 
     public TrayIcon()
     {
@@ -239,13 +250,25 @@ public sealed class TrayIcon : IDisposable
         var notification = LowWord(lParam);
         var point = new Point(SignedLowWord(wParam), SignedHighWord(wParam));
 
+        TraceLog.Write($"tray callback 0x{notification:X4} at {point.X},{point.Y}");
+
         switch (notification)
         {
             case NativeMethods.NIN_SELECT:
             case NativeMethods.NIN_KEYSELECT:
             case NativeMethods.WM_LBUTTONUP:
-                Activated?.Invoke(this, point);
                 handled = true;
+
+                var now = DateTime.UtcNow;
+
+                if (now - _lastActivation < ActivationEcho)
+                {
+                    TraceLog.Write("  ignored: echo of the previous activation");
+                    break;
+                }
+
+                _lastActivation = now;
+                Activated?.Invoke(this, point);
                 break;
 
             case NativeMethods.WM_CONTEXTMENU:

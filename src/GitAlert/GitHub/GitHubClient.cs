@@ -88,6 +88,48 @@ public sealed class GitHubClient : IDisposable
         CancellationToken ct = default) =>
         GetConditionalAsync<List<GhCommit>>($"/repos/{repo.Owner}/{repo.Name}/commits?per_page=20", etag, ct);
 
+    /// <summary>One commit together with every file it touched and their unified diffs.</summary>
+    public async Task<GhCommitWithFiles> GetCommitAsync(RepoRef repo, string sha, CancellationToken ct = default)
+    {
+        var path = $"/repos/{repo.Owner}/{repo.Name}/commits/{Uri.EscapeDataString(sha)}";
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
+
+        return await ReadJsonAsync<GhCommitWithFiles>(response, ct).ConfigureAwait(false)
+            ?? throw new GitHubException(GitHubErrorKind.NotFound, $"Commit {Short(sha)} was not found.");
+    }
+
+    /// <summary>
+    /// The combined diff between two commits. This is what a push of several commits should show:
+    /// the net effect, the same view the compare page on github.com gives.
+    /// </summary>
+    public async Task<GhComparison> GetComparisonAsync(
+        RepoRef repo,
+        string basis,
+        string head,
+        CancellationToken ct = default)
+    {
+        var range = $"{Uri.EscapeDataString(basis)}...{Uri.EscapeDataString(head)}";
+        var path = $"/repos/{repo.Owner}/{repo.Name}/compare/{range}";
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
+
+        return await ReadJsonAsync<GhComparison>(response, ct).ConfigureAwait(false)
+            ?? throw new GitHubException(GitHubErrorKind.NotFound, "That range of commits was not found.");
+    }
+
+    /// <summary>The files a pull request changes.</summary>
+    public async Task<List<GhFileChange>> GetPullRequestFilesAsync(
+        RepoRef repo,
+        int number,
+        CancellationToken ct = default)
+    {
+        var path = $"/repos/{repo.Owner}/{repo.Name}/pulls/{number}/files?per_page=100";
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
+
+        return await ReadJsonAsync<List<GhFileChange>>(response, ct).ConfigureAwait(false) ?? [];
+    }
+
+    private static string Short(string sha) => sha.Length > 7 ? sha[..7] : sha;
+
     /// <summary>GitHub Actions runs, newest first. Not part of the events timeline.</summary>
     public Task<ConditionalResponse<GhWorkflowRunsPage>> GetWorkflowRunsAsync(
         RepoRef repo,

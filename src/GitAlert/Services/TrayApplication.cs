@@ -59,6 +59,8 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         _flyoutViewModel = new FlyoutViewModel(_alerts, _monitor, this);
         _flyout = new FlyoutWindow(_flyoutViewModel);
+        _flyout.ApplyPreferences(settings);
+        _flyout.PlacementChanged += OnPlacementChanged;
 
         // Create the window handle without showing anything: the context menu needs a real
         // foreground window to dismiss itself against, even before the flyout is first opened.
@@ -136,8 +138,19 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         ThemeService.Apply(settings.Theme);
         _alerts.MaxHistory = settings.MaxHistory;
+        _flyout.ApplyPreferences(settings);
         _monitor.Configure(settings, tokens);
         _monitor.RequestRefresh();
+    }
+
+    /// <summary>
+    /// The window was moved, resized or pinned. Persisting it here rather than on every drag
+    /// keeps settings.json quiet while still surviving a restart.
+    /// </summary>
+    private void OnPlacementChanged(object? sender, EventArgs e)
+    {
+        _flyout.CapturePreferences(_settings);
+        _settingsStore.Save(_settings);
     }
 
     /// <summary>
@@ -177,17 +190,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
     // ---- Tray interaction --------------------------------------------------
 
-    private void OnTrayActivated(object? sender, Point screenPoint)
-    {
-        if (_flyout.ShouldOpenOnTrayClick)
-        {
-            _flyout.ShowAt(screenPoint);
-        }
-        else
-        {
-            _flyout.HideFlyout();
-        }
-    }
+    private void OnTrayActivated(object? sender, Point screenPoint) => _flyout.ToggleFromTray(screenPoint);
 
     private void OnTrayContextMenu(object? sender, Point screenPoint)
     {
@@ -251,6 +254,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         var scale = VisualTreeHelper.GetDpi(_flyout);
 
         _flyout.ShowAt(new Point(work.Right * scale.DpiScaleX, work.Bottom * scale.DpiScaleY));
+        BringToFront(_flyout);
     }
 
     // ---- Monitor events ----------------------------------------------------
@@ -380,6 +384,10 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         _monitor.AlertsReceived -= OnAlertsReceived;
         _monitor.StatusChanged -= OnStatusChanged;
         _monitor.AccountResolved -= OnAccountResolved;
+
+        _flyout.PlacementChanged -= OnPlacementChanged;
+        _flyout.CapturePreferences(_settings);
+        _settingsStore.Save(_settings);
 
         _flyoutViewModel.Dispose();
         _flyout.CloseForGood();

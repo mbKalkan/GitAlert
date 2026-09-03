@@ -18,6 +18,7 @@
   <conv:HistorySizeConverter x:Key="HistoryToText" />
 
   <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+  <FontFamily x:Key="CodeFont">Cascadia Mono, Consolas, Courier New</FontFamily>
   <sys:Double x:Key="CornerRadiusValue">10</sys:Double>
 
   <!-- ==================== Text ==================== -->

@@ -10,6 +10,10 @@ public sealed partial class AlertViewModel : ObservableObject
     [ObservableProperty]
     private bool _isRead;
 
+    /// <summary>Whether this is the row the detail pane is currently showing.</summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
     [ObservableProperty]
     private string _age;
 

@@ -65,6 +65,13 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private AlertFilter _activeFilter = AlertFilter.All;
 
+    /// <summary>
+    /// The alert the detail pane is showing. Selecting rather than opening the browser is the
+    /// whole point of the detail pane: the change can be read without leaving the window.
+    /// </summary>
+    [ObservableProperty]
+    private AlertViewModel? _selectedAlert;
+
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
 
@@ -85,6 +92,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             new FilterChipViewModel(AlertFilter.More, "More"),
         ];
 
+        Detail = new AlertDetailViewModel(monitor);
+
         _all.AddRange(_store.Snapshot.Select(Create));
         _unreadCount = _store.UnreadCount;
         ApplyFilter();
@@ -104,6 +113,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     public ObservableCollection<AlertViewModel> Alerts { get; } = [];
 
     public ObservableCollection<FilterChipViewModel> Filters { get; }
+
+    /// <summary>The right-hand pane: the selected alert and the files it changed.</summary>
+    public AlertDetailViewModel Detail { get; }
 
     public bool HasUnread => UnreadCount > 0;
 
@@ -144,8 +156,12 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ApplyFilter();
     }
 
+    /// <summary>
+    /// Clicking a row shows the change in the detail pane rather than throwing the user at a
+    /// browser. Opening on GitHub is still one click away, from the detail pane's own header.
+    /// </summary>
     [RelayCommand]
-    private void OpenAlert(AlertViewModel? alert)
+    private async Task SelectAlertAsync(AlertViewModel? alert)
     {
         if (alert is null)
         {
@@ -154,9 +170,24 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         MarkRead(alert);
 
-        if (Browser.Open(alert.Url))
+        if (SelectedAlert is { } previous)
         {
-            _shell.HideFlyout();
+            previous.IsSelected = false;
+        }
+
+        alert.IsSelected = true;
+        SelectedAlert = alert;
+
+        await Detail.ShowAsync(alert).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void OpenAlert(AlertViewModel? alert)
+    {
+        if (alert is not null)
+        {
+            MarkRead(alert);
+            Browser.Open(alert.Url);
         }
     }
 
@@ -175,13 +206,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void ClearHistory()
+    private async Task ClearHistoryAsync()
     {
         _store.Clear();
         _store.Save();
         _all.Clear();
         UnreadCount = 0;
         ApplyFilter();
+
+        SelectedAlert = null;
+        await Detail.ShowAsync(null).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -313,6 +347,14 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _all.AddRange(_store.Snapshot.Select(Create));
         UnreadCount = _store.UnreadCount;
         ApplyFilter();
+
+        // The selected alert is a wrapper around a model that has just been replaced, so the
+        // pane would otherwise keep a row that is no longer in the list.
+        if (SelectedAlert is not null && !_all.Contains(SelectedAlert))
+        {
+            SelectedAlert = null;
+            _ = Detail.ShowAsync(null);
+        }
     }
 
     private static SolidColorBrush Frozen(byte r, byte g, byte b)
@@ -327,5 +369,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _monitor.AlertsReceived -= OnAlertsReceived;
         _monitor.StatusChanged -= OnStatusChanged;
         _ageTimer.Stop();
+        Detail.Dispose();
     }
 }

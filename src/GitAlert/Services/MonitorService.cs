@@ -562,11 +562,22 @@ public sealed class MonitorService : IAsyncDisposable
         Detail = alert.Detail,
         Repository = alert.Repository,
         Account = _logins.GetValueOrDefault(account.Id, account.Login),
+        AccountId = account.Id,
         Actor = alert.Actor,
         Url = alert.Url,
         Timestamp = alert.Timestamp,
         Severity = alert.Severity,
+        DiffHead = alert.DiffHead,
+        DiffBase = alert.DiffBase,
+        PullRequestNumber = alert.PullRequestNumber,
     };
+
+    /// <summary>
+    /// The client an account polls with, lent to the detail pane so fetching a diff reuses the
+    /// same token and connection pool rather than standing up a second authenticated client.
+    /// </summary>
+    public GitHubClient? ClientFor(string? accountId) =>
+        accountId is not null && _clients.TryGetValue(accountId, out var client) ? client : null;
 
     private bool ShouldDeliver(Alert alert, GitHubAccount account, AppSettings settings)
     {

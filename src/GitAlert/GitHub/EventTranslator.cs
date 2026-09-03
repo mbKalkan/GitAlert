@@ -78,7 +78,9 @@ public static class EventTranslator
             url,
             // Identified by the head commit, not the event: the same push may reach us first
             // through the commits endpoint and only hours later through the events timeline.
-            idOverride: head is null ? null : $"commit:{head}");
+            idOverride: head is null ? null : $"commit:{head}",
+            diffHead: head,
+            diffBase: size == 1 ? null : before);
     }
 
     private static Alert? PullRequest(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -119,7 +121,8 @@ public static class EventTranslator
             repository,
             actor,
             pr.GetStringOrNull("html_url") ?? $"{RepoUrl(repository)}/pull/{number}",
-            severity);
+            severity,
+            pullRequestNumber: number > 0 ? number : null);
     }
 
     private static Alert? Review(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -393,6 +396,10 @@ public static class EventTranslator
             Actor = newest.Author?.Login ?? newest.Commit?.Author?.Name,
             Url = url,
             Timestamp = newest.Commit?.Author?.Date ?? DateTimeOffset.Now,
+            DiffHead = newest.Sha,
+
+            // One commit is its own diff; several are shown as the net change across the range.
+            DiffBase = commits.Count == 1 ? null : previousSha,
         };
     }
 
@@ -526,7 +533,10 @@ public static class EventTranslator
         string? actor,
         string? url,
         AlertSeverity severity = AlertSeverity.Normal,
-        string? idOverride = null) =>
+        string? idOverride = null,
+        string? diffHead = null,
+        string? diffBase = null,
+        int? pullRequestNumber = null) =>
         new()
         {
             Id = idOverride ?? $"event:{source.Id}",
@@ -538,6 +548,9 @@ public static class EventTranslator
             Url = url,
             Timestamp = source.CreatedAt,
             Severity = severity,
+            DiffHead = diffHead,
+            DiffBase = diffBase,
+            PullRequestNumber = pullRequestNumber,
         };
 
     private static string RepoUrl(string repository) => $"https://github.com/{repository}";

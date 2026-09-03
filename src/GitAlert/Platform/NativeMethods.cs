@@ -120,39 +120,48 @@ internal static class NativeMethods
     /// system, so Windows takes the activation straight back and the panel blinks shut on its own.
     /// Briefly sharing an input queue with the foreground thread is the documented way past it.
     /// </summary>
-    public static void ForceForeground(IntPtr hWnd)
+    public static bool ForceForeground(IntPtr hWnd)
     {
-        if (hWnd == IntPtr.Zero || SetForegroundWindow(hWnd))
+        if (hWnd == IntPtr.Zero)
         {
-            return;
+            return false;
         }
 
-        var foreground = GetForegroundWindow();
+        // SetForegroundWindow reports success even when Windows only flashed the taskbar button
+        // instead of handing the foreground over, so the result is worth nothing here. Ask who is
+        // actually in front.
+        SetForegroundWindow(hWnd);
+
+        if (IsForeground(hWnd))
+        {
+            return true;
+        }
+
         var self = GetCurrentThreadId();
-        var owner = foreground == IntPtr.Zero ? 0u : GetWindowThreadProcessId(foreground, IntPtr.Zero);
+        var owner = GetForegroundWindow() is var foreground && foreground != IntPtr.Zero
+            ? GetWindowThreadProcessId(foreground, IntPtr.Zero)
+            : 0u;
 
-        if (owner == 0 || owner == self)
+        if (owner != 0 && owner != self && AttachThreadInput(self, owner, true))
         {
-            BringWindowToTop(hWnd);
-            SetActiveWindow(hWnd);
-            return;
-        }
-
-        var attached = AttachThreadInput(self, owner, true);
-
-        try
-        {
-            SetForegroundWindow(hWnd);
-            BringWindowToTop(hWnd);
-            SetActiveWindow(hWnd);
-        }
-        finally
-        {
-            if (attached)
+            try
+            {
+                SetForegroundWindow(hWnd);
+                BringWindowToTop(hWnd);
+                SetActiveWindow(hWnd);
+            }
+            finally
             {
                 AttachThreadInput(self, owner, false);
             }
         }
+        else
+        {
+            BringWindowToTop(hWnd);
+            SetActiveWindow(hWnd);
+        }
+
+        return IsForeground(hWnd);
     }
 
     /// <summary>True when the given window is the one Windows currently considers foreground.</summary>

@@ -20,5 +20,10 @@ public static class AppPaths
 
     public static string LogFile => Path.Combine(DataDirectory, "gitalert.log");
 
+    public static string TraceFile => Path.Combine(DataDirectory, "trace.log");
+
+    /// <summary>Tracing is on only while this file exists, so it is a user's deliberate act.</summary>
+    public static string TraceMarker => Path.Combine(DataDirectory, "trace.on");
+
     public static void EnsureCreated() => Directory.CreateDirectory(DataDirectory);
 }

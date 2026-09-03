@@ -1,13 +1,13 @@
 <div align="center">
 
-<img src="docs/screenshots/flyout-dark.png" alt="GitAlert flyout" width="420">
+<img src="docs/screenshots/flyout-dark.png" alt="The GitAlert window, showing an alert list beside the diff of the commit it is about" width="860">
 
 # GitAlert
 
 **A Windows tray app that watches the GitHub repositories you care about — and tells you the moment something happens.**
 
 Pushes, pull requests, reviews, issues, comments, releases, branches and CI runs,
-in one quiet panel that drops out of the notification area.
+in one quiet panel that drops out of the notification area — and the diff, right there beside it.
 
 [![CI](https://github.com/mbKalkan/GitAlert/actions/workflows/ci.yml/badge.svg)](https://github.com/mbKalkan/GitAlert/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/mbKalkan/GitAlert?include_prereleases&sort=semver)](https://github.com/mbKalkan/GitAlert/releases/latest)
@@ -55,6 +55,11 @@ reviews and review comments, issues and comments, releases, branches, tags, fork
 GitHub Actions runs are polled separately, because they never appear on the events timeline.
 Failures are red, and you can ask to hear about failures only.
 
+**Read the diff without leaving the app**
+Pick an alert and the files it changed open beside it, as a real unified diff with line numbers and
+the same colours GitHub uses. A single commit shows its own diff; a push of several shows the net
+change across the range; a pull request shows its whole file list.
+
 </td>
 <td width="50%" valign="top">
 
@@ -65,6 +70,11 @@ list. With more than one account the cards say which identity saw each alert.
 **Quiet by design**
 Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it
 checks, from every minute to every three hours.
+
+**A window, not a popup**
+The panel opens beside the tray icon but behaves like a real window: resizable, remembered where
+you left it, and it stays put while you read. Pin it above other windows, or turn on click-away
+dismissal if you prefer the popup behaviour.
 
 **Native Windows behaviour**
 Desktop notifications land in the Action Centre. The tray icon is drawn as vector art, so it stays
@@ -78,7 +88,7 @@ crisp at every DPI, adapts to a light or dark taskbar, and carries a badge when 
 
 | Light theme | Accounts and repositories | Notifications |
 |:---:|:---:|:---:|
-| <img src="docs/screenshots/flyout-light.png" width="250"> | <img src="docs/screenshots/settings-accounts.png" width="250"> | <img src="docs/screenshots/settings-notifications.png" width="250"> |
+| <img src="docs/screenshots/flyout-light.png" width="260"> | <img src="docs/screenshots/settings-accounts.png" width="250"> | <img src="docs/screenshots/settings-notifications.png" width="250"> |
 
 </div>
 
@@ -187,7 +197,7 @@ src/GitAlert/
   Services/        Polling engine, alert history, sync state, theming, the tray shell
   Platform/        Shell_NotifyIcon, vector icon rendering, startup registration, interop
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
-  Views/           The flyout and the settings window
+  Views/           The main window with its diff pane, and the settings window
   Themes/          Light and dark palettes plus the shared control styles
 tests/             xUnit tests for parsing, translation, history and settings
 installer/         Inno Setup script
@@ -228,6 +238,9 @@ CI builds and tests every push. Tagging `v1.2.3` builds the installer and publis
   timeline's schedule.
 - Commit polling follows the default branch. A push to another branch is reported when the events
   timeline catches up.
+- Diffs are fetched from GitHub the moment you select an alert, and each one costs a request against
+  the hourly rate limit. They are cached for as long as the window stays open. GitHub omits the
+  patch for binary files and for very large ones; the pane says so rather than showing nothing.
 - **"Ignore activity I caused myself" is off by default**, so your own pushes are reported too.
   Turn it on under Notifications once seeing your own work echoed back stops being useful.
 - Notifications are delivered as tray balloons, which Windows renders as toasts. They carry no

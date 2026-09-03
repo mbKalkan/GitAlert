@@ -550,9 +550,28 @@
               </ComboBox>
 
               <CheckBox Style="{StaticResource ModernCheckBox}"
-                        Margin="0,0,0,20"
+                        Margin="0,0,0,14"
                         IsChecked="{Binding StartWithWindows}"
                         Content="Start GitAlert when I sign in to Windows" />
+
+              <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,4,0,18" />
+
+              <TextBlock Text="WINDOW" Style="{StaticResource SectionHeader}" />
+
+              <CheckBox Style="{StaticResource ModernCheckBox}"
+                        Margin="0,0,0,4"
+                        IsChecked="{Binding AutoHideWindow}"
+                        Content="Close the window when I click somewhere else" />
+
+              <TextBlock Style="{StaticResource MutedText}"
+                         Margin="26,0,0,14"
+                         TextWrapping="Wrap"
+                         Text="Off by default, so the window stays put while you read a diff. Turn it on for the quick glance-and-dismiss behaviour of a notification popup." />
+
+              <CheckBox Style="{StaticResource ModernCheckBox}"
+                        Margin="0,0,0,20"
+                        IsChecked="{Binding AlwaysOnTop}"
+                        Content="Keep the window above other windows" />
 
               <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,0,0,18" />
 
