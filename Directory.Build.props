@@ -1,0 +1,24 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NeutralLanguage>en</NeutralLanguage>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Product">
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Company>Mert Berkan Kalkan</Company>
+    <Authors>Mert Berkan Kalkan</Authors>
+    <Product>GitAlert</Product>
+    <Copyright>Copyright (c) 2026 Mert Berkan Kalkan</Copyright>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,32 @@
+## Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+dist/
+
+## Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+
+## Inno Setup output
+installer/Output/
+
+## Misc
+*.log
+Thumbs.db
+desktop.ini
