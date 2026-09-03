@@ -4,16 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace GitAlert.ViewModels;
 
-/// <summary>How the rows inside a project are ordered.</summary>
-public enum GroupSort
-{
-    Newest,
-    Oldest,
-    UnreadFirst,
-}
-
-public sealed record GroupSortOption(GroupSort Sort, string Label);
-
 /// <summary>A page of rows for a project, and whether asking again would return more.</summary>
 public sealed record GroupPage(IReadOnlyList<AlertViewModel> Items, bool HasMore);
 
@@ -27,11 +17,20 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     /// <summary>Fetches a page of history for this project. Null while showing alerts.</summary>
     private readonly Func<ProjectGroupViewModel, int, Task<GroupPage>>? _loadPage;
 
-    private GroupSort _sort;
+    /// <summary>Told which way the project should move, so the list can reorder and remember it.</summary>
+    private readonly Action<ProjectGroupViewModel, int>? _move;
+
     private int _page;
 
     [ObservableProperty]
     private bool _isExpanded;
+
+    /// <summary>False at the top and bottom of the list, so the arrows can grey out there.</summary>
+    [ObservableProperty]
+    private bool _canMoveUp;
+
+    [ObservableProperty]
+    private bool _canMoveDown;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -51,13 +50,13 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     public ProjectGroupViewModel(
         string repository,
         string? accountId,
-        GroupSort sort,
-        Func<ProjectGroupViewModel, int, Task<GroupPage>>? loadPage = null)
+        Func<ProjectGroupViewModel, int, Task<GroupPage>>? loadPage = null,
+        Action<ProjectGroupViewModel, int>? move = null)
     {
         Repository = repository;
         AccountId = accountId;
-        _sort = sort;
         _loadPage = loadPage;
+        _move = move;
 
         var cut = repository.IndexOf('/');
         Owner = cut > 0 ? repository[..cut] : string.Empty;
@@ -110,23 +109,11 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         OnPropertyChanged(nameof(CountText));
     }
 
-    public void ApplySort(GroupSort sort)
-    {
-        if (_sort == sort)
-        {
-            return;
-        }
+    [RelayCommand]
+    private void MoveUp() => _move?.Invoke(this, -1);
 
-        _sort = sort;
-
-        var reordered = Order(Items.ToList()).ToList();
-        Items.Clear();
-
-        foreach (var item in reordered)
-        {
-            Items.Add(item);
-        }
-    }
+    [RelayCommand]
+    private void MoveDown() => _move?.Invoke(this, 1);
 
     [RelayCommand]
     private async Task ToggleAsync()
@@ -197,10 +184,6 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         OnPropertyChanged(nameof(CountText));
     }
 
-    private IEnumerable<AlertViewModel> Order(IEnumerable<AlertViewModel> items) => _sort switch
-    {
-        GroupSort.Oldest => items.OrderBy(i => i.Model.Timestamp),
-        GroupSort.UnreadFirst => items.OrderBy(i => i.IsRead).ThenByDescending(i => i.Model.Timestamp),
-        _ => items.OrderByDescending(i => i.Model.Timestamp),
-    };
+    private static IEnumerable<AlertViewModel> Order(IEnumerable<AlertViewModel> items) =>
+        items.OrderByDescending(i => i.Model.Timestamp);
 }

@@ -3,6 +3,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GitAlert.Configuration;
 using GitAlert.Core;
 using GitAlert.GitHub;
 using GitAlert.Platform;
@@ -18,6 +19,12 @@ public interface IShellCommands
     void HideFlyout();
 
     void Quit();
+
+    /// <summary>
+    /// Persists the choices made in the list itself - the order of the projects, how rows are
+    /// sorted inside them, whether read alerts are hidden - so they survive a restart.
+    /// </summary>
+    void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly);
 }
 
 /// <summary>
@@ -76,9 +83,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private AlertViewModel? _selectedAlert;
 
-    /// <summary>Which repository the list is narrowed to, or null for every project.</summary>
+    /// <summary>Hide what has already been read. Only meaningful while showing alerts.</summary>
     [ObservableProperty]
-    private string? _activeProject;
+    private bool _unreadOnly;
 
     /// <summary>
     /// True while the left pane is showing a repository's commit history rather than the alerts
@@ -89,7 +96,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsAlertMode))]
     private bool _isHistoryMode;
 
-    private GroupSortOption _selectedSort = null!;
+    /// <summary>The order the user put the projects in. Anything absent follows alphabetically.</summary>
+    private readonly List<string> _order;
 
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
@@ -100,12 +108,15 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// </summary>
     private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
 
-    public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell)
+    public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell, AppSettings settings)
     {
         _store = store;
         _monitor = monitor;
         _shell = shell;
         _dispatcher = Dispatcher.CurrentDispatcher;
+
+        _order = [.. settings.ProjectOrder];
+        _unreadOnly = settings.UnreadOnly;
 
         Filters =
         [
@@ -118,7 +129,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ];
 
         Detail = new AlertDetailViewModel(monitor);
-        _selectedSort = SortOptions[0];
 
         _all.AddRange(_store.Snapshot.Select(Create));
         _unreadCount = _store.UnreadCount;
@@ -148,58 +158,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FilterChipViewModel> Filters { get; }
 
-    /// <summary>One chip per repository that has alerts, plus the chip that clears the filter.</summary>
-    public ObservableCollection<ProjectChipViewModel> Projects { get; } = [];
-
     public bool IsAlertMode => !IsHistoryMode;
-
-    public IReadOnlyList<GroupSortOption> SortOptions { get; } =
-    [
-        new(GroupSort.Newest, "Newest first"),
-        new(GroupSort.Oldest, "Oldest first"),
-        new(GroupSort.UnreadFirst, "Unread first"),
-    ];
-
-    /// <summary>How rows are ordered inside each project.</summary>
-    public GroupSortOption SelectedSort
-    {
-        get => _selectedSort;
-        set
-        {
-            if (value is null || !SetProperty(ref _selectedSort, value))
-            {
-                return;
-            }
-
-            foreach (var group in Groups)
-            {
-                group.ApplySort(value.Sort);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Whether narrowing by project is worth offering. With a single repository watched, the
-    /// control would be a menu with one entry that does nothing.
-    /// </summary>
-    public bool HasSeveralProjects => Projects.Count > 2;
-
-    /// <summary>
-    /// The project the list is narrowed to, as a picker rather than a row of chips: the chips
-    /// grew a row per axis and buried the alerts under their own controls.
-    /// </summary>
-    public ProjectChipViewModel? SelectedProject
-    {
-        get => Projects.FirstOrDefault(
-            p => string.Equals(p.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase));
-        set
-        {
-            if (value is not null && !ReferenceEquals(value, SelectedProject))
-            {
-                SelectProject(value);
-            }
-        }
-    }
 
     /// <summary>The right-hand pane: the selected alert and the files it changed.</summary>
     public AlertDetailViewModel Detail { get; }
@@ -240,18 +199,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         ActiveFilter = chip.Filter;
-        ApplyFilter();
-    }
-
-    [RelayCommand]
-    private void SelectProject(ProjectChipViewModel? chip)
-    {
-        if (chip is null)
-        {
-            return;
-        }
-
-        ActiveProject = chip.Repository;
         ApplyFilter();
     }
 
@@ -502,7 +449,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         {
             ConnectionState.NotConfigured => "Add your access token and a repository to get started.",
             ConnectionState.Error => status.Message,
-            _ when ActiveProject is not null => $"Nothing from {ShortName(ActiveProject)} yet.",
             _ => ActiveFilter == AlertFilter.All
                 ? "You are all caught up."
                 : "Nothing here yet.",
@@ -515,14 +461,12 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         foreach (var chip in Filters)
         {
             chip.IsSelected = chip.Filter == ActiveFilter;
-            chip.Count = _all.Count(a => !a.IsRead && InProject(a) && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
+            chip.Count = _all.Count(a => !a.IsRead && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
         }
-
-        RebuildProjects();
 
         Alerts.Clear();
 
-        foreach (var alert in _all.Where(a => InProject(a) && OfKind(a)))
+        foreach (var alert in _all.Where(a => OfKind(a) && IsShown(a)))
         {
             Alerts.Add(alert);
         }
@@ -535,58 +479,51 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private bool OfKind(AlertViewModel alert) => ActiveFilter == AlertFilter.All || alert.Group == ActiveFilter;
 
-    private bool InProject(AlertViewModel alert) =>
-        ActiveProject is null || string.Equals(alert.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase);
+    private bool IsShown(AlertViewModel alert) => !UnreadOnly || !alert.IsRead;
+
+    [RelayCommand]
+    private void ToggleUnreadOnly()
+    {
+        UnreadOnly = !UnreadOnly;
+        Persist();
+        ApplyFilter();
+    }
 
     /// <summary>
-    /// Keeps a chip per repository that has alerts. The chips are only rebuilt when that set
-    /// actually changes, so clicking one does not make the whole row flicker.
+    /// Moves a project one place up or down. The step is taken against what is on screen, so it
+    /// always looks like one move even when projects between them are hidden, and the result is
+    /// written back as a total order so every later move has a definite starting point.
     /// </summary>
-    private void RebuildProjects()
+    private void MoveProject(ProjectGroupViewModel group, int delta)
     {
-        // Everything watched, not just what has produced an alert: a repository nobody has
-        // pushed to yet still has a history worth reading.
-        var repositories = _monitor.Watched
-            .Select(w => w.FullName)
-            .Concat(_all.Select(a => a.Repository))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var visible = Groups.Select(g => g.Repository).ToList();
+        var from = visible.IndexOf(group.Repository);
+        var to = from + delta;
 
-        var current = Projects.Skip(1).Select(p => p.Repository!).ToList();
-
-        if (!current.SequenceEqual(repositories, StringComparer.OrdinalIgnoreCase))
+        if (from < 0 || to < 0 || to >= visible.Count)
         {
-            Projects.Clear();
-            Projects.Add(new ProjectChipViewModel(null, "All projects"));
-
-            foreach (var repository in repositories)
-            {
-                Projects.Add(new ProjectChipViewModel(repository, ShortName(repository)));
-            }
-
-            OnPropertyChanged(nameof(HasSeveralProjects));
+            return;
         }
 
-        OnPropertyChanged(nameof(SelectedProject));
+        var order = AllProjects();
+        var a = order.FindIndex(r => string.Equals(r, visible[from], StringComparison.OrdinalIgnoreCase));
+        var b = order.FindIndex(r => string.Equals(r, visible[to], StringComparison.OrdinalIgnoreCase));
 
-        // A project the user had narrowed to can disappear when history is trimmed or cleared.
-        if (ActiveProject is not null && !repositories.Contains(ActiveProject, StringComparer.OrdinalIgnoreCase))
+        if (a < 0 || b < 0)
         {
-            ActiveProject = null;
+            return;
         }
 
-        foreach (var chip in Projects)
-        {
-            chip.IsSelected = string.Equals(chip.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase);
-            chip.Summary = chip.Repository ?? "Every watched repository";
-            chip.Count = _all.Count(a =>
-                !a.IsRead
-                && OfKind(a)
-                && (chip.Repository is null
-                    || string.Equals(a.Repository, chip.Repository, StringComparison.OrdinalIgnoreCase)));
-        }
+        (order[a], order[b]) = (order[b], order[a]);
+
+        _order.Clear();
+        _order.AddRange(order);
+
+        Persist();
+        ApplyFilter();
     }
+
+    private void Persist() => _shell.SaveListPreferences(_order, UnreadOnly);
 
     private void RebuildGroups()
     {
@@ -614,8 +551,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             var group = new ProjectGroupViewModel(
                 repository,
                 AccountIdFor(repository),
-                SelectedSort.Sort,
-                IsHistoryMode ? LoadHistoryPageAsync : null);
+                IsHistoryMode ? LoadHistoryPageAsync : null,
+                MoveProject);
 
             if (!IsHistoryMode)
             {
@@ -630,6 +567,12 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             Groups.Add(group);
         }
 
+        for (var i = 0; i < Groups.Count; i++)
+        {
+            Groups[i].CanMoveUp = i > 0;
+            Groups[i].CanMoveDown = i < Groups.Count - 1;
+        }
+
         // Opening history on a single project should not need a click to get going.
         foreach (var group in Groups.Where(g => g.IsExpanded && IsHistoryMode && !g.IsLoaded))
         {
@@ -639,20 +582,46 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private bool OnlyOneProject() => ProjectsInView().Count == 1;
 
-    /// <summary>Which projects the list is showing: everything watched, or just the chosen one.</summary>
-    private List<string> ProjectsInView()
+    /// <summary>Every project GitAlert knows about, in the user's order.</summary>
+    private List<string> AllProjects()
     {
-        var watched = _monitor.Watched
+        var known = _monitor.Watched
             .Select(w => w.FullName)
             .Concat(_all.Select(a => a.Repository))
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
-        if (ActiveProject is not null)
+        // The user's order first, then anything they have not placed, alphabetically.
+        return
+        [
+            .. known
+                .OrderBy(Rank)
+                .ThenBy(r => r, StringComparer.OrdinalIgnoreCase)
+        ];
+    }
+
+    private int Rank(string repository)
+    {
+        var index = _order.FindIndex(r => string.Equals(r, repository, StringComparison.OrdinalIgnoreCase));
+        return index < 0 ? int.MaxValue : index;
+    }
+
+    /// <summary>Which projects the list actually shows.</summary>
+    private List<string> ProjectsInView()
+    {
+        IEnumerable<string> projects = AllProjects();
+
+        // Showing alerts means showing what has something to say. History is the opposite: it is
+        // a place to go looking, so every project stays reachable whether or not it has news.
+        if (!IsHistoryMode)
         {
-            watched = watched.Where(r => string.Equals(r, ActiveProject, StringComparison.OrdinalIgnoreCase));
+            var withAlerts = Alerts
+                .Select(a => a.Repository)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            projects = projects.Where(withAlerts.Contains);
         }
 
-        return [.. watched.OrderBy(r => r, StringComparer.OrdinalIgnoreCase)];
+        return [.. projects];
     }
 
     private string? AccountIdFor(string repository) =>

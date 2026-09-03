@@ -77,10 +77,11 @@ Open a project to read its history, page as far back as you care to go, and each
 diff in the same pane. Nothing is fetched until a project is opened, so the list itself costs
 nothing.
 
-**A section per project, in both modes**
-Every watched repository is a collapsible section carrying its own count, so the list is the shape
-of what you watch rather than one that rearranges itself as alerts arrive. Fold a busy project away
-without muting it, sort the rows inside each one, and narrow by category, by project, or both.
+**A section per project, in your order**
+Each project is a collapsible section with its own count, and the arrows on its header move it up
+or down — so the most important repository sits at the top and stays there across restarts. Alerts
+shows the projects that have something to say; History shows them all, because that is where you go
+looking. One switch hides what you have already read.
 
 **Quiet by design**
 Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it

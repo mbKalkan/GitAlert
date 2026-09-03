@@ -58,6 +58,16 @@ public sealed class AppSettings
     public int MaxHistory { get; set; } = 300;
 
     /// <summary>
+    /// The order the user put the projects in, most important first. Alphabetical is fair but
+    /// useless: what matters is which repositories you care about today. Anything absent from
+    /// this list follows it alphabetically.
+    /// </summary>
+    public List<string> ProjectOrder { get; set; } = [];
+
+    /// <summary>Hide alerts that have already been read.</summary>
+    public bool UnreadOnly { get; set; }
+
+    /// <summary>
     /// Close the window as soon as focus moves elsewhere. Off by default: the window is a place to
     /// read a diff in, and a panel that vanishes the moment you reach for another window cannot be
     /// read in at all.

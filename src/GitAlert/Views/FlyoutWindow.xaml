@@ -148,6 +148,33 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
+    <!-- The two arrows that order the projects. Small, and only visible on hover. -->
+    <Style x:Key="ArrowButton" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="Transparent" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceHover}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.25" />
+                <Setter Property="Cursor" Value="Arrow" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- Alerts / History. Selection comes in through Tag so the buttons stay plain buttons. -->
     <Style x:Key="ModeChip" TargetType="Button">
       <Setter Property="Cursor" Value="Hand" />
@@ -209,6 +236,7 @@
               <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="*" />
               <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Path x:Name="Chevron"
@@ -231,8 +259,36 @@
                        FontWeight="SemiBold"
                        TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextSecondary}" /></TextBlock>
 
+            <StackPanel x:Name="Arrows"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        Margin="0,0,6,0"
+                        VerticalAlignment="Center"
+                        Opacity="0.4">
+              <Button Style="{StaticResource ArrowButton}"
+                      Command="{Binding MoveUpCommand}"
+                      IsEnabled="{Binding CanMoveUp}"
+                      ToolTip="Move this project up">
+                <Path Data="M2,7 L6.5,2.5 L11,7"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.6"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round" />
+              </Button>
+              <Button Style="{StaticResource ArrowButton}"
+                      Command="{Binding MoveDownCommand}"
+                      IsEnabled="{Binding CanMoveDown}"
+                      ToolTip="Move this project down">
+                <Path Data="M2,2.5 L6.5,7 L11,2.5"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.6"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round" />
+              </Button>
+            </StackPanel>
+
             <Border x:Name="CountBadge"
-                    Grid.Column="2"
+                    Grid.Column="3"
                     MinWidth="16"
                     Height="16"
                     CornerRadius="8"
@@ -276,6 +332,10 @@
       </StackPanel>
 
       <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True">
+          <Setter TargetName="Arrows" Property="Opacity" Value="1" />
+        </DataTrigger>
+
         <DataTrigger Binding="{Binding IsExpanded}" Value="True">
           <Setter TargetName="Body" Property="Visibility" Value="Visible" />
           <Setter TargetName="Rows" Property="ItemsSource" Value="{Binding Items}" />
@@ -563,12 +623,13 @@
 
       <StackPanel Grid.Row="1" Margin="16,0,14,8">
 
-        <!-- One toolbar, not a row of pills per axis: mode on the left, project on the right. -->
+        <!-- One toolbar: the mode on the left, and the one switch that changes what the
+             list contains rather than how it is arranged. Ordering projects is done on the
+             sections themselves, which is why there is no sort or project picker here. -->
         <Grid Margin="0,0,0,7">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
           <Border Grid.Column="0"
@@ -589,57 +650,19 @@
             </StackPanel>
           </Border>
 
-          <ComboBox Grid.Column="1"
-                    Style="{StaticResource ModernComboBox}"
-                    MinWidth="128"
-                    Height="28"
-                    Margin="8,0,6,0"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    ItemsSource="{Binding SortOptions}"
-                    SelectedItem="{Binding SelectedSort}"
-                    ToolTip="How rows are ordered inside each project">
-            <ComboBox.ItemTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding Label}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-
-          <ComboBox Grid.Column="2"
-                    Style="{StaticResource ModernComboBox}"
-                    MinWidth="140"
-                    MaxWidth="190"
-                    Height="28"
-                    VerticalAlignment="Center"
-                    ItemsSource="{Binding Projects}"
-                    SelectedItem="{Binding SelectedProject}"
-                    ToolTip="Narrow to one project"
-                    Visibility="{Binding HasSeveralProjects, Converter={StaticResource BoolToVisibility}}">
-            <ComboBox.ItemTemplate>
-              <DataTemplate>
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                  </Grid.ColumnDefinitions>
-
-                  <TextBlock Grid.Column="0"
-                             Text="{Binding Label}"
-                             TextTrimming="CharacterEllipsis"
-                             VerticalAlignment="Center" />
-
-                  <TextBlock Grid.Column="1"
-                             Text="{Binding Count}"
-                             Margin="10,0,0,0"
-                             FontSize="10.5"
-                             Foreground="{DynamicResource TextMuted}"
-                             VerticalAlignment="Center"
-                             Visibility="{Binding HasCount, Converter={StaticResource BoolToVisibility}}" />
-                </Grid>
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
+          <Border Grid.Column="1"
+                  CornerRadius="13"
+                  Padding="2"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  Background="{DynamicResource ChipBackground}"
+                  Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
+            <Button Style="{StaticResource ModeChip}"
+                    Content="Unread only"
+                    Tag="{Binding UnreadOnly}"
+                    ToolTip="Hide alerts you have already read"
+                    Command="{Binding ToggleUnreadOnlyCommand}" />
+          </Border>
         </Grid>
 
         <ItemsControl ItemsSource="{Binding Filters}"

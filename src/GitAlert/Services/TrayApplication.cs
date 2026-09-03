@@ -57,7 +57,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         _tray.ContextMenuRequested += OnTrayContextMenu;
         _tray.BalloonClicked += OnBalloonClicked;
 
-        _flyoutViewModel = new FlyoutViewModel(_alerts, _monitor, this);
+        _flyoutViewModel = new FlyoutViewModel(_alerts, _monitor, this, settings);
         _flyout = new FlyoutWindow(_flyoutViewModel);
         _flyout.ApplyPreferences(settings);
         _flyout.PlacementChanged += OnPlacementChanged;
@@ -123,6 +123,17 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         NativeMethods.ForceForeground(new WindowInteropHelper(window).Handle);
 
     public void HideFlyout() => _flyout.HideFlyout();
+
+    /// <summary>
+    /// The order of the projects and whether read alerts are hidden are set in the list itself,
+    /// so they are written back from there rather than through the settings window.
+    /// </summary>
+    public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly)
+    {
+        _settings.ProjectOrder = [.. projectOrder];
+        _settings.UnreadOnly = unreadOnly;
+        _settingsStore.Save(_settings);
+    }
 
     public void Quit()
     {
