@@ -51,6 +51,12 @@ public static class IconArtwork
     }
 
     /// <summary>
+    /// The bell on its own, in the 24 x 24 design space, so XAML can reuse the mark for the
+    /// flyout header and the settings window without a second copy of the artwork.
+    /// </summary>
+    public static Geometry BellGeometry => Bell;
+
+    /// <summary>
     /// The notification-area icon: a flat silhouette that inherits the taskbar's contrast colour,
     /// with an optional badge for unread alerts.
     /// </summary>

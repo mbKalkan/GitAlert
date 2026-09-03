@@ -197,4 +197,70 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int index);
+
+    // ---- Desktop Window Manager -------------------------------------------
+
+    /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE on Windows 10 2004 and later.</summary>
+    public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+    /// <summary>The attribute number the same setting had on earlier Windows 10 builds.</summary>
+    public const int DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY = 19;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hWnd, int attribute, ref int value, int size);
+
+    /// <summary>
+    /// Asks DWM to draw the title bar in the dark palette. Older builds only accept the legacy
+    /// attribute number, so both are tried and any failure is simply ignored.
+    /// </summary>
+    public static void SetTitleBarTheme(IntPtr hWnd, bool dark)
+    {
+        var value = dark ? 1 : 0;
+
+        try
+        {
+            if (DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, sizeof(int)) != 0)
+            {
+                DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE_LEGACY, ref value, sizeof(int));
+            }
+        }
+        catch (DllNotFoundException)
+        {
+            // No DWM: the title bar simply stays light.
+        }
+    }
+
+    // ---- Window styles -----------------------------------------------------
+
+    public const int GWL_EXSTYLE = -20;
+
+    /// <summary>Keeps a window out of Alt+Tab, which a flyout has no business appearing in.</summary>
+    public const int WS_EX_TOOLWINDOW = 0x00000080;
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int index, IntPtr value);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong32(IntPtr hWnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong32(IntPtr hWnd, int index, int value);
+
+    /// <summary>Adds extended window style bits, picking the right entry point for the process bitness.</summary>
+    public static void AddExtendedStyle(IntPtr hWnd, int bits)
+    {
+        if (IntPtr.Size == 8)
+        {
+            var current = (long)GetWindowLongPtr64(hWnd, GWL_EXSTYLE);
+            SetWindowLongPtr64(hWnd, GWL_EXSTYLE, new IntPtr(current | (uint)bits));
+        }
+        else
+        {
+            var current = GetWindowLong32(hWnd, GWL_EXSTYLE);
+            SetWindowLong32(hWnd, GWL_EXSTYLE, current | bits);
+        }
+    }
 }

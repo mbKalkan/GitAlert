@@ -38,7 +38,7 @@ public sealed class AppSettings
 
     public bool StartWithWindows { get; set; }
 
-    public ThemeMode Theme { get; set; } = ThemeMode.System;
+    public AppTheme Theme { get; set; } = AppTheme.System;
 
     /// <summary>How many alerts are kept on disk and shown in the flyout.</summary>
     public int MaxHistory { get; set; } = 300;
@@ -103,7 +103,7 @@ public sealed class RepoSubscription
     };
 }
 
-public enum ThemeMode
+public enum AppTheme
 {
     System,
     Dark,

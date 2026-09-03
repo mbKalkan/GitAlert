@@ -119,6 +119,16 @@ public sealed class TrayIcon : IDisposable
     }
 
     /// <summary>
+    /// Redraws the icon at the current size and taskbar contrast colour. Called when the user
+    /// switches their Windows theme.
+    /// </summary>
+    public void Refresh()
+    {
+        RefreshIcon();
+        Update(NativeMethods.NIF_ICON);
+    }
+
+    /// <summary>
     /// Shows a balloon, which Windows 10 and 11 render as a toast and keep in the Action Centre.
     /// </summary>
     public void ShowBalloon(string title, string message, BalloonIcon icon, bool playSound)
