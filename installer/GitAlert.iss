@@ -65,7 +65,7 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "startup"; Description: "Start {#AppName} when I sign in to Windows"; GroupDescription: "Additional options:"
+Name: "startup"; Description: "Start {#AppName} when I sign in to Windows"; GroupDescription: "Additional options:"; Check: IsFirstInstall
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional options:"; Flags: unchecked
 
 [Files]
@@ -96,7 +96,37 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/f /im {#AppExeName}"; RunOnceId: "
 ; Type: filesandordirs; Name: "{userappdata}\GitAlert"
 
 [Code]
-function InitializeSetup(): Boolean;
+const
+  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{7F1C3A64-2B58-4E0D-9C0A-9B7A5E2D1F84}_is1';
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  RunValueName = 'GitAlert';
+
+{ True only when GitAlert is not already installed. The "start with Windows" task is offered on
+  a first install and never again: from then on the switch inside GitAlert's settings owns that
+  preference, and an upgrade must not quietly turn it back on. }
+function IsFirstInstall(): Boolean;
 begin
-  Result := True;
+  Result := not RegKeyExists(HKEY_CURRENT_USER, UninstallKey)
+        and not RegKeyExists(HKEY_LOCAL_MACHINE, UninstallKey);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Existing: String;
+begin
+  { On an upgrade, leave the user's choice alone but repoint it at the new location, in case
+    they chose a different folder this time. }
+  if (CurStep = ssPostInstall) and not IsFirstInstall() then
+    if RegQueryStringValue(HKEY_CURRENT_USER, RunKey, RunValueName, Existing) then
+      RegWriteStringValue(HKEY_CURRENT_USER, RunKey, RunValueName,
+        '"' + ExpandConstant('{app}\{#AppExeName}') + '" --startup');
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  { uninsdeletevalue only covers a value this installer wrote. GitAlert writes the very same
+    value when you enable startup from its own settings, so remove it unconditionally -
+    otherwise uninstalling leaves Windows trying to launch an executable that is gone. }
+  if CurUninstallStep = usUninstall then
+    RegDeleteValue(HKEY_CURRENT_USER, RunKey, RunValueName);
 end;
