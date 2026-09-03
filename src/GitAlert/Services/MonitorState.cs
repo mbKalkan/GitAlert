@@ -76,6 +76,14 @@ public sealed class RepoState
     /// <summary>Numeric GitHub event id; everything at or below this has been seen.</summary>
     public long LastEventId { get; set; }
 
+    /// <summary>Learned once from the repository, so commit alerts can name the branch.</summary>
+    public string? DefaultBranch { get; set; }
+
+    public string? CommitsETag { get; set; }
+
+    /// <summary>Newest commit already reported on the default branch; empty until the first poll.</summary>
+    public string? LastCommitSha { get; set; }
+
     public string? RunsETag { get; set; }
 
     public long LastWorkflowRunId { get; set; }

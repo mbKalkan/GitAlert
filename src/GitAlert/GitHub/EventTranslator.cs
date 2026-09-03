@@ -68,7 +68,17 @@ public static class EventTranslator
                 ? $"{RepoUrl(repository)}/compare/{before}...{head}"
                 : $"{RepoUrl(repository)}/commits/{branch}";
 
-        return Build(source, AlertKind.Push, title, FirstLine(firstMessage), repository, actor, url);
+        return Build(
+            source,
+            AlertKind.Push,
+            title,
+            FirstLine(firstMessage),
+            repository,
+            actor,
+            url,
+            // Identified by the head commit, not the event: the same push may reach us first
+            // through the commits endpoint and only hours later through the events timeline.
+            idOverride: head is null ? null : $"commit:{head}");
     }
 
     private static Alert? PullRequest(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -349,6 +359,43 @@ public static class EventTranslator
             page.GetStringOrNull("html_url") ?? $"{RepoUrl(repository)}/wiki");
     }
 
+    /// <summary>
+    /// Turns freshly seen commits into a single push alert, newest first.
+    /// </summary>
+    /// <remarks>
+    /// Shares its identity with the equivalent <c>PushEvent</c> so that whichever source reports a
+    /// push first wins and the other is de-duplicated away.
+    /// </remarks>
+    public static Alert FromCommits(
+        IReadOnlyList<GhCommit> commits,
+        string repository,
+        string? branch,
+        string? previousSha)
+    {
+        var newest = commits[0];
+        var on = string.IsNullOrWhiteSpace(branch) ? string.Empty : $" on {branch}";
+
+        var title = commits.Count == 1
+            ? $"New commit{on}"
+            : $"{commits.Count} new commits{on}";
+
+        var url = commits.Count == 1 || string.IsNullOrEmpty(previousSha)
+            ? newest.HtmlUrl ?? $"{RepoUrl(repository)}/commit/{newest.Sha}"
+            : $"{RepoUrl(repository)}/compare/{previousSha}...{newest.Sha}";
+
+        return new Alert
+        {
+            Id = $"commit:{newest.Sha}",
+            Kind = AlertKind.Push,
+            Title = title,
+            Detail = FirstLine(newest.Commit?.Message),
+            Repository = repository,
+            Actor = newest.Author?.Login ?? newest.Commit?.Author?.Name,
+            Url = url,
+            Timestamp = newest.Commit?.Author?.Date ?? DateTimeOffset.Now,
+        };
+    }
+
     /// <summary>Translates a completed GitHub Actions run.</summary>
     public static Alert FromWorkflowRun(GhWorkflowRun run, string repository)
     {
@@ -478,10 +525,11 @@ public static class EventTranslator
         string repository,
         string? actor,
         string? url,
-        AlertSeverity severity = AlertSeverity.Normal) =>
+        AlertSeverity severity = AlertSeverity.Normal,
+        string? idOverride = null) =>
         new()
         {
-            Id = $"event:{source.Id}",
+            Id = idOverride ?? $"event:{source.Id}",
             Kind = kind,
             Title = title,
             Detail = detail,

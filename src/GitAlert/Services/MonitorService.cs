@@ -366,9 +366,75 @@ public sealed class MonitorService : IAsyncDisposable
             state.Initialised = true;
         }
 
+        // The events timeline is the richer source but GitHub fills it in lazily - for private
+        // repositories it can lag by hours or days, and a new repository may have none at all.
+        // Polling commits directly is what makes a push show up promptly.
+        if (!settings.IsMuted(AlertKind.Push))
+        {
+            await PollCommitsAsync(client, account, reference, state, settings, collected, ct).ConfigureAwait(false);
+        }
+
         if (settings.WatchWorkflowRuns && !settings.IsMuted(AlertKind.Workflow))
         {
             await PollWorkflowRunsAsync(client, account, reference, state, settings, collected, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task PollCommitsAsync(
+        GitHubClient client,
+        GitHubAccount account,
+        RepoRef reference,
+        RepoState state,
+        AppSettings settings,
+        List<Alert> collected,
+        CancellationToken ct)
+    {
+        var response = await client.GetCommitsAsync(reference, state.CommitsETag, ct).ConfigureAwait(false);
+
+        if (response.NotModified || response.Value is not { Count: > 0 } commits)
+        {
+            return;
+        }
+
+        state.CommitsETag = response.ETag;
+
+        // Learn the branch name once so commit alerts read the same as event-derived ones.
+        if (state.DefaultBranch is null)
+        {
+            try
+            {
+                state.DefaultBranch = (await client.GetRepositoryAsync(reference, ct).ConfigureAwait(false)).DefaultBranch
+                    ?? string.Empty;
+            }
+            catch (GitHubException)
+            {
+                state.DefaultBranch = string.Empty;
+            }
+        }
+
+        var previous = state.LastCommitSha;
+        state.LastCommitSha = commits[0].Sha;
+
+        // The first poll only records where things stand.
+        if (string.IsNullOrEmpty(previous))
+        {
+            return;
+        }
+
+        var fresh = commits
+            .TakeWhile(c => !string.Equals(c.Sha, previous, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (fresh.Count == 0)
+        {
+            return;
+        }
+
+        var alert = EventTranslator.FromCommits(fresh, reference.FullName, state.DefaultBranch, previous);
+
+        if (ShouldDeliver(alert, account, settings))
+        {
+            collected.Add(Stamp(alert, account));
         }
     }
 

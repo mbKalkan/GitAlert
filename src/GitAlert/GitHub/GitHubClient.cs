@@ -73,6 +73,21 @@ public sealed class GitHubClient : IDisposable
         CancellationToken ct = default) =>
         GetConditionalAsync<List<GhEvent>>($"/repos/{repo.Owner}/{repo.Name}/events?per_page=50", etag, ct);
 
+    /// <summary>
+    /// Commits on the default branch, newest first.
+    /// </summary>
+    /// <remarks>
+    /// The events timeline is the richer source, but GitHub populates it lazily - for private
+    /// repositories it can run hours or days behind, and a freshly created repository may have no
+    /// events at all. This endpoint reflects a push immediately, so it is what makes push alerts
+    /// actually timely.
+    /// </remarks>
+    public Task<ConditionalResponse<List<GhCommit>>> GetCommitsAsync(
+        RepoRef repo,
+        string? etag,
+        CancellationToken ct = default) =>
+        GetConditionalAsync<List<GhCommit>>($"/repos/{repo.Owner}/{repo.Name}/commits?per_page=20", etag, ct);
+
     /// <summary>GitHub Actions runs, newest first. Not part of the events timeline.</summary>
     public Task<ConditionalResponse<GhWorkflowRunsPage>> GetWorkflowRunsAsync(
         RepoRef repo,

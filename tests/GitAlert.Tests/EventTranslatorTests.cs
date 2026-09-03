@@ -39,7 +39,72 @@ public class EventTranslatorTests
         Assert.Equal("3 new commits on main", alert.Title);
         Assert.Equal("fix: retry rate-limited requests", alert.Detail);
         Assert.Equal("https://github.com/acme/api-gateway/compare/aaa...bbb", alert.Url);
-        Assert.Equal("event:42", alert.Id);
+
+        // Identified by the head commit rather than the event, so the same push reported by the
+        // commits endpoint collapses into one alert.
+        Assert.Equal("commit:bbb", alert.Id);
+    }
+
+    private static GhCommit Commit(string sha, string message, string author = "deniz") => new()
+    {
+        Sha = sha,
+        HtmlUrl = $"https://github.com/acme/api-gateway/commit/{sha}",
+        Commit = new GhCommitDetail
+        {
+            Message = message,
+            Author = new GhCommitAuthor { Name = author, Date = new DateTimeOffset(2026, 9, 3, 11, 6, 0, TimeSpan.Zero) },
+        },
+        Author = new GhUser { Login = author },
+    };
+
+    [Fact]
+    public void Commits_polled_directly_become_a_push_alert()
+    {
+        var alert = EventTranslator.FromCommits(
+            [Commit("ccc", "Create test.md"), Commit("bbb", "Update README.md")],
+            "acme/api-gateway",
+            "main",
+            previousSha: "aaa");
+
+        Assert.Equal(AlertKind.Push, alert.Kind);
+        Assert.Equal("2 new commits on main", alert.Title);
+        Assert.Equal("Create test.md", alert.Detail);
+        Assert.Equal("deniz", alert.Actor);
+        Assert.Equal("https://github.com/acme/api-gateway/compare/aaa...ccc", alert.Url);
+    }
+
+    [Fact]
+    public void A_single_polled_commit_links_to_that_commit()
+    {
+        var alert = EventTranslator.FromCommits([Commit("ccc", "Create test.md")], "acme/api-gateway", "main", "bbb");
+
+        Assert.Equal("New commit on main", alert.Title);
+        Assert.Equal("https://github.com/acme/api-gateway/commit/ccc", alert.Url);
+    }
+
+    [Fact]
+    public void A_repository_with_no_known_branch_still_reads_sensibly()
+    {
+        var alert = EventTranslator.FromCommits([Commit("ccc", "Create test.md")], "acme/api-gateway", null, null);
+
+        Assert.Equal("New commit", alert.Title);
+    }
+
+    /// <summary>
+    /// GitHub fills the events timeline in lazily, so a push often reaches us through the commits
+    /// endpoint first and through the timeline hours later. Both must resolve to one alert.
+    /// </summary>
+    [Fact]
+    public void The_same_push_seen_through_both_sources_is_one_alert()
+    {
+        var fromCommits = EventTranslator.FromCommits([Commit("bbb", "fix: retry")], "acme/api-gateway", "main", "aaa");
+
+        var fromEvents = EventTranslator.FromEvent(Event("PushEvent", """
+        { "ref": "refs/heads/main", "size": 1, "distinct_size": 1, "before": "aaa", "head": "bbb",
+          "commits": [ { "message": "fix: retry" } ] }
+        """));
+
+        Assert.Equal(fromCommits.Id, fromEvents!.Id);
     }
 
     [Fact]

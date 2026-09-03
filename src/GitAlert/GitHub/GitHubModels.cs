@@ -77,6 +77,44 @@ public sealed class GhEvent
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+/// <summary>
+/// A commit from <c>/repos/{owner}/{repo}/commits</c>. Unlike the events timeline this is
+/// authoritative and immediate, which is what makes it a usable source for push alerts.
+/// </summary>
+public sealed class GhCommit
+{
+    [JsonPropertyName("sha")]
+    public string Sha { get; set; } = string.Empty;
+
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("commit")]
+    public GhCommitDetail? Commit { get; set; }
+
+    /// <summary>The GitHub account behind the commit; null when the email matches no account.</summary>
+    [JsonPropertyName("author")]
+    public GhUser? Author { get; set; }
+}
+
+public sealed class GhCommitDetail
+{
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("author")]
+    public GhCommitAuthor? Author { get; set; }
+}
+
+public sealed class GhCommitAuthor
+{
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("date")]
+    public DateTimeOffset Date { get; set; }
+}
+
 public sealed class GhWorkflowRun
 {
     [JsonPropertyName("id")]
