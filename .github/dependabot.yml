@@ -1,0 +1,15 @@
+# The workflows pin every action to a commit, so a tag moved under a compromised account cannot
+# change what runs here. Pins go stale, though, and this is what keeps them current: one pull
+# request a month for the actions, and one for the NuGet packages.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
