@@ -149,24 +149,93 @@
 
     <!-- ==================== Diff ==================== -->
 
-    <Style x:Key="FileHeaderButton" TargetType="Button">
+    <!-- A row in the change list. Same idea as the alert card: the whole row is the button. -->
+    <Style x:Key="FileRow" TargetType="Button">
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bg" Background="{DynamicResource SurfaceElevated}" Padding="10,7" CornerRadius="7,7,0,0">
+            <Border x:Name="Bg"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="2,0,0,0"
+                    CornerRadius="6"
+                    Padding="8,4"
+                    Margin="0,1">
               <ContentPresenter />
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceHover}" />
               </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceHover}" />
+              </Trigger>
+              <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSubtle}" />
+                <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource Accent}" />
+              </DataTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
+
+    <DataTemplate x:Key="FileRowTemplate" DataType="{x:Type vm:FileDiffViewModel}">
+      <Button Style="{StaticResource FileRow}"
+              Command="{Binding DataContext.Detail.SelectFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+              CommandParameter="{Binding}"
+              ToolTip="{Binding Path}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     Margin="0,0,10,0">
+            <Run Text="{Binding FileName, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" />
+            <Run Text="{Binding Folder, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontSize="11" />
+          </TextBlock>
+
+          <TextBlock Grid.Column="1"
+                     VerticalAlignment="Center"
+                     Margin="0,0,10,0"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="10.5">
+            <Run Text="{Binding Additions, Mode=OneWay, StringFormat=+{0}}"
+                 Foreground="{DynamicResource DiffAddedAccent}" />
+            <Run Text="{Binding Deletions, Mode=OneWay, StringFormat=-{0}}"
+                 Foreground="{DynamicResource DiffRemovedAccent}" />
+          </TextBlock>
+
+          <TextBlock x:Name="Letter"
+                     Grid.Column="2"
+                     Text="{Binding StatusLetter}"
+                     VerticalAlignment="Center"
+                     Width="14"
+                     TextAlignment="Center"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextSecondary}"
+                     ToolTip="{Binding Status}" />
+        </Grid>
+      </Button>
+
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsAdded}" Value="True">
+          <Setter TargetName="Letter" Property="Foreground" Value="{DynamicResource DiffAddedAccent}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsDeleted}" Value="True">
+          <Setter TargetName="Letter" Property="Foreground" Value="{DynamicResource DiffRemovedAccent}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
 
     <!-- One row of a unified diff: the two line numbers, the +/- marker, then the code. -->
     <DataTemplate x:Key="DiffLineTemplate" DataType="{x:Type vm:DiffLineViewModel}">
@@ -233,105 +302,6 @@
         <DataTrigger Binding="{Binding Kind}" Value="{x:Static core:DiffLineKind.Note}">
           <Setter TargetName="Code" Property="Foreground" Value="{DynamicResource TextMuted}" />
           <Setter TargetName="Code" Property="FontStyle" Value="Italic" />
-        </DataTrigger>
-      </DataTemplate.Triggers>
-    </DataTemplate>
-
-    <DataTemplate x:Key="FileDiffTemplate" DataType="{x:Type vm:FileDiffViewModel}">
-      <Border Margin="0,0,0,10"
-              CornerRadius="8"
-              BorderBrush="{DynamicResource Border}"
-              BorderThickness="1"
-              Background="{DynamicResource SurfaceSunken}">
-        <StackPanel>
-
-          <Button Style="{StaticResource FileHeaderButton}" Command="{Binding ToggleCommand}" ToolTip="{Binding Path}">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-
-              <Path x:Name="Chevron"
-                    Grid.Column="0"
-                    Data="M4,2.5 L8.5,7 L4,11.5"
-                    Stroke="{DynamicResource TextMuted}"
-                    StrokeThickness="1.5"
-                    StrokeStartLineCap="Round"
-                    StrokeEndLineCap="Round"
-                    Width="13"
-                    Height="14"
-                    Stretch="Uniform"
-                    VerticalAlignment="Center"
-                    RenderTransformOrigin="0.5,0.5" />
-
-              <TextBlock Grid.Column="1"
-                         Margin="8,0,10,0"
-                         VerticalAlignment="Center"
-                         TextTrimming="CharacterEllipsis">
-                <Run Text="{Binding Folder, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" />
-                <Run Text="{Binding FileName, Mode=OneWay}"
-                     Foreground="{DynamicResource TextPrimary}"
-                     FontWeight="SemiBold" />
-              </TextBlock>
-
-              <Border Grid.Column="2"
-                      Margin="0,0,10,0"
-                      Padding="6,1"
-                      CornerRadius="4"
-                      VerticalAlignment="Center"
-                      Background="{DynamicResource ChipBackground}">
-                <TextBlock Text="{Binding Status}"
-                           FontSize="10.5"
-                           Foreground="{DynamicResource TextSecondary}" />
-              </Border>
-
-              <TextBlock Grid.Column="3" VerticalAlignment="Center" FontFamily="{StaticResource CodeFont}" FontSize="11">
-                <Run Text="{Binding Additions, Mode=OneWay, StringFormat=+{0}}"
-                     Foreground="{DynamicResource DiffAddedAccent}" />
-                <Run Text="{Binding Deletions, Mode=OneWay, StringFormat=-{0}}"
-                     Foreground="{DynamicResource DiffRemovedAccent}" />
-              </TextBlock>
-            </Grid>
-          </Button>
-
-          <TextBlock Text="{Binding PreviousPath, StringFormat=renamed from {0}}"
-                     Margin="31,0,10,6"
-                     FontSize="11"
-                     Foreground="{DynamicResource TextMuted}"
-                     TextTrimming="CharacterEllipsis"
-                     Visibility="{Binding WasRenamed, Converter={StaticResource BoolToVisibility}}" />
-
-          <!-- Binding the rows only while expanded means a collapsed file costs nothing to
-               keep on screen, which is what makes a hundred-file change usable. -->
-          <ScrollViewer x:Name="Lines"
-                        HorizontalScrollBarVisibility="Auto"
-                        VerticalScrollBarVisibility="Disabled"
-                        Visibility="Collapsed"
-                        Padding="0,4,0,6">
-            <ItemsControl x:Name="LineHost" ItemTemplate="{StaticResource DiffLineTemplate}" />
-          </ScrollViewer>
-
-          <TextBlock Text="{Binding Note}"
-                     Margin="14,4,12,10"
-                     FontSize="11.5"
-                     TextWrapping="Wrap"
-                     Foreground="{DynamicResource TextMuted}"
-                     Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}" />
-        </StackPanel>
-      </Border>
-
-      <DataTemplate.Triggers>
-        <DataTrigger Binding="{Binding IsExpanded}" Value="True">
-          <Setter TargetName="Lines" Property="Visibility" Value="Visible" />
-          <Setter TargetName="LineHost" Property="ItemsSource" Value="{Binding Lines}" />
-          <Setter TargetName="Chevron" Property="RenderTransform">
-            <Setter.Value>
-              <RotateTransform Angle="90" />
-            </Setter.Value>
-          </Setter>
         </DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
@@ -532,6 +502,7 @@
                   <Grid Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
                       <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -562,49 +533,91 @@
 
                           <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                             <TextBlock Text="{Binding Alert.Meta}" Style="{StaticResource MutedText}" />
-                            <TextBlock Text="·" Style="{StaticResource MutedText}" Margin="6,0" />
+                            <TextBlock Text="&#183;" Style="{StaticResource MutedText}" Margin="6,0" />
                             <TextBlock Text="{Binding Alert.Age}" Style="{StaticResource MutedText}" />
                           </StackPanel>
-
-                          <TextBlock Text="{Binding Summary}"
-                                     Margin="0,8,0,0"
-                                     FontFamily="{StaticResource CodeFont}"
-                                     FontSize="11.5"
-                                     Foreground="{DynamicResource TextSecondary}"
-                                     Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Right">
                           <Button Content="Open on GitHub"
                                   Style="{StaticResource SecondaryButton}"
                                   Command="{Binding OpenOnGitHubCommand}" />
-
-                          <StackPanel Orientation="Horizontal" Margin="0,6,0,0" HorizontalAlignment="Right">
-                            <Button Content="Expand"
-                                    Style="{StaticResource GhostButton}"
-                                    Command="{Binding ExpandAllCommand}"
-                                    Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}" />
-                            <Button Content="Collapse"
-                                    Style="{StaticResource GhostButton}"
-                                    Command="{Binding CollapseAllCommand}"
-                                    Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}" />
-                            <Button Content="Reload"
-                                    Style="{StaticResource GhostButton}"
-                                    Command="{Binding ReloadCommand}" />
-                          </StackPanel>
+                          <Button Content="Reload"
+                                  Style="{StaticResource GhostButton}"
+                                  Margin="0,6,0,0"
+                                  HorizontalAlignment="Right"
+                                  Command="{Binding ReloadCommand}" />
                         </StackPanel>
                       </Grid>
                     </Border>
 
-                    <!-- Files -->
-                    <Grid Grid.Row="1">
-                      <ScrollViewer Style="{StaticResource SlimScrollViewer}" Margin="14,12,8,12">
-                        <ItemsControl ItemsSource="{Binding Files}"
-                                      ItemTemplate="{StaticResource FileDiffTemplate}"
-                                      Margin="0,0,6,0" />
-                      </ScrollViewer>
+                    <!-- The change list: every file the alert touched, source-control style. -->
+                    <Border Grid.Row="1"
+                            Padding="10,10,8,8"
+                            BorderBrush="{DynamicResource BorderSubtle}"
+                            BorderThickness="0,0,0,1"
+                            Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}">
+                      <StackPanel>
+                        <TextBlock Text="{Binding Summary}"
+                                   Style="{StaticResource SectionHeader}"
+                                   Margin="6,0,0,6" />
 
-                      <TextBlock Text="Fetching the diff from GitHub…"
+                        <ScrollViewer Style="{StaticResource SlimScrollViewer}" MaxHeight="176">
+                          <ItemsControl ItemsSource="{Binding Files}"
+                                        ItemTemplate="{StaticResource FileRowTemplate}"
+                                        Margin="0,0,4,0" />
+                        </ScrollViewer>
+                      </StackPanel>
+                    </Border>
+
+                    <!-- The diff of whichever file is picked. -->
+                    <Grid Grid.Row="2">
+                      <Grid Visibility="{Binding HasSelectedFile, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="*" />
+                          <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="14,8" Background="{DynamicResource SurfaceSunken}">
+                          <Grid>
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="*" />
+                              <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding SelectedFile.Path}"
+                                       FontFamily="{StaticResource CodeFont}"
+                                       FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondary}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+
+                            <Button Grid.Column="1"
+                                    Content="Open file"
+                                    Style="{StaticResource GhostButton}"
+                                    Command="{Binding SelectedFile.OpenOnGitHubCommand}" />
+                          </Grid>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1"
+                                      Style="{StaticResource SlimScrollViewer}"
+                                      HorizontalScrollBarVisibility="Auto">
+                          <ItemsControl ItemsSource="{Binding SelectedFile.Lines}"
+                                        ItemTemplate="{StaticResource DiffLineTemplate}" />
+                        </ScrollViewer>
+
+                        <TextBlock Grid.Row="2"
+                                   Text="{Binding SelectedFile.Note}"
+                                   Margin="14,8,12,10"
+                                   FontSize="11.5"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   Visibility="{Binding SelectedFile.HasNote, Converter={StaticResource BoolToVisibility}}" />
+                      </Grid>
+
+                      <TextBlock Text="Fetching the changed files from GitHub&#8230;"
                                  Style="{StaticResource SecondaryText}"
                                  HorizontalAlignment="Center"
                                  VerticalAlignment="Center"
@@ -623,6 +636,7 @@
                       <TextBlock Text="{Binding Notice}"
                                  Style="{StaticResource MutedText}"
                                  Margin="30"
+                                 MaxWidth="320"
                                  TextWrapping="Wrap"
                                  TextAlignment="Center"
                                  HorizontalAlignment="Center"

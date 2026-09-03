@@ -28,18 +28,22 @@ public sealed class DiffLineViewModel(DiffLine line)
     };
 }
 
-/// <summary>One changed file, collapsible so a large change stays navigable.</summary>
+/// <summary>
+/// One changed file: a row in the change list, and the diff shown when that row is picked.
+/// </summary>
 public sealed partial class FileDiffViewModel : ObservableObject
 {
+    /// <summary>Whether this is the file whose diff the pane is showing.</summary>
     [ObservableProperty]
-    private bool _isExpanded;
+    private bool _isSelected;
 
-    public FileDiffViewModel(GhFileChange file, bool expanded)
+    public FileDiffViewModel(GhFileChange file)
     {
-        _isExpanded = expanded;
-
         Path = file.Filename;
         Status = Describe(file.Status);
+        StatusLetter = Letter(file.Status);
+        IsAdded = file.Status is "added" or "copied";
+        IsDeleted = file.Status is "removed";
         Additions = file.Additions;
         Deletions = file.Deletions;
         BlobUrl = file.BlobUrl;
@@ -68,6 +72,14 @@ public sealed partial class FileDiffViewModel : ObservableObject
     public bool WasRenamed => !string.IsNullOrEmpty(PreviousPath);
 
     public string Status { get; }
+
+    /// <summary>The single letter a source control view puts beside a file: M, A, D, R or C.</summary>
+    public string StatusLetter { get; }
+
+    /// <summary>Deleted files read as removals, added files as additions, everything else neutral.</summary>
+    public bool IsAdded { get; }
+
+    public bool IsDeleted { get; }
 
     public int Additions { get; }
 
@@ -105,9 +117,6 @@ public sealed partial class FileDiffViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Toggle() => IsExpanded = !IsExpanded;
-
-    [RelayCommand]
     private void OpenOnGitHub()
     {
         if (!string.IsNullOrEmpty(BlobUrl))
@@ -124,6 +133,15 @@ public sealed partial class FileDiffViewModel : ObservableObject
         "copied" => "copied",
         "changed" => "changed",
         _ => "modified",
+    };
+
+    private static string Letter(string? status) => status switch
+    {
+        "added" => "A",
+        "removed" => "D",
+        "renamed" => "R",
+        "copied" => "C",
+        _ => "M",
     };
 }
 
@@ -158,16 +176,26 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasSummary))]
     private string _summary = string.Empty;
 
-    /// <summary>Shown instead of a diff when the alert is not about code at all.</summary>
+    /// <summary>Shown instead of a diff when the alert points at no files.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNotice))]
     private string? _notice;
+
+    /// <summary>
+    /// The file whose diff is on screen. The change list above it works the way a source control
+    /// view does: every changed file is listed, and picking one shows what happened to it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedFile))]
+    private FileDiffViewModel? _selectedFile;
 
     public AlertDetailViewModel(MonitorService monitor) => _monitor = monitor;
 
     public ObservableCollection<FileDiffViewModel> Files { get; } = [];
 
     public bool HasSelection => Alert is not null;
+
+    public bool HasSelectedFile => SelectedFile is not null;
 
     public bool HasError => !string.IsNullOrEmpty(Error);
 
@@ -183,6 +211,7 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
         Alert = alert;
         Files.Clear();
+        SelectedFile = null;
         Error = null;
         Summary = string.Empty;
         Notice = null;
@@ -197,7 +226,8 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
         if (!model.HasDiff)
         {
-            Notice = "This alert is not about a code change, so there is nothing to diff.";
+            Notice = $"A {Describe(model.Kind)} does not point at any changed files. "
+                   + "Open it on GitHub to see the rest.";
             return;
         }
 
@@ -278,21 +308,20 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void ExpandAll()
+    private void SelectFile(FileDiffViewModel? file)
     {
-        foreach (var file in Files)
+        if (file is null)
         {
-            file.IsExpanded = true;
+            return;
         }
-    }
 
-    [RelayCommand]
-    private void CollapseAll()
-    {
-        foreach (var file in Files)
+        if (SelectedFile is { } previous)
         {
-            file.IsExpanded = false;
+            previous.IsSelected = false;
         }
+
+        file.IsSelected = true;
+        SelectedFile = file;
     }
 
     private static Task<List<GhFileChange>> FetchAsync(
@@ -301,18 +330,18 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
         Alert model,
         CancellationToken ct)
     {
-        if (model.PullRequestNumber is { } number)
+        var target = model.Diff;
+
+        if (target.PullRequest is { } number)
         {
             return client.GetPullRequestFilesAsync(repo, number, ct);
         }
 
-        var head = model.DiffHead!;
-
         // A push of several commits is only meaningful as the net change across the range; a
         // single commit is its own diff and costs one request either way.
-        return string.IsNullOrEmpty(model.DiffBase)
-            ? Single(client.GetCommitAsync(repo, head, ct))
-            : Range(client.GetComparisonAsync(repo, model.DiffBase!, head, ct));
+        return string.IsNullOrEmpty(target.Base)
+            ? Single(client.GetCommitAsync(repo, target.Head!, ct))
+            : Range(client.GetComparisonAsync(repo, target.Base!, target.Head!, ct));
 
         static async Task<List<GhFileChange>> Single(Task<GhCommitWithFiles> pending) =>
             (await pending.ConfigureAwait(false)).Files;
@@ -325,26 +354,39 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     {
         Files.Clear();
 
-        // Expanding everything on a large change makes the pane unusable, so past a handful of
-        // files they arrive collapsed and the header says how to open them.
-        var expandAll = files.Count <= 4;
-
         foreach (var file in files)
         {
-            Files.Add(new FileDiffViewModel(file, expandAll));
+            Files.Add(new FileDiffViewModel(file));
         }
 
         var additions = files.Sum(f => f.Additions);
         var deletions = files.Sum(f => f.Deletions);
 
         Summary = files.Count == 0
-            ? "No files changed."
+            ? string.Empty
             : $"{files.Count} {(files.Count == 1 ? "file" : "files")} changed  ·  +{additions:N0}  -{deletions:N0}";
 
         Notice = files.Count == 0
-            ? "GitHub reported no file changes for this commit. It may be a merge with no net change."
+            ? "GitHub reported no changed files here. A merge that brought nothing new does that."
             : null;
+
+        // Landing on the first file means one click gets you to a diff rather than two.
+        SelectFile(Files.FirstOrDefault());
     }
+
+    private static string Describe(AlertKind kind) => kind switch
+    {
+        AlertKind.Workflow => "CI run",
+        AlertKind.Release => "release",
+        AlertKind.Issue => "issue",
+        AlertKind.Comment => "comment",
+        AlertKind.Review => "review",
+        AlertKind.Mention => "mention",
+        AlertKind.Branch => "branch or tag alert",
+        AlertKind.Star => "star",
+        AlertKind.Fork => "fork",
+        _ => "alert of this kind",
+    };
 
     private void Remember(string id, IReadOnlyList<GhFileChange> files)
     {

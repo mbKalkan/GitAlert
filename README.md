@@ -56,9 +56,10 @@ GitHub Actions runs are polled separately, because they never appear on the even
 Failures are red, and you can ask to hear about failures only.
 
 **Read the diff without leaving the app**
-Pick an alert and the files it changed open beside it, as a real unified diff with line numbers and
-the same colours GitHub uses. A single commit shows its own diff; a push of several shows the net
-change across the range; a pull request shows its whole file list.
+Pick an alert and every file it touched is listed beside it — name, path, `+`/`-` counts and an
+M/A/D badge, the way a source control view does. Pick a file and its unified diff opens underneath,
+with both line-number gutters and the colours GitHub uses. A single commit shows its own diff, a
+push of several the net change across the range, a pull request its whole file list.
 
 </td>
 <td width="50%" valign="top">

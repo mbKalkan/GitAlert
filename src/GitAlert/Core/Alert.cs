@@ -48,9 +48,16 @@ public sealed class Alert
     /// <summary>Set on pull request alerts, whose changed files come from a different endpoint.</summary>
     public int? PullRequestNumber { get; init; }
 
+    /// <summary>
+    /// What this alert points at on GitHub, recovered from the URL or the id when the alert
+    /// predates these fields.
+    /// </summary>
+    [JsonIgnore]
+    public DiffTarget Diff => DiffTarget.For(this);
+
     /// <summary>Whether the detail pane has something to fetch changed files for.</summary>
     [JsonIgnore]
-    public bool HasDiff => DiffHead is not null || PullRequestNumber is not null;
+    public bool HasDiff => Diff.IsKnown;
 
     public string? Actor { get; init; }
 
