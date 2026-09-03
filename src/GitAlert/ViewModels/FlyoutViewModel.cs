@@ -342,6 +342,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         UnreadCount = 0;
+        RefreshChipCounts();
         RecountSections();
         _shell.UnreadChanged();
     }
@@ -387,8 +388,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _store.Save();
         UnreadCount = Math.Max(0, UnreadCount - 1);
 
-        // The badge beside the project and the number on the tray icon are both counting this
-        // same alert, and neither of them is watching the row.
+        // The filter chips, the badge beside the project and the number on the tray icon are all
+        // counting this same alert, and none of them is watching the row.
+        RefreshChipCounts();
         _sections.GetValueOrDefault(alert.Repository)?.Recount();
         _shell.UnreadChanged();
     }
@@ -466,13 +468,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void ApplyFilter()
     {
-        // Chip counts describe what picking that chip would leave, so each counts against the
-        // other axis rather than against the whole history.
-        foreach (var chip in Filters)
-        {
-            chip.IsSelected = chip.Filter == ActiveFilter;
-            chip.Count = _all.Count(a => !a.IsRead && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
-        }
+        RefreshChipCounts();
 
         Alerts.Clear();
 
@@ -485,6 +481,24 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         IsEmpty = Groups.Count == 0;
         UpdateEmptyMessage(_monitor.Status);
+    }
+
+    /// <summary>
+    /// The number on each filter chip: what is unread in that category.
+    /// </summary>
+    /// <remarks>
+    /// Counted here rather than inside the filter pass, because reading an alert changes these
+    /// numbers without changing which alerts are shown. Left to the filter pass, a chip went on
+    /// showing the count it had when the list was last rearranged, however many of those alerts
+    /// you had since read.
+    /// </remarks>
+    private void RefreshChipCounts()
+    {
+        foreach (var chip in Filters)
+        {
+            chip.IsSelected = chip.Filter == ActiveFilter;
+            chip.Count = _all.Count(a => !a.IsRead && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
+        }
     }
 
     private bool OfKind(AlertViewModel alert) => ActiveFilter == AlertFilter.All || alert.Group == ActiveFilter;
