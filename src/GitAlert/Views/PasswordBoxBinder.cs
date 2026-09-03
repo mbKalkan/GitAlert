@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 
 namespace GitAlert.Views;
 
@@ -10,6 +11,23 @@ namespace GitAlert.Views;
 /// </summary>
 public static class PasswordBoxBinder
 {
+    /// <summary>
+    /// Listening for typing is set up once for every password box in the application, rather than
+    /// from the property-changed callback below.
+    /// </summary>
+    /// <remarks>
+    /// Subscribing from that callback looks natural and is subtly broken: WPF raises it only when
+    /// the value actually changes, so a binding whose source already holds the property's default
+    /// - an empty string, which is exactly what an empty token field starts as - pushes a value
+    /// equal to the default, raises nothing, and leaves the box with no listener attached. Typing
+    /// then went nowhere and adding an account could only ever answer "paste a token first".
+    /// </remarks>
+    static PasswordBoxBinder() =>
+        EventManager.RegisterClassHandler(
+            typeof(PasswordBox),
+            PasswordBox.PasswordChangedEvent,
+            new RoutedEventHandler(OnPasswordChanged));
+
     public static readonly DependencyProperty BoundPasswordProperty =
         DependencyProperty.RegisterAttached(
             "BoundPassword",
@@ -34,29 +52,42 @@ public static class PasswordBoxBinder
     public static void SetBoundPassword(DependencyObject element, string value) =>
         element.SetValue(BoundPasswordProperty, value);
 
+    /// <summary>The view model changed the value; push it into the box.</summary>
     private static void OnBoundPasswordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not PasswordBox box)
+        if (d is not PasswordBox box || (bool)box.GetValue(IsUpdatingProperty))
         {
             return;
         }
 
-        box.PasswordChanged -= OnPasswordChanged;
+        var value = e.NewValue as string ?? string.Empty;
 
-        if (!(bool)box.GetValue(IsUpdatingProperty))
+        if (box.Password != value)
         {
-            box.Password = e.NewValue as string ?? string.Empty;
+            box.Password = value;
         }
-
-        box.PasswordChanged += OnPasswordChanged;
     }
 
+    /// <summary>Someone typed; push it back out to the view model.</summary>
     private static void OnPasswordChanged(object sender, RoutedEventArgs e)
     {
         var box = (PasswordBox)sender;
 
+        // The class handler sees every password box, including any that are not bound at all.
+        if (BindingOperations.GetBindingExpression(box, BoundPasswordProperty) is null)
+        {
+            return;
+        }
+
         box.SetValue(IsUpdatingProperty, true);
-        SetBoundPassword(box, box.Password);
-        box.SetValue(IsUpdatingProperty, false);
+
+        try
+        {
+            SetBoundPassword(box, box.Password);
+        }
+        finally
+        {
+            box.SetValue(IsUpdatingProperty, false);
+        }
     }
 }
