@@ -161,7 +161,7 @@ Three endpoints do the work: `/repos/{owner}/{repo}/events` for the timeline,
 ## Your data
 
 - Each account's access token is encrypted with **DPAPI**, scoped to your Windows user account, and
-  kept in its own file under `%APPDATA%\GitAlert	okens`. A blob on disk is useless to another user
+  kept in its own file under `%APPDATA%\GitAlert\tokens`. A blob on disk is useless to another user
   or on another machine, and one account's token is never used for another's repositories.
 - Settings, sync state and alert history live in `%APPDATA%\GitAlert` as plain JSON you can read.
 - GitAlert talks to `api.github.com` and nothing else. No telemetry, no analytics, no update pings.
