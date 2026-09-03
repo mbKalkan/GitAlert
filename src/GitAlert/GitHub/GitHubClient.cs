@@ -233,26 +233,6 @@ public sealed class GitHubClient : IDisposable
         CancellationToken ct = default) =>
         GetConditionalAsync<List<GhNotification>>("/notifications?all=false&per_page=50", etag, ct);
 
-    public async Task MarkInboxReadAsync(CancellationToken ct = default)
-    {
-        using var request = CreateRequest(HttpMethod.Put, "/notifications", etag: null);
-        request.Content = new StringContent(
-            $"{{\"last_read_at\":\"{DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm:ssZ}\",\"read\":true}}");
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-
-        using var response = await ExecuteAsync(request, ct).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, "/notifications", ct).ConfigureAwait(false);
-    }
-
-    public async Task MarkThreadReadAsync(string threadId, CancellationToken ct = default)
-    {
-        var path = $"/notifications/threads/{Uri.EscapeDataString(threadId)}";
-
-        using var request = CreateRequest(HttpMethod.Patch, path, etag: null);
-        using var response = await ExecuteAsync(request, ct).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, $"thread {threadId}", ct).ConfigureAwait(false);
-    }
-
     private async Task<ConditionalResponse<T>> GetConditionalAsync<T>(string path, string? etag, CancellationToken ct)
     {
         using var request = CreateRequest(HttpMethod.Get, path, etag);

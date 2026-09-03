@@ -496,7 +496,7 @@
                 <TextBlock Style="{StaticResource MutedText}"
                            TextWrapping="Wrap"
                            Margin="0,0,0,10"
-                           Text="Public repositories need no scopes. Add repo for private repositories, and notifications for mentions and review requests. The token is encrypted with your Windows account." />
+                           Text="Public repositories need no scopes. Add repo for private repositories, and notifications for mentions and review requests. A fine-grained token works too, with read access to Metadata, Contents and Actions on the repositories you watch. The token is encrypted with your Windows account." />
 
                 <Grid>
                   <Grid.ColumnDefinitions>

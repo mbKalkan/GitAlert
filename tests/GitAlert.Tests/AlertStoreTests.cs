@@ -54,6 +54,25 @@ public class AlertStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A kind this build does not know - written by a newer one - used to cost the entire
+    /// history. It is an alert of some kind, and that is how it is shown.
+    /// </summary>
+    [Fact]
+    public void An_alert_kind_this_build_does_not_know_is_kept_as_the_generic_kind()
+    {
+        File.WriteAllText(
+            _path,
+            """[{"id":"acc|event:1","kind":"Hologram","severity":"Loud","title":"From the future","repository":"acme/api-gateway","timestamp":"2026-01-01T00:00:00Z"}]""");
+
+        var store = new AlertStore(_path);
+        store.Load();
+
+        var alert = Assert.Single(store.Snapshot);
+        Assert.Equal(AlertKind.Other, alert.Kind);
+        Assert.Equal(AlertSeverity.Normal, alert.Severity);
+    }
+
+    /// <summary>
     /// Removing a repository in settings has to take its alerts with it. Left behind, they kept
     /// the project in the list with a count beside it for something just removed.
     /// </summary>

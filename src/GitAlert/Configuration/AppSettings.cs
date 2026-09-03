@@ -25,6 +25,7 @@ public sealed class AppSettings
     public int PollIntervalMinutes { get; set; } = 2;
 
     /// <summary>Kinds the user has switched off; anything absent is delivered.</summary>
+    [JsonConverter(typeof(AlertKindSetConverter))]
     public HashSet<AlertKind> MutedKinds { get; set; } = [];
 
     /// <summary>
@@ -52,6 +53,7 @@ public sealed class AppSettings
 
     public bool StartWithWindows { get; set; }
 
+    [JsonConverter(typeof(AppThemeConverter))]
     public AppTheme Theme { get; set; } = AppTheme.System;
 
     /// <summary>How many alerts are kept on disk and shown in the flyout.</summary>
@@ -257,3 +259,6 @@ public enum AppTheme
     Dark,
     Light,
 }
+
+/// <summary>A theme this build has not heard of follows Windows, which is what a fresh install does.</summary>
+public sealed class AppThemeConverter() : TolerantEnumConverter<AppTheme>(AppTheme.System);

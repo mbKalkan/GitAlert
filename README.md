@@ -149,6 +149,11 @@ too, install Inno Setup 6 (`winget install JRSoftware.InnoSetup`) and run `.\bui
    | Private repositories | `repo` |
    | Mentions, review requests, assignments | `notifications` |
 
+   The link creates a classic token. A **fine-grained token** is the tighter choice and works just
+   as well: give it read access to *Metadata* and *Contents* on the repositories you watch,
+   *Actions* (read) if you want CI runs, and the *Notifications* account permission for the
+   inbox. Nothing GitAlert does needs write access of any kind.
+
 2. **Paste it in and hit Add.** GitAlert verifies the token and names the account it belongs to.
 
 3. **Add repositories under that account.** Paste a link → *Add repository*.
@@ -197,6 +202,9 @@ Four endpoints do the work: `/repos/{owner}/{repo}/commits` for pushes,
 - Each account's access token is encrypted with **DPAPI**, scoped to your Windows user account, and
   kept in its own file under `%APPDATA%\GitAlert\tokens`. A blob on disk is useless to another user
   or on another machine, and one account's token is never used for another's repositories.
+- While GitAlert runs, each token is held in memory as an ordinary .NET string so it can be sent
+  with every request. That copy cannot be scrubbed, which is the same trade every desktop client
+  makes; it is only ever readable by a process running as you.
 - Settings, sync state and alert history live in `%APPDATA%\GitAlert` as plain JSON you can read.
 - GitAlert talks to `api.github.com` and nothing else. No telemetry, no analytics, no update pings.
 

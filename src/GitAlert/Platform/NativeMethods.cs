@@ -307,37 +307,4 @@ internal static class NativeMethods
         }
     }
 
-    // ---- Window styles -----------------------------------------------------
-
-    public const int GWL_EXSTYLE = -20;
-
-    /// <summary>Keeps a window out of Alt+Tab, which a flyout has no business appearing in.</summary>
-    public const int WS_EX_TOOLWINDOW = 0x00000080;
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int index);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int index, IntPtr value);
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
-    private static extern int GetWindowLong32(IntPtr hWnd, int index);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
-    private static extern int SetWindowLong32(IntPtr hWnd, int index, int value);
-
-    /// <summary>Adds extended window style bits, picking the right entry point for the process bitness.</summary>
-    public static void AddExtendedStyle(IntPtr hWnd, int bits)
-    {
-        if (IntPtr.Size == 8)
-        {
-            var current = (long)GetWindowLongPtr64(hWnd, GWL_EXSTYLE);
-            SetWindowLongPtr64(hWnd, GWL_EXSTYLE, new IntPtr(current | (uint)bits));
-        }
-        else
-        {
-            var current = GetWindowLong32(hWnd, GWL_EXSTYLE);
-            SetWindowLong32(hWnd, GWL_EXSTYLE, current | bits);
-        }
-    }
 }

@@ -233,6 +233,26 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The monitor learned an account's login while this window was open. The window loaded its
+    /// own copy of the settings before that, so without this its Save wrote the empty login it
+    /// had straight back over the one just learned, and the card said "Unverified account"
+    /// until the next restart.
+    /// </summary>
+    public void ApplyResolvedLogin(string accountId, string login)
+    {
+        if (_settings.FindAccount(accountId) is { } stored)
+        {
+            stored.Login = login;
+        }
+
+        if (Accounts.FirstOrDefault(a => string.Equals(a.Id, accountId, StringComparison.Ordinal)) is { } shown
+            && string.IsNullOrWhiteSpace(shown.Login))
+        {
+            shown.Login = login;
+        }
+    }
+
     private void RemoveAccount(AccountViewModel account)
     {
         if (!Accounts.Remove(account))
@@ -291,7 +311,16 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings.Accounts = [.. Accounts.Select(a => a.ToAccount())];
         _settings.Repositories = [.. Accounts.SelectMany(a => a.ToSubscriptions())];
 
-        _settingsStore.Save(_settings);
+        if (!_settingsStore.Save(_settings))
+        {
+            // Nothing else is touched: tokens are only deleted or written for a settings file
+            // that names them, and the window stays open so the change is not lost.
+            Report(
+                $"Could not write settings.json under {AppPaths.DataDirectory}. "
+                + "Another program may have the file open; try again in a moment.",
+                isError: true);
+            return;
+        }
 
         foreach (var id in _removedAccountIds)
         {

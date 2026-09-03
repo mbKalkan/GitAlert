@@ -50,6 +50,29 @@ public partial class App : Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
 
+        try
+        {
+            Compose(e.Args);
+        }
+        catch (Exception ex)
+        {
+            // Without the shell there is no tray icon, no window and no way to quit. Swallowed by
+            // the handler above, a failure here left a process sitting invisible in Task Manager.
+            Log(ex);
+
+            MessageBox.Show(
+                $"GitAlert could not start.\n\n{ex.Message}\n\nDetails were written to {AppPaths.LogFile}.",
+                "GitAlert",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+
+            Shutdown(1);
+        }
+    }
+
+    /// <summary>Wires the application together, in dependency order.</summary>
+    private void Compose(string[] args)
+    {
         AppPaths.EnsureCreated();
 
         var settingsStore = new SettingsStore();
@@ -87,7 +110,7 @@ public partial class App : Application
 
         // A first run has nothing to show, so take the user straight to setup - unless Windows
         // started us at sign-in, where popping a window would be rude.
-        var launchedAtLogon = e.Args.Contains(StartupManager.StartupArgument, StringComparer.OrdinalIgnoreCase);
+        var launchedAtLogon = args.Contains(StartupManager.StartupArgument, StringComparer.OrdinalIgnoreCase);
 
         if (!launchedAtLogon && (settings.Accounts.Count == 0 || settings.Repositories.Count == 0))
         {
@@ -201,6 +224,12 @@ public partial class App : Application
 
         // A failed poll or a rendering hiccup must not take the tray icon down with it.
         e.Handled = true;
+
+        if (_shell is null)
+        {
+            // Unless there is no tray icon to keep: carrying on would leave an invisible process.
+            Shutdown(1);
+        }
     }
 
     private void OnDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)

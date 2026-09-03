@@ -182,6 +182,60 @@ public class SettingsTests : IDisposable
         Assert.False(File.Exists(_path + ".corrupt"));
     }
 
+    /// <summary>
+    /// A name this build does not know is what a newer build wrote before the user went back a
+    /// version. It used to cost the whole file: set aside as corrupt, every account forgotten.
+    /// </summary>
+    [Fact]
+    public void A_name_this_build_does_not_know_costs_that_entry_rather_than_the_whole_file()
+    {
+        File.WriteAllText(
+            _path,
+            """{"pollIntervalMinutes":15,"theme":"Neon","mutedKinds":["Star","Hologram",{"odd":true},7000]}""");
+
+        var settings = new SettingsStore(_path).Load();
+
+        Assert.Equal(15, settings.PollIntervalMinutes);
+        Assert.Equal(AppTheme.System, settings.Theme);
+        Assert.Single(settings.MutedKinds);
+        Assert.Contains(AlertKind.Star, settings.MutedKinds);
+        Assert.False(File.Exists(_path + ".corrupt"));
+    }
+
+    [Fact]
+    public void Muted_kinds_and_the_theme_still_round_trip_by_name()
+    {
+        var store = new SettingsStore(_path);
+        store.Save(new AppSettings { Theme = AppTheme.Dark, MutedKinds = [AlertKind.PullRequest] });
+
+        var written = File.ReadAllText(_path);
+        Assert.Contains("\"Dark\"", written);
+        Assert.Contains("\"PullRequest\"", written);
+
+        var loaded = store.Load();
+        Assert.Equal(AppTheme.Dark, loaded.Theme);
+        Assert.True(loaded.IsMuted(AlertKind.PullRequest));
+    }
+
+    /// <summary>
+    /// Roaming AppData is what sync agents watch, and a file one of them has open refuses the
+    /// rename. That was an exception out of Save; now it is an answer the caller can show.
+    /// </summary>
+    [Fact]
+    public void A_settings_file_that_cannot_be_written_is_reported_rather_than_thrown()
+    {
+        var store = new SettingsStore(_path);
+        Assert.True(store.Save(new AppSettings()));
+
+        using (File.Open(_path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.False(store.Save(new AppSettings { PollIntervalMinutes = 30 }));
+        }
+
+        Assert.True(store.Save(new AppSettings { PollIntervalMinutes = 30 }));
+        Assert.Equal(30, store.Load().PollIntervalMinutes);
+    }
+
     [Fact]
     public void A_repository_whose_account_is_gone_is_dropped()
     {
@@ -252,7 +306,7 @@ public class SettingsTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var file in new[] { _path, _path + ".corrupt" })
+        foreach (var file in new[] { _path, _path + ".corrupt", _path + ".tmp" })
         {
             if (File.Exists(file))
             {

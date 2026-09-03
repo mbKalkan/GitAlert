@@ -13,6 +13,7 @@ public sealed class Alert
     /// </summary>
     public required string Id { get; init; }
 
+    [JsonConverter(typeof(AlertKindConverter))]
     public required AlertKind Kind { get; init; }
 
     /// <summary>Headline, e.g. "3 new commits on main".</summary>
@@ -70,6 +71,7 @@ public sealed class Alert
     /// <summary>
     /// Severity hint that colours the card accent - a failed CI run is red, a passing one green.
     /// </summary>
+    [JsonConverter(typeof(AlertSeverityConverter))]
     public AlertSeverity Severity { get; init; } = AlertSeverity.Normal;
 
     [JsonIgnore]

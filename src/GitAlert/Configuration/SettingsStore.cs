@@ -52,19 +52,45 @@ public sealed class SettingsStore
         }
     }
 
-    public void Save(AppSettings settings)
+    /// <summary>
+    /// Writes the settings. Returns false when the file could not be written; what is in memory
+    /// still stands, and the caller decides whether that is worth telling anyone.
+    /// </summary>
+    /// <remarks>
+    /// Roaming AppData is what OneDrive and backup agents watch, and a file one of them has
+    /// open for a moment refuses the rename. That used to surface as an exception out of the
+    /// window closing, or out of Save with the window left open and nothing said. Once more
+    /// after a beat is nearly always enough; after that it is reported rather than thrown.
+    /// </remarks>
+    public bool Save(AppSettings settings)
     {
         settings.Normalise();
 
         lock (_gate)
         {
-            AppPaths.EnsureCreated();
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    AppPaths.EnsureCreated();
 
-            var json = JsonSerializer.Serialize(settings, SerializerOptions);
-            var temp = _path + ".tmp";
+                    var json = JsonSerializer.Serialize(settings, SerializerOptions);
+                    var temp = _path + ".tmp";
 
-            File.WriteAllText(temp, json);
-            File.Move(temp, _path, overwrite: true);
+                    File.WriteAllText(temp, json);
+                    File.Move(temp, _path, overwrite: true);
+                    return true;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt >= 2)
+                    {
+                        return false;
+                    }
+
+                    Thread.Sleep(150);
+                }
+            }
         }
     }
 

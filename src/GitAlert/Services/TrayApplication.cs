@@ -30,6 +30,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     private readonly FlyoutWindow _flyout;
 
     private SettingsWindow? _settingsWindow;
+    private SettingsViewModel? _settingsViewModel;
     private ContextMenu? _menu;
 
     /// <summary>Remembered so a click on the toast can open the thing it was about.</summary>
@@ -103,10 +104,12 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this);
 
+        _settingsViewModel = viewModel;
         _settingsWindow = new SettingsWindow(viewModel);
         _settingsWindow.Closed += (_, _) =>
         {
             viewModel.Dispose();
+            _settingsViewModel = null;
             _settingsWindow = null;
         };
 
@@ -195,6 +198,9 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     private void OnAccountResolved(object? sender, AccountIdentity identity) =>
         _dispatcher.InvokeAsync(() =>
         {
+            // An open settings window holds its own copy, loaded before the login was known.
+            _settingsViewModel?.ApplyResolvedLogin(identity.AccountId, identity.Login);
+
             var account = _settings.FindAccount(identity.AccountId);
 
             if (account is null || string.Equals(account.Login, identity.Login, StringComparison.Ordinal))
