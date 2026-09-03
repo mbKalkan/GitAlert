@@ -70,18 +70,18 @@ push of several the net change across the range, a pull request its whole file l
 Mentions, review requests and assignments from `/notifications`, per account, folded into the same
 list. With more than one account the cards say which identity saw each alert.
 
-**History, not just what it caught**
-Alerts begin the day you point GitAlert at a repository. Switch the list to History and it reads the
-repository's commits straight from GitHub — everything that happened before GitAlert was watching.
-Open a project to read its history, page as far back as you care to go, and each commit opens its
-diff in the same pane. Nothing is fetched until a project is opened, so the list itself costs
-nothing.
+**One timeline, not a live feed and an archive**
+Alerts begin the day you point GitAlert at a repository, but the commits before that are still
+there. Both sit in the same list: a project's alerts, and its earlier commits fetched from GitHub
+when you ask for them, ordered by when they happened. A push alert and its commit are the same
+event and share an identity, so the merge collapses the duplicate instead of showing it twice.
+Nothing is fetched until you ask, so the list itself costs nothing.
 
 **A section per project, in your order**
 Each project is a collapsible section with its own count, and the arrows on its header move it up
-or down — so the most important repository sits at the top and stays there across restarts. Alerts
-shows the projects that have something to say; History shows them all, because that is where you go
-looking. One switch hides what you have already read.
+or down — so the most important repository sits at the top and stays there across restarts. One
+switch turns the list back into just what needs attention: unread alerts only, and only the
+projects that have some.
 
 **Quiet by design**
 Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it

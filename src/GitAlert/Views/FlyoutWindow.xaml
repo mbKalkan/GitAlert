@@ -322,7 +322,7 @@
                      TextWrapping="Wrap"
                      Visibility="{Binding HasMessage, Converter={StaticResource BoolToVisibility}}" />
 
-          <Button Content="Load more"
+          <Button Content="{Binding LoadMoreLabel}"
                   Style="{StaticResource GhostButton}"
                   HorizontalAlignment="Left"
                   Margin="22,2,0,4"
@@ -623,50 +623,22 @@
 
       <StackPanel Grid.Row="1" Margin="16,0,14,8">
 
-        <!-- One toolbar: the mode on the left, and the one switch that changes what the
-             list contains rather than how it is arranged. Ordering projects is done on the
-             sections themselves, which is why there is no sort or project picker here. -->
-        <Grid Margin="0,0,0,7">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
+        <!-- Alerts and commits are one timeline now, so there is no mode to choose. What is
+             left is the one switch that changes what the list contains rather than how it is
+             arranged; ordering the projects is done on the sections themselves. -->
+        <Border CornerRadius="13"
+                Padding="2"
+                Margin="0,0,0,7"
+                HorizontalAlignment="Left"
+                Background="{DynamicResource ChipBackground}">
+          <Button Style="{StaticResource ModeChip}"
+                  Content="Unread only"
+                  Tag="{Binding UnreadOnly}"
+                  ToolTip="Show only alerts you have not read, and only the projects that have some"
+                  Command="{Binding ToggleUnreadOnlyCommand}" />
+        </Border>
 
-          <Border Grid.Column="0"
-                  CornerRadius="13"
-                  Padding="2"
-                  Background="{DynamicResource ChipBackground}">
-            <StackPanel Orientation="Horizontal">
-              <Button Style="{StaticResource ModeChip}"
-                      Content="Alerts"
-                      Tag="{Binding IsAlertMode}"
-                      ToolTip="What arrived while GitAlert was running"
-                      Command="{Binding ShowAlertsCommand}" />
-              <Button Style="{StaticResource ModeChip}"
-                      Content="History"
-                      Tag="{Binding IsHistoryMode}"
-                      ToolTip="Every commit in the repository, however far back"
-                      Command="{Binding ShowHistoryCommand}" />
-            </StackPanel>
-          </Border>
-
-          <Border Grid.Column="1"
-                  CornerRadius="13"
-                  Padding="2"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Center"
-                  Background="{DynamicResource ChipBackground}"
-                  Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
-            <Button Style="{StaticResource ModeChip}"
-                    Content="Unread only"
-                    Tag="{Binding UnreadOnly}"
-                    ToolTip="Hide alerts you have already read"
-                    Command="{Binding ToggleUnreadOnlyCommand}" />
-          </Border>
-        </Grid>
-
-        <ItemsControl ItemsSource="{Binding Filters}"
-                      Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
+        <ItemsControl ItemsSource="{Binding Filters}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
               <WrapPanel Orientation="Horizontal" />

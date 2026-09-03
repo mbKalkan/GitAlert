@@ -8,9 +8,10 @@ namespace GitAlert.ViewModels;
 public sealed record GroupPage(IReadOnlyList<AlertViewModel> Items, bool HasMore);
 
 /// <summary>
-/// One watched repository as a collapsible section. Every project gets one whether or not it has
-/// anything to show, so the list is the shape of what is being watched rather than a shape that
-/// changes under you as alerts arrive.
+/// One watched repository as a collapsible section, holding everything known about it: the alerts
+/// GitAlert caught while running and the commits it can still fetch from before that. They are one
+/// timeline, not two tabs - a push alert and its commit are the same event and share an identity,
+/// so merging them collapses the duplicate rather than showing it twice.
 /// </summary>
 public sealed partial class ProjectGroupViewModel : ObservableObject
 {
@@ -21,6 +22,12 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     private readonly Action<ProjectGroupViewModel, int>? _move;
 
     private int _page;
+
+    /// <summary>Alerts handed in from the store, which carry the read state.</summary>
+    private readonly List<AlertViewModel> _alerts = [];
+
+    /// <summary>Commits fetched from the repository's history.</summary>
+    private readonly List<AlertViewModel> _commits = [];
 
     [ObservableProperty]
     private bool _isExpanded;
@@ -36,7 +43,7 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     private bool _isLoading;
 
     [ObservableProperty]
-    private bool _canLoadMore;
+    private bool _canLoadMore = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMessage))]
@@ -86,27 +93,49 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     /// <summary>True once history has been fetched, so expanding again does not refetch.</summary>
     public bool IsLoaded => _page > 0;
 
-    /// <summary>True when this section fills itself on demand rather than being handed its rows.</summary>
-    public bool IsLazy => _loadPage is not null;
+    /// <summary>
+    /// A count is only honest once there is something to count. A zero on a project nobody has
+    /// opened would read as "nothing here" when it means "nobody has looked yet".
+    /// </summary>
+    public bool ShowCount => Items.Count > 0;
 
     /// <summary>
-    /// A count is only honest once there is something to count. On an unopened history section a
-    /// zero would read as "no commits" when it means "nobody has looked yet".
+    /// Reaching further back is always worth offering until a short page proves there is no more.
     /// </summary>
-    public bool ShowCount => !IsLazy || IsLoaded;
+    public string LoadMoreLabel => IsLoaded ? "Load more" : "Load earlier commits";
 
-    /// <summary>Fills the group from an already-known set of alerts.</summary>
-    public void SetItems(IEnumerable<AlertViewModel> items)
+    /// <summary>Hands the group the alerts already known for this project.</summary>
+    public void SetAlerts(IEnumerable<AlertViewModel> alerts)
     {
+        _alerts.Clear();
+        _alerts.AddRange(alerts);
+        Merge();
+    }
+
+    /// <summary>
+    /// Rebuilds the single timeline from both sources. The stored alert wins a tie because it is
+    /// the one carrying the read state and the selection; the fetched commit is the same event
+    /// seen from the other side.
+    /// </summary>
+    private void Merge()
+    {
+        var merged = _alerts
+            .Concat(_commits)
+            .GroupBy(i => i.Model.Id, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderByDescending(i => i.Model.Timestamp)
+            .ToList();
+
         Items.Clear();
 
-        foreach (var item in Order(items))
+        foreach (var item in merged)
         {
             Items.Add(item);
         }
 
         UnreadCount = Items.Count(i => !i.IsRead);
         OnPropertyChanged(nameof(CountText));
+        OnPropertyChanged(nameof(ShowCount));
     }
 
     [RelayCommand]
@@ -120,9 +149,10 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     {
         IsExpanded = !IsExpanded;
 
-        // History is fetched the moment a project is opened and not before: expanding is the
-        // only reliable signal that someone actually wants to read it.
-        if (IsExpanded && _loadPage is not null && !IsLoaded)
+        // Commits are fetched when someone opens a project and not before. A project that came
+        // open because it had alerts waits for the button instead, so simply showing the list
+        // never costs a request per project.
+        if (IsExpanded && _loadPage is not null && !IsLoaded && _alerts.Count == 0)
         {
             await LoadMoreAsync().ConfigureAwait(true);
         }
@@ -143,22 +173,19 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         {
             var page = await _loadPage(this, _page + 1).ConfigureAwait(true);
 
-            foreach (var item in page.Items)
-            {
-                Items.Add(item);
-            }
-
+            _commits.AddRange(page.Items);
             _page++;
             CanLoadMore = page.HasMore;
+
             OnPropertyChanged(nameof(IsLoaded));
-            OnPropertyChanged(nameof(ShowCount));
+            OnPropertyChanged(nameof(LoadMoreLabel));
+
+            Merge();
 
             if (Items.Count == 0)
             {
-                Message = "No commits here yet.";
+                Message = "Nothing here yet.";
             }
-
-            OnPropertyChanged(nameof(CountText));
         }
         catch (Exception ex)
         {
@@ -171,19 +198,17 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         }
     }
 
-    /// <summary>Forgets what was fetched, so the next expansion starts over.</summary>
+    /// <summary>Forgets what was fetched, so the next request starts over.</summary>
     public void Reset()
     {
-        Items.Clear();
+        _commits.Clear();
         _page = 0;
-        CanLoadMore = false;
-        OnPropertyChanged(nameof(IsLoaded));
-        OnPropertyChanged(nameof(ShowCount));
+        CanLoadMore = true;
         Message = null;
-        UnreadCount = 0;
-        OnPropertyChanged(nameof(CountText));
-    }
 
-    private static IEnumerable<AlertViewModel> Order(IEnumerable<AlertViewModel> items) =>
-        items.OrderByDescending(i => i.Model.Timestamp);
+        OnPropertyChanged(nameof(IsLoaded));
+        OnPropertyChanged(nameof(LoadMoreLabel));
+
+        Merge();
+    }
 }

@@ -87,15 +87,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _unreadOnly;
 
-    /// <summary>
-    /// True while the left pane is showing a repository's commit history rather than the alerts
-    /// GitAlert happened to catch. Alerts only start the day you point GitAlert at a repository;
-    /// the history was always there.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAlertMode))]
-    private bool _isHistoryMode;
-
     /// <summary>The order the user put the projects in. Anything absent follows alphabetically.</summary>
     private readonly List<string> _order;
 
@@ -158,8 +149,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FilterChipViewModel> Filters { get; }
 
-    public bool IsAlertMode => !IsHistoryMode;
-
     /// <summary>The right-hand pane: the selected alert and the files it changed.</summary>
     public AlertDetailViewModel Detail { get; }
 
@@ -199,22 +188,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         ActiveFilter = chip.Filter;
-        ApplyFilter();
-    }
-
-    [RelayCommand]
-    private async Task ShowAlertsAsync()
-    {
-        IsHistoryMode = false;
-        await ClearSelectionAsync().ConfigureAwait(true);
-        ApplyFilter();
-    }
-
-    [RelayCommand]
-    private async Task ShowHistoryAsync()
-    {
-        IsHistoryMode = true;
-        await ClearSelectionAsync().ConfigureAwait(true);
         ApplyFilter();
     }
 
@@ -551,18 +524,14 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             var group = new ProjectGroupViewModel(
                 repository,
                 AccountIdFor(repository),
-                IsHistoryMode ? LoadHistoryPageAsync : null,
+                LoadHistoryPageAsync,
                 MoveProject);
 
-            if (!IsHistoryMode)
-            {
-                group.SetItems(byRepository.GetValueOrDefault(repository, []));
-            }
+            group.SetAlerts(byRepository.GetValueOrDefault(repository, []));
 
-            // A section with nothing in it opens to nothing, so it starts folded. Otherwise the
-            // user's own last choice wins, and a first sight of the project is open.
-            group.IsExpanded = !_collapsed.Contains(repository)
-                               && (IsHistoryMode ? Groups.Count == 0 && OnlyOneProject() : group.Items.Count > 0);
+            // A section with nothing to show opens to nothing, so it starts folded and waits to
+            // be asked. Otherwise the user's own last choice wins.
+            group.IsExpanded = !_collapsed.Contains(repository) && group.Items.Count > 0;
 
             Groups.Add(group);
         }
@@ -573,14 +542,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             Groups[i].CanMoveDown = i < Groups.Count - 1;
         }
 
-        // Opening history on a single project should not need a click to get going.
-        foreach (var group in Groups.Where(g => g.IsExpanded && IsHistoryMode && !g.IsLoaded))
-        {
-            _ = group.LoadMoreCommand.ExecuteAsync(null);
-        }
     }
-
-    private bool OnlyOneProject() => ProjectsInView().Count == 1;
 
     /// <summary>Every project GitAlert knows about, in the user's order.</summary>
     private List<string> AllProjects()
@@ -610,15 +572,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         IEnumerable<string> projects = AllProjects();
 
-        // Showing alerts means showing what has something to say. History is the opposite: it is
-        // a place to go looking, so every project stays reachable whether or not it has news.
-        if (!IsHistoryMode)
+        // Every project stays reachable, because the list is also where you go looking for what
+        // happened before GitAlert was watching. Asking for unread only turns it back into a
+        // list of what needs attention, and a project with nothing unread drops out of it.
+        if (UnreadOnly)
         {
-            var withAlerts = Alerts
+            var withUnread = Alerts
                 .Select(a => a.Repository)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            projects = projects.Where(withAlerts.Contains);
+            projects = projects.Where(withUnread.Contains);
         }
 
         return [.. projects];
