@@ -78,8 +78,9 @@ event and share an identity, so the merge collapses the duplicate instead of sho
 Nothing is fetched until you ask, so the list itself costs nothing.
 
 **A section per project, in your order**
-Each project is a collapsible section with its own count, and the arrows on its header move it up
-or down — so the most important repository sits at the top and stays there across restarts. One
+Each project is a collapsible section with its own count. Drag its header to wherever it belongs,
+or nudge it with the arrows — so the most important repository sits at the top and stays there
+across restarts. One
 switch turns the list back into just what needs attention: unread alerts only, and only the
 projects that have some.
 

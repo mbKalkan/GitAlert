@@ -7,6 +7,14 @@ namespace GitAlert.ViewModels;
 /// <summary>A page of rows for a project, and whether asking again would return more.</summary>
 public sealed record GroupPage(IReadOnlyList<AlertViewModel> Items, bool HasMore);
 
+/// <summary>The insertion line shown on a project while another is dragged over it.</summary>
+public enum DropMarker
+{
+    None,
+    Above,
+    Below,
+}
+
 /// <summary>
 /// One watched repository as a collapsible section, holding everything known about it: the alerts
 /// GitAlert caught while running and the commits it can still fetch from before that. They are one
@@ -31,6 +39,14 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isExpanded;
+
+    /// <summary>Where a dragged project would land relative to this one, while one hovers over it.</summary>
+    [ObservableProperty]
+    private DropMarker _dropMarker;
+
+    /// <summary>True for the project in the air, so its header can fade until it lands.</summary>
+    [ObservableProperty]
+    private bool _isBeingDragged;
 
     /// <summary>False at the top and bottom of the list, so the arrows can grey out there.</summary>
     [ObservableProperty]

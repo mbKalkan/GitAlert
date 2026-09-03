@@ -318,11 +318,235 @@ public partial class FlyoutWindow : Window
     /// <summary>The nearest scroll viewer above an element that has somewhere sideways to go.</summary>
     private static ScrollViewer? FindSidewaysScroller(DependencyObject start)
     {
-        for (var current = start; current is not null; current = VisualTreeHelper.GetParent(current))
+        for (var current = start; current is not null; current = ParentOf(current))
         {
             if (current is ScrollViewer { ScrollableWidth: > 0 } scroller)
             {
                 return scroller;
+            }
+        }
+
+        return null;
+    }
+
+    // ---- Dragging a project to a new place in the list ----------------------
+
+    private Point _dragOrigin;
+    private ProjectGroupViewModel? _dragCandidate;
+
+    /// <summary>
+    /// A press on a project header may be the start of a drag. Nothing happens until the mouse
+    /// has moved far enough to mean it, so a plain click still folds the section.
+    /// </summary>
+    private void OnGroupHeaderMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragCandidate = null;
+
+        // The arrows live inside the header. A press on one of them is a click on it, not a drag.
+        if (sender is Button header
+            && header.DataContext is ProjectGroupViewModel group
+            && e.OriginalSource is DependencyObject source
+            && ReferenceEquals(FindAncestor<Button>(source), header))
+        {
+            _dragOrigin = e.GetPosition(this);
+            _dragCandidate = group;
+        }
+    }
+
+    private void OnGroupHeaderMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragCandidate is not { } group || sender is not Button header || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var moved = e.GetPosition(this) - _dragOrigin;
+
+        if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        _dragCandidate = null;
+        group.IsBeingDragged = true;
+
+        try
+        {
+            DragDrop.DoDragDrop(header, new DataObject(typeof(ProjectGroupViewModel), group), DragDropEffects.Move);
+        }
+        finally
+        {
+            // Dropped here, dropped somewhere else or let go: nothing is in the air any more.
+            _viewModel.ClearDragMarkers();
+        }
+    }
+
+    private void OnGroupsDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DragDropEffects.None;
+        e.Handled = true;
+
+        if (sender is not ItemsControl list || Dragged(e) is not { } dragged)
+        {
+            return;
+        }
+
+        var (target, above) = TargetUnder(list, e.GetPosition(list));
+
+        foreach (var group in _viewModel.Groups)
+        {
+            group.DropMarker = ReferenceEquals(group, target) && !ReferenceEquals(group, dragged)
+                ? above ? DropMarker.Above : DropMarker.Below
+                : DropMarker.None;
+        }
+
+        if (target is not null && !ReferenceEquals(target, dragged))
+        {
+            e.Effects = DragDropEffects.Move;
+        }
+
+        ScrollTowardsEdge(list, e);
+    }
+
+    private void OnGroupsDragLeave(object sender, DragEventArgs e)
+    {
+        // DragLeave also fires on the way from one row to the next, so only a pointer that has
+        // really left the list takes the line down.
+        if (sender is not ItemsControl list)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(list);
+
+        if (point.X < 0 || point.Y < 0 || point.X > list.ActualWidth || point.Y > list.ActualHeight)
+        {
+            foreach (var group in _viewModel.Groups)
+            {
+                group.DropMarker = DropMarker.None;
+            }
+        }
+    }
+
+    private void OnGroupsDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+
+        if (sender is not ItemsControl list || Dragged(e) is not { } dragged)
+        {
+            return;
+        }
+
+        var (target, above) = TargetUnder(list, e.GetPosition(list));
+        _viewModel.ClearDragMarkers();
+
+        if (target is not null)
+        {
+            _viewModel.PlaceProject(dragged, target, above);
+        }
+    }
+
+    private static ProjectGroupViewModel? Dragged(DragEventArgs e) =>
+        e.Data.GetData(typeof(ProjectGroupViewModel)) as ProjectGroupViewModel;
+
+    /// <summary>
+    /// The project under a point in the list, and whether the point is in the top half of its
+    /// header. Anywhere lower in the section - the alerts inside an open one - means "after it".
+    /// </summary>
+    private static (ProjectGroupViewModel? Group, bool Above) TargetUnder(ItemsControl list, Point point)
+    {
+        ProjectGroupViewModel? last = null;
+
+        for (var i = 0; i < list.Items.Count; i++)
+        {
+            if (list.Items[i] is not ProjectGroupViewModel group
+                || list.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement container)
+            {
+                continue;
+            }
+
+            last = group;
+
+            var top = container.TranslatePoint(new Point(0, 0), list).Y;
+
+            if (point.Y < top)
+            {
+                return (group, true);
+            }
+
+            if (point.Y <= top + container.ActualHeight)
+            {
+                var header = FindDescendant<Button>(container);
+                var headerTop = header?.TranslatePoint(new Point(0, 0), list).Y ?? top;
+                var headerHeight = header?.ActualHeight ?? container.ActualHeight;
+
+                return (group, point.Y < headerTop + headerHeight / 2);
+            }
+        }
+
+        // Below everything: after the last project.
+        return (last, false);
+    }
+
+    /// <summary>Creeps the list along while a drag hovers near its top or bottom edge.</summary>
+    private static void ScrollTowardsEdge(ItemsControl list, DragEventArgs e)
+    {
+        if (FindAncestor<ScrollViewer>(list) is not { } scroller)
+        {
+            return;
+        }
+
+        const double Edge = 28;
+        const double Step = 10;
+
+        var y = e.GetPosition(scroller).Y;
+
+        if (y < Edge)
+        {
+            scroller.ScrollToVerticalOffset(scroller.VerticalOffset - Step);
+        }
+        else if (y > scroller.ActualHeight - Edge)
+        {
+            scroller.ScrollToVerticalOffset(scroller.VerticalOffset + Step);
+        }
+    }
+
+    // ---- Tree walking --------------------------------------------------------
+
+    /// <summary>The parent of a node, whichever tree it lives in: a Run has no visual parent.</summary>
+    private static DependencyObject? ParentOf(DependencyObject node) =>
+        node is Visual or System.Windows.Media.Media3D.Visual3D
+            ? VisualTreeHelper.GetParent(node)
+            : LogicalTreeHelper.GetParent(node);
+
+    private static T? FindAncestor<T>(DependencyObject? start) where T : DependencyObject
+    {
+        for (var current = start; current is not null; current = ParentOf(current))
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindDescendant<T>(child) is { } deeper)
+            {
+                return deeper;
             }
         }
 

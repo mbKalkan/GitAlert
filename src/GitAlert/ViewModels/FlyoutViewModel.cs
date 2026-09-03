@@ -546,6 +546,53 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ApplyFilter();
     }
 
+    /// <summary>
+    /// Puts one project directly above or below another, wherever the two currently sit. This is
+    /// what dropping a dragged header does; the arrows still move a project one step at a time.
+    /// </summary>
+    public void PlaceProject(ProjectGroupViewModel moved, ProjectGroupViewModel target, bool above)
+    {
+        if (ReferenceEquals(moved, target))
+        {
+            return;
+        }
+
+        var order = AllProjects();
+        var from = order.FindIndex(r => string.Equals(r, moved.Repository, StringComparison.OrdinalIgnoreCase));
+
+        if (from < 0)
+        {
+            return;
+        }
+
+        order.RemoveAt(from);
+
+        var to = order.FindIndex(r => string.Equals(r, target.Repository, StringComparison.OrdinalIgnoreCase));
+
+        if (to < 0)
+        {
+            return;
+        }
+
+        order.Insert(above ? to : to + 1, moved.Repository);
+
+        _order.Clear();
+        _order.AddRange(order);
+
+        Persist();
+        ApplyFilter();
+    }
+
+    /// <summary>Takes down every insertion line and the fade on whatever was being dragged.</summary>
+    public void ClearDragMarkers()
+    {
+        foreach (var group in _sections.Values)
+        {
+            group.DropMarker = DropMarker.None;
+            group.IsBeingDragged = false;
+        }
+    }
+
     private void Persist() => _shell.SaveListPreferences(_order, UnreadOnly);
 
     private void RebuildGroups()
