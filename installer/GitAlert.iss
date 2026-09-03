@@ -21,7 +21,7 @@
 
 #define AppName "GitAlert"
 #define AppPublisher "Mert Berkan Kalkan"
-#define AppUrl "https://github.com/mertberkankalkan/GitAlert"
+#define AppUrl "https://github.com/mbKalkan/GitAlert"
 #define AppExeName "GitAlert.exe"
 
 [Setup]

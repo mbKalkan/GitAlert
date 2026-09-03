@@ -9,8 +9,8 @@
 Pushes, pull requests, reviews, issues, comments, releases, branches and CI runs,
 in one quiet panel that drops out of the notification area.
 
-[![CI](https://github.com/mertberkankalkan/GitAlert/actions/workflows/ci.yml/badge.svg)](https://github.com/mertberkankalkan/GitAlert/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/mertberkankalkan/GitAlert?include_prereleases&sort=semver)](https://github.com/mertberkankalkan/GitAlert/releases/latest)
+[![CI](https://github.com/mbKalkan/GitAlert/actions/workflows/ci.yml/badge.svg)](https://github.com/mbKalkan/GitAlert/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mbKalkan/GitAlert?include_prereleases&sort=semver)](https://github.com/mbKalkan/GitAlert/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)](#install)
@@ -81,7 +81,7 @@ crisp at every DPI, adapts to a light or dark taskbar, and carries a badge when 
 
 ### The installer (recommended)
 
-Grab **`GitAlert-Setup-x.y.z-x64.exe`** from the [latest release](https://github.com/mertberkankalkan/GitAlert/releases/latest)
+Grab **`GitAlert-Setup-x.y.z-x64.exe`** from the [latest release](https://github.com/mbKalkan/GitAlert/releases/latest)
 and run it.
 
 It is a per-user install: no administrator prompt, nothing written outside your own profile, and a
@@ -99,7 +99,7 @@ and run `GitAlert.exe`.
 ### From source
 
 ```powershell
-git clone https://github.com/mertberkankalkan/GitAlert.git
+git clone https://github.com/mbKalkan/GitAlert.git
 cd GitAlert
 .\build.ps1 -Publish          # restore, build, test, publish to artifacts\publish
 ```
