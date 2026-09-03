@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -293,6 +294,39 @@ public partial class FlyoutWindow : Window
         }
 
         base.OnKeyDown(e);
+    }
+
+    /// <summary>
+    /// Shift and the wheel scroll sideways, the way every editor and browser does it. WPF's
+    /// ScrollViewer only ever turns the wheel into vertical movement, which left a wide diff
+    /// reachable by the thin bar under it and nothing else.
+    /// </summary>
+    protected override void OnPreviewMouseWheel(MouseWheelEventArgs e)
+    {
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)
+            && e.OriginalSource is DependencyObject source
+            && FindSidewaysScroller(source) is { } scroller)
+        {
+            scroller.ScrollToHorizontalOffset(scroller.HorizontalOffset - e.Delta);
+            e.Handled = true;
+            return;
+        }
+
+        base.OnPreviewMouseWheel(e);
+    }
+
+    /// <summary>The nearest scroll viewer above an element that has somewhere sideways to go.</summary>
+    private static ScrollViewer? FindSidewaysScroller(DependencyObject start)
+    {
+        for (var current = start; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is ScrollViewer { ScrollableWidth: > 0 } scroller)
+            {
+                return scroller;
+            }
+        }
+
+        return null;
     }
 
     protected override void OnClosing(CancelEventArgs e)

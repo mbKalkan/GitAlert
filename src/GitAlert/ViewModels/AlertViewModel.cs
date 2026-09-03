@@ -77,7 +77,7 @@ public sealed partial class AlertViewModel : ObservableObject
     /// </summary>
     public string RowMeta => Describe(withRepository: false);
 
-    private string Describe(bool withRepository)
+    private string Describe(bool withRepository, bool withTitle = true)
     {
         var parts = new List<string>();
 
@@ -87,7 +87,7 @@ public sealed partial class AlertViewModel : ObservableObject
         }
 
         // When the message has taken the top line, the headline belongs here instead.
-        if (LeadsWithDetail)
+        if (withTitle && LeadsWithDetail)
         {
             parts.Add(Model.Title);
         }
@@ -110,10 +110,22 @@ public sealed partial class AlertViewModel : ObservableObject
     }
 
     /// <summary>Full text for the tooltip, where there is room for everything.</summary>
-    public string Tooltip =>
-        string.IsNullOrWhiteSpace(Model.Detail)
-            ? $"{Model.Title}\n{Meta}\n{Model.Timestamp.ToLocalTime():d MMM yyyy HH:mm}"
-            : $"{Model.Title}\n{Model.Detail}\n{Meta}\n{Model.Timestamp.ToLocalTime():d MMM yyyy HH:mm}";
+    /// <remarks>
+    /// The headline is the first line here, so the meta line leaves it out: a push used to read
+    /// "New commit on main" twice, once at the top and once in the line that names the repository.
+    /// </remarks>
+    public string Tooltip
+    {
+        get
+        {
+            var when = Model.Timestamp.ToLocalTime().ToString("d MMM yyyy HH:mm");
+            var meta = Describe(withRepository: true, withTitle: false);
+
+            return string.IsNullOrWhiteSpace(Model.Detail)
+                ? $"{Model.Title}\n{meta}\n{when}"
+                : $"{Model.Title}\n{Model.Detail}\n{meta}\n{when}";
+        }
+    }
 
     public void MarkRead()
     {
