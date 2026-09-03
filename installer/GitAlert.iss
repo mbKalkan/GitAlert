@@ -38,7 +38,9 @@ VersionInfoProductName={#AppName}
 
 ; Per-user install: no UAC prompt, no effect on other accounts on the machine.
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; dialog lets a user choose "for everyone" during a normal install; commandline lets a
+; scripted upgrade pass /ALLUSERS or /CURRENTUSER so it lands where the previous one did.
+PrivilegesRequiredOverridesAllowed=dialog commandline
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes

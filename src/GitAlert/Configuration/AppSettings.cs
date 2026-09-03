@@ -97,8 +97,12 @@ public sealed class AppSettings
 
         Repositories = Repositories
             .Where(r => !string.IsNullOrWhiteSpace(r.Owner) && !string.IsNullOrWhiteSpace(r.Name))
-            // A repository whose account is gone has nothing to authenticate with.
-            .Where(r => known.Contains(r.AccountId))
+            // A repository whose account is gone has nothing to authenticate with. An empty
+            // account id is different: that is a repository from a pre-multi-account settings
+            // file, waiting for SettingsMigration to adopt it. Normalise runs while loading,
+            // before the migration gets a chance, so dropping those would silently delete the
+            // user's watch list on upgrade.
+            .Where(r => string.IsNullOrEmpty(r.AccountId) || known.Contains(r.AccountId))
             // The same repository may be watched once per account, but not twice under one.
             .GroupBy(r => $"{r.AccountId}|{r.FullName}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())

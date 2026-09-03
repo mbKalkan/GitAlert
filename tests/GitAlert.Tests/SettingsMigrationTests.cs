@@ -66,6 +66,62 @@ public class SettingsMigrationTests : IDisposable
         Assert.Null(settings.IncludeInbox);
     }
 
+    /// <summary>
+    /// Regression: loading normalises, and normalising used to drop every repository that had no
+    /// account id - which is exactly what a pre-multi-account file looks like. Upgrading silently
+    /// emptied the user's watch list before the migration ever ran.
+    /// </summary>
+    [Fact]
+    public void An_old_settings_file_survives_being_loaded_from_disk_and_migrated()
+    {
+        var path = Path.Combine(_directory, "settings.json");
+
+        File.WriteAllText(path, """
+        {
+          "repositories": [
+            { "owner": "ArkheonTechnologies", "name": "n8ro-test-notift", "enabled": true, "isPrivate": true }
+          ],
+          "pollIntervalMinutes": 2,
+          "mutedKinds": [],
+          "includeInbox": true,
+          "watchWorkflowRuns": true,
+          "onlyFailedWorkflowRuns": false,
+          "ignoreOwnActivity": true,
+          "showToasts": true,
+          "playSound": true,
+          "startWithWindows": true,
+          "theme": "System",
+          "maxHistory": 300
+        }
+        """);
+
+        WriteLegacyToken("ghp_example");
+
+        var store = new SettingsStore(path);
+        var settings = store.Load();
+
+        // The repository must still be there before the migration gets to it.
+        Assert.Single(settings.Repositories);
+
+        Assert.True(SettingsMigration.Apply(settings, _tokens));
+
+        var account = Assert.Single(settings.Accounts);
+        var repository = Assert.Single(settings.Repositories);
+
+        Assert.Equal("ArkheonTechnologies/n8ro-test-notift", repository.FullName);
+        Assert.Equal(account.Id, repository.AccountId);
+        Assert.True(repository.IsPrivate);
+        Assert.Equal("ghp_example", _tokens.Read(account.Id));
+
+        // And it survives the save/load round trip that follows the migration.
+        store.Save(settings);
+        var reloaded = store.Load();
+
+        Assert.Single(reloaded.Accounts);
+        Assert.Single(reloaded.Repositories);
+        Assert.Equal(account.Id, reloaded.Repositories[0].AccountId);
+    }
+
     [Fact]
     public void Migration_is_idempotent()
     {
