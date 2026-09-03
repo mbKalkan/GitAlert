@@ -28,6 +28,12 @@ public sealed class GhRepository
     [JsonPropertyName("full_name")]
     public string FullName { get; set; } = string.Empty;
 
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("owner")]
+    public GhUser? Owner { get; set; }
+
     [JsonPropertyName("private")]
     public bool IsPrivate { get; set; }
 
@@ -36,6 +42,19 @@ public sealed class GhRepository
 
     [JsonPropertyName("default_branch")]
     public string? DefaultBranch { get; set; }
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    /// <summary>When something was last pushed. Null on a repository that has never had a commit.</summary>
+    [JsonPropertyName("pushed_at")]
+    public DateTimeOffset? PushedAt { get; set; }
+
+    [JsonPropertyName("archived")]
+    public bool Archived { get; set; }
+
+    [JsonPropertyName("fork")]
+    public bool IsFork { get; set; }
 }
 
 public sealed class GhActor

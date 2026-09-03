@@ -18,6 +18,8 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     private readonly GitHubClient _client;
     private readonly Action<AccountViewModel> _remove;
 
+    private RepoSortOption _selectedSort = null!;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayName))]
     private string _login;
@@ -48,6 +50,28 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string? _pendingToken;
 
+    [ObservableProperty]
+    private bool _isDiscovering;
+
+    [ObservableProperty]
+    private bool _hasDiscovered;
+
+    [ObservableProperty]
+    private string _discoverySummary = string.Empty;
+
+    /// <summary>Search box over the discovered list, so five hundred repositories stay usable.</summary>
+    [ObservableProperty]
+    private string _repositoryFilter = string.Empty;
+
+    /// <summary>Everything the token can reach, before the search box and the sort are applied.</summary>
+    private readonly List<DiscoveredRepoViewModel> _discovered = [];
+
+    /// <summary>
+    /// Guards the two lists against fighting each other: ticking a box edits the watched list,
+    /// and editing the watched list re-ticks the boxes.
+    /// </summary>
+    private bool _syncingWatchState;
+
     public AccountViewModel(
         GitHubAccount account,
         string? token,
@@ -64,11 +88,39 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
         _client.SetToken(token);
 
         HasStoredToken = !string.IsNullOrEmpty(token);
+        _selectedSort = SortOptions[0];
     }
 
     public string Id { get; }
 
+    /// <summary>
+    /// Which order the discovered list is in. Declared as a plain property rather than a
+    /// generated one so the change handler can re-apply the view without a second notification.
+    /// </summary>
+    public RepoSortOption SelectedSort
+    {
+        get => _selectedSort;
+        set
+        {
+            if (SetProperty(ref _selectedSort, value))
+            {
+                ApplyRepositoryView();
+            }
+        }
+    }
+
     public ObservableCollection<RepoItemViewModel> Repositories { get; } = [];
+
+    /// <summary>The repositories this token can reach, filtered and sorted for display.</summary>
+    public ObservableCollection<DiscoveredRepoViewModel> DiscoveredRepositories { get; } = [];
+
+    public IReadOnlyList<RepoSortOption> SortOptions { get; } =
+    [
+        new(RepoSort.RecentlyPushed, "Recently pushed"),
+        new(RepoSort.Name, "Name"),
+        new(RepoSort.Owner, "Owner"),
+        new(RepoSort.Watched, "Watched first"),
+    ];
 
     public string DisplayName => string.IsNullOrWhiteSpace(Login) ? "Unverified account" : $"@{Login}";
 
@@ -83,6 +135,125 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
         1 => "1 repository",
         _ => $"{Repositories.Count} repositories",
     };
+
+    partial void OnRepositoryFilterChanged(string value) => ApplyRepositoryView();
+
+    /// <summary>
+    /// Asks GitHub what this token can see. Nothing is fetched until the user asks, because a
+    /// settings window that costs API calls just to open is a settings window nobody opens.
+    /// </summary>
+    [RelayCommand]
+    private async Task DiscoverAsync()
+    {
+        if (!HasStoredToken && string.IsNullOrWhiteSpace(PendingToken))
+        {
+            Report("Add a token for this account first.", isError: true);
+            return;
+        }
+
+        IsDiscovering = true;
+
+        try
+        {
+            var found = await _client.GetMyRepositoriesAsync().ConfigureAwait(true);
+
+            _discovered.Clear();
+            _discovered.AddRange(found.Select(r => new DiscoveredRepoViewModel(r, OnWatchToggled)));
+
+            HasDiscovered = true;
+            DiscoverySummary = found.Count switch
+            {
+                0 => "This token can reach no repositories.",
+                1 => "1 repository available",
+                _ => $"{found.Count} repositories available",
+            };
+
+            SyncWatchState();
+            ApplyRepositoryView();
+            Report(string.Empty, isError: false);
+        }
+        catch (GitHubException ex)
+        {
+            Report(ex.UserMessage, isError: true);
+        }
+        finally
+        {
+            IsDiscovering = false;
+        }
+    }
+
+    /// <summary>A box was ticked or cleared: start or stop watching that repository.</summary>
+    private void OnWatchToggled(DiscoveredRepoViewModel repository, bool watched)
+    {
+        if (_syncingWatchState)
+        {
+            return;
+        }
+
+        var existing = Repositories.FirstOrDefault(
+            r => string.Equals(r.FullName, repository.FullName, StringComparison.OrdinalIgnoreCase));
+
+        if (watched)
+        {
+            if (existing is null && RepoRef.TryParse(repository.FullName, out var repo))
+            {
+                // The list came from the token itself, so there is nothing left to verify.
+                Repositories.Add(new RepoItemViewModel(repo, repository.IsPrivate));
+            }
+        }
+        else if (existing is not null)
+        {
+            Repositories.Remove(existing);
+        }
+
+        OnPropertyChanged(nameof(RepositorySummary));
+    }
+
+    /// <summary>Re-ticks the boxes from the watched list, after it changed some other way.</summary>
+    private void SyncWatchState()
+    {
+        _syncingWatchState = true;
+
+        try
+        {
+            foreach (var candidate in _discovered)
+            {
+                candidate.IsWatched = Repositories.Any(
+                    r => string.Equals(r.FullName, candidate.FullName, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        finally
+        {
+            _syncingWatchState = false;
+        }
+    }
+
+    private void ApplyRepositoryView()
+    {
+        var term = RepositoryFilter.Trim();
+
+        IEnumerable<DiscoveredRepoViewModel> view = term.Length == 0
+            ? _discovered
+            : _discovered.Where(r => r.Matches(term));
+
+        view = SelectedSort.Sort switch
+        {
+            RepoSort.Name => view.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                                 .ThenBy(r => r.Owner, StringComparer.OrdinalIgnoreCase),
+            RepoSort.Owner => view.OrderBy(r => r.Owner, StringComparer.OrdinalIgnoreCase)
+                                  .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase),
+            RepoSort.Watched => view.OrderByDescending(r => r.IsWatched)
+                                    .ThenByDescending(r => r.PushedAt ?? DateTimeOffset.MinValue),
+            _ => view.OrderByDescending(r => r.PushedAt ?? DateTimeOffset.MinValue),
+        };
+
+        DiscoveredRepositories.Clear();
+
+        foreach (var repository in view)
+        {
+            DiscoveredRepositories.Add(repository);
+        }
+    }
 
     [RelayCommand]
     private async Task AddRepositoryAsync()
@@ -110,6 +281,7 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
             Repositories.Add(new RepoItemViewModel(repo, details.IsPrivate));
             NewRepositoryInput = string.Empty;
             OnPropertyChanged(nameof(RepositorySummary));
+            SyncWatchState();
             Report($"Watching {repo.FullName}.", isError: false);
         }
         catch (GitHubException ex)
@@ -128,6 +300,7 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
         if (repository is not null && Repositories.Remove(repository))
         {
             OnPropertyChanged(nameof(RepositorySummary));
+            SyncWatchState();
         }
     }
 

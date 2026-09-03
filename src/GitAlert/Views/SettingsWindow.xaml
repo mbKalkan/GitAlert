@@ -113,6 +113,52 @@
     </DataTemplate>
 
     <!-- One GitHub account, with the repositories watched under it. -->
+    <!-- A repository the token can reach, offered as a tick box. The data context is a
+         DiscoveredRepoViewModel; ticking it edits the watched list above. -->
+    <DataTemplate x:Key="DiscoveredRepositoryRow">
+      <Border Background="Transparent" Padding="2,1">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <CheckBox Grid.Column="0"
+                    Style="{StaticResource ModernCheckBox}"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding IsWatched, Mode=TwoWay}" />
+
+          <TextBlock Grid.Column="1"
+                     Margin="4,0,10,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     ToolTip="{Binding Description}">
+            <!-- Adjacent with no whitespace between them: XAML would otherwise insert a space
+                 and write the slug as "acme/ api-gateway". -->
+            <Run Text="{Binding OwnerPrefix, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" /><Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" />
+          </TextBlock>
+
+          <Border Grid.Column="2"
+                  Margin="0,0,8,0"
+                  Padding="6,1"
+                  CornerRadius="4"
+                  VerticalAlignment="Center"
+                  Background="{DynamicResource ChipBackground}"
+                  Visibility="{Binding IsPrivate, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="private" FontSize="10" Foreground="{DynamicResource TextSecondary}" />
+          </Border>
+
+          <TextBlock Grid.Column="3"
+                     Text="{Binding Activity}"
+                     Style="{StaticResource MutedText}"
+                     FontSize="11"
+                     VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+    </DataTemplate>
+
     <DataTemplate x:Key="AccountCard">
       <Border Background="{DynamicResource SurfaceElevated}"
               BorderBrush="{DynamicResource BorderSubtle}"
@@ -264,6 +310,88 @@
                      Style="{StaticResource MutedText}"
                      Margin="8,4,0,0"
                      Visibility="{Binding Repositories.Count, Converter={StaticResource EmptyCountToVisibility}}" />
+
+          <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,14,0,12" />
+
+          <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="AVAILABLE TO THIS TOKEN"
+                       Style="{StaticResource SectionHeader}"
+                       VerticalAlignment="Center" />
+
+            <Button Grid.Column="1"
+                    Content="Find repositories"
+                    Style="{StaticResource SecondaryButton}"
+                    Command="{Binding DiscoverCommand}"
+                    IsEnabled="{Binding IsDiscovering, Converter={StaticResource InverseBool}}" />
+          </Grid>
+
+          <TextBlock Style="{StaticResource MutedText}"
+                     Margin="0,0,0,8"
+                     TextWrapping="Wrap"
+                     Visibility="{Binding HasDiscovered, Converter={StaticResource InverseBoolToVisibility}}"
+                     Text="Everything this token can reach - your own repositories, the ones you collaborate on, and your organisations' - listed to tick rather than typed out." />
+
+          <TextBlock Text="Asking GitHub what this token can see&#8230;"
+                     Style="{StaticResource MutedText}"
+                     Margin="0,0,0,8"
+                     Visibility="{Binding IsDiscovering, Converter={StaticResource BoolToVisibility}}" />
+
+          <StackPanel Visibility="{Binding HasDiscovered, Converter={StaticResource BoolToVisibility}}">
+
+            <Grid Margin="0,0,0,8">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <Grid Grid.Column="0">
+                <TextBox Style="{StaticResource ModernTextBox}"
+                         Text="{Binding RepositoryFilter, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Text="Search"
+                           Style="{StaticResource MutedText}"
+                           Margin="12,0,0,0"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False"
+                           Visibility="{Binding RepositoryFilter, Converter={StaticResource EmptyStringToVisibility}}" />
+              </Grid>
+
+              <ComboBox Grid.Column="1"
+                        Style="{StaticResource ModernComboBox}"
+                        Width="170"
+                        Margin="8,0,0,0"
+                        ItemsSource="{Binding SortOptions}"
+                        SelectedItem="{Binding SelectedSort}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+
+            <TextBlock Text="{Binding DiscoverySummary}" Style="{StaticResource MutedText}" Margin="2,0,0,6" />
+
+            <Border BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="4">
+              <ScrollViewer Style="{StaticResource SlimScrollViewer}" MaxHeight="240">
+                <ItemsControl ItemsSource="{Binding DiscoveredRepositories}"
+                              ItemTemplate="{StaticResource DiscoveredRepositoryRow}" />
+              </ScrollViewer>
+            </Border>
+
+            <TextBlock Text="Nothing matches that search."
+                       Style="{StaticResource MutedText}"
+                       Margin="4,6,0,0"
+                       Visibility="{Binding DiscoveredRepositories.Count, Converter={StaticResource EmptyCountToVisibility}}" />
+          </StackPanel>
 
           <TextBlock Style="{StaticResource InlineMessage}"
                      Text="{Binding Message}"

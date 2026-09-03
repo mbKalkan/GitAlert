@@ -43,9 +43,11 @@ little app and an honest sample of what that way of working produces.
 Add an account per token, then add repositories under the account whose token can see them. Work
 and personal sit side by side, each with its own credentials and its own inbox.
 
-**Watches what you point it at**
-Paste a repository link from your browser — `https://github.com/owner/repo`, an SSH clone URL or
-just `owner/repo`. GitAlert checks that account's token can see it before adding it.
+**Pick from what your token can see**
+GitAlert asks GitHub which repositories the token reaches — your own, the ones you collaborate on,
+and your organisations' — and lists them to tick. Search them, sort by recent activity, name, owner
+or what you already watch. Pasting a link still works: `https://github.com/owner/repo`, an SSH
+clone URL or just `owner/repo`, checked against the token before it is added.
 
 **Covers the whole timeline**
 Pushes (with the commit message and a link to the diff), pull requests opened, merged and closed,

@@ -88,6 +88,43 @@ public sealed class GitHubClient : IDisposable
         CancellationToken ct = default) =>
         GetConditionalAsync<List<GhCommit>>($"/repos/{repo.Owner}/{repo.Name}/commits?per_page=20", etag, ct);
 
+    /// <summary>
+    /// Every repository this token can reach: owned, collaborated on, or through an organisation.
+    /// </summary>
+    /// <remarks>
+    /// This is what lets someone pick from a list instead of typing links. Newest activity first,
+    /// because the repository you want to watch is almost always one you touched recently.
+    /// </remarks>
+    public async Task<List<GhRepository>> GetMyRepositoriesAsync(CancellationToken ct = default)
+    {
+        var all = new List<GhRepository>();
+
+        // Five pages is five hundred repositories, past which a checklist stops being a sensible
+        // way to choose anything and the search box is the only thing keeping it usable.
+        for (var page = 1; page <= 5; page++)
+        {
+            var path = "/user/repos?affiliation=owner,collaborator,organization_member"
+                     + $"&sort=pushed&direction=desc&per_page=100&page={page}";
+
+            var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
+            var batch = await ReadJsonAsync<List<GhRepository>>(response, ct).ConfigureAwait(false);
+
+            if (batch is null || batch.Count == 0)
+            {
+                break;
+            }
+
+            all.AddRange(batch);
+
+            if (batch.Count < 100)
+            {
+                break;
+            }
+        }
+
+        return all;
+    }
+
     /// <summary>One commit together with every file it touched and their unified diffs.</summary>
     public async Task<GhCommitWithFiles> GetCommitAsync(RepoRef repo, string sha, CancellationToken ct = default)
     {

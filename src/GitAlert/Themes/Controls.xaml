@@ -574,6 +574,35 @@
 
   <!-- ==================== Settings navigation ==================== -->
 
+  <!-- Tooltips are popups, but Foreground is an inherited property and reaches them from
+       whatever they hang off. An icon button's light glyph colour was therefore landing on
+       WPF's near-white default tooltip background, leaving the text unreadable. Both ends are
+       pinned to the theme here. -->
+  <Style TargetType="ToolTip">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceElevated}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+    <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="HasDropShadow" Value="False" />
+    <Setter Property="Placement" Value="Bottom" />
+    <Setter Property="VerticalOffset" Value="5" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToolTip">
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Padding="9,6">
+            <ContentPresenter TextBlock.Foreground="{TemplateBinding Foreground}" />
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style x:Key="NavItem" TargetType="ListBoxItem">
     <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
     <Setter Property="FontSize" Value="13" />
