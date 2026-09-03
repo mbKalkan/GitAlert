@@ -148,6 +148,35 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
+    <!-- Alerts / History. Selection comes in through Tag so the buttons stay plain buttons. -->
+    <Style x:Key="ModeChip" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="{DynamicResource ChipBackground}" CornerRadius="12" Padding="12,4">
+              <TextBlock x:Name="Text"
+                         Text="{TemplateBinding Content}"
+                         FontSize="11.5"
+                         FontWeight="Medium"
+                         Foreground="{DynamicResource TextSecondary}" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource ChipHover}" />
+                <Setter TargetName="Text" Property="Foreground" Value="{DynamicResource TextPrimary}" />
+              </Trigger>
+              <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource Accent}" />
+                <Setter TargetName="Text" Property="Foreground" Value="{DynamicResource OnAccent}" />
+              </DataTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- The repository header above a group of alerts. Clicking it folds the group away. -->
     <Style x:Key="GroupHeaderButton" TargetType="Button">
       <Setter Property="Cursor" Value="Hand" />
@@ -517,7 +546,21 @@
       <!-- ==================== Filters ==================== -->
 
       <StackPanel Grid.Row="1" Margin="16,0,16,8">
-        <ItemsControl ItemsSource="{Binding Filters}">
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+          <Button Style="{StaticResource ModeChip}"
+                  Content="Alerts"
+                  Tag="{Binding IsAlertMode}"
+                  Command="{Binding ShowAlertsCommand}" />
+          <Button Style="{StaticResource ModeChip}"
+                  Content="History"
+                  Tag="{Binding IsHistoryMode}"
+                  ToolTip="Every commit in the repository, not only what arrived while GitAlert was running"
+                  Command="{Binding ShowHistoryCommand}" />
+        </StackPanel>
+
+        <ItemsControl ItemsSource="{Binding Filters}"
+                      Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
               <WrapPanel Orientation="Horizontal" />
@@ -567,28 +610,63 @@
 
         <!-- Alerts -->
         <Grid Grid.Column="0">
-          <ScrollViewer Style="{StaticResource SlimScrollViewer}"
-                        Margin="8,0,4,0"
-                        Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-            <ItemsControl ItemsSource="{Binding Groups}"
-                          ItemTemplate="{StaticResource AlertGroupTemplate}"
-                          Margin="0,0,4,8" />
-          </ScrollViewer>
 
-          <StackPanel VerticalAlignment="Center"
-                      HorizontalAlignment="Center"
-                      Margin="28,24,28,32"
-                      Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
-            <Viewbox Width="34" Height="34" Opacity="0.28" HorizontalAlignment="Center">
-              <Path Data="{x:Static platform:IconArtwork.BellGeometry}" Fill="{DynamicResource TextMuted}" />
-            </Viewbox>
-            <TextBlock Text="{Binding EmptyMessage}"
+          <!-- What GitAlert caught while it was running. -->
+          <Grid Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
+            <ScrollViewer Style="{StaticResource SlimScrollViewer}"
+                          Margin="8,0,4,0"
+                          Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
+              <ItemsControl ItemsSource="{Binding Groups}"
+                            ItemTemplate="{StaticResource AlertGroupTemplate}"
+                            Margin="0,0,4,8" />
+            </ScrollViewer>
+
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Margin="28,24,28,32"
+                        Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
+              <Viewbox Width="34" Height="34" Opacity="0.28" HorizontalAlignment="Center">
+                <Path Data="{x:Static platform:IconArtwork.BellGeometry}" Fill="{DynamicResource TextMuted}" />
+              </Viewbox>
+              <TextBlock Text="{Binding EmptyMessage}"
+                         Style="{StaticResource SecondaryText}"
+                         Margin="0,12,0,0"
+                         TextAlignment="Center"
+                         TextWrapping="Wrap"
+                         MaxWidth="240" />
+            </StackPanel>
+          </Grid>
+
+          <!-- What was there before GitAlert was. -->
+          <Grid Visibility="{Binding IsHistoryMode, Converter={StaticResource BoolToVisibility}}">
+            <ScrollViewer Style="{StaticResource SlimScrollViewer}" Margin="8,0,4,0">
+              <StackPanel Margin="0,0,4,8">
+                <ItemsControl ItemsSource="{Binding History}" ItemTemplate="{StaticResource AlertTemplate}" />
+
+                <TextBlock Text="Reading the history&#8230;"
+                           Style="{StaticResource MutedText}"
+                           Margin="10,8,0,0"
+                           Visibility="{Binding IsLoadingHistory, Converter={StaticResource BoolToVisibility}}" />
+
+                <Button Content="Load more"
+                        Style="{StaticResource GhostButton}"
+                        HorizontalAlignment="Left"
+                        Margin="6,6,0,0"
+                        Command="{Binding LoadMoreHistoryCommand}"
+                        Visibility="{Binding CanLoadMoreHistory, Converter={StaticResource BoolToVisibility}}" />
+              </StackPanel>
+            </ScrollViewer>
+
+            <TextBlock Text="{Binding HistoryMessage}"
                        Style="{StaticResource SecondaryText}"
-                       Margin="0,12,0,0"
+                       Margin="28"
                        TextAlignment="Center"
                        TextWrapping="Wrap"
-                       MaxWidth="240" />
-          </StackPanel>
+                       MaxWidth="260"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Visibility="{Binding HasHistoryMessage, Converter={StaticResource BoolToVisibility}}" />
+          </Grid>
         </Grid>
 
         <GridSplitter Grid.Column="1"
@@ -611,11 +689,11 @@
                               HorizontalAlignment="Center"
                               Margin="30"
                               Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVisibility}}">
-                    <TextBlock Text="Select an alert"
+                    <TextBlock Text="Nothing selected"
                                Style="{StaticResource SecondaryText}"
                                FontSize="13.5"
                                HorizontalAlignment="Center" />
-                    <TextBlock Text="Its changed files and diffs appear here, without leaving GitAlert."
+                    <TextBlock Text="Pick an alert or a commit and its changed files appear here, without leaving GitAlert."
                                Style="{StaticResource MutedText}"
                                Margin="0,6,0,0"
                                TextAlignment="Center"

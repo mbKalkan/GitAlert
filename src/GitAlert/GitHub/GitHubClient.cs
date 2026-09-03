@@ -89,6 +89,25 @@ public sealed class GitHubClient : IDisposable
         GetConditionalAsync<List<GhCommit>>($"/repos/{repo.Owner}/{repo.Name}/commits?per_page=20", etag, ct);
 
     /// <summary>
+    /// A page of a repository's commit history, newest first.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately unconditional, unlike the polling read: this answers "what happened before I
+    /// was watching", so a 304 would be useless and the ETag belongs to the poller's state.
+    /// </remarks>
+    public async Task<List<GhCommit>> GetCommitHistoryAsync(
+        RepoRef repo,
+        int page,
+        int perPage = 30,
+        CancellationToken ct = default)
+    {
+        var path = $"/repos/{repo.Owner}/{repo.Name}/commits?per_page={perPage}&page={Math.Max(1, page)}";
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
+
+        return await ReadJsonAsync<List<GhCommit>>(response, ct).ConfigureAwait(false) ?? [];
+    }
+
+    /// <summary>
     /// Every repository this token can reach: owned, collaborated on, or through an organisation.
     /// </summary>
     /// <remarks>

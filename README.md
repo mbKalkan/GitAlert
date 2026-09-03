@@ -70,6 +70,11 @@ push of several the net change across the range, a pull request its whole file l
 Mentions, review requests and assignments from `/notifications`, per account, folded into the same
 list. With more than one account the cards say which identity saw each alert.
 
+**History, not just what it caught**
+Alerts begin the day you point GitAlert at a repository. Switch the list to History and it reads the
+repository's commits straight from GitHub — everything that happened before GitAlert was watching,
+paged as far back as you care to go, each commit opening its diff in the same pane.
+
 **Grouped by project, filtered two ways**
 Alerts are gathered under a collapsible header per repository, each carrying its own unread count,
 so a busy project can be folded away without muting it. Narrow by category, by project, or both.

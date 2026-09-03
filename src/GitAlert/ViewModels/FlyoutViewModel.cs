@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Core;
+using GitAlert.GitHub;
 using GitAlert.Platform;
 using GitAlert.Services;
 
@@ -31,6 +32,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private static readonly SolidColorBrush WarningBrush = Frozen(0xC7, 0x93, 0x1F);
     private static readonly SolidColorBrush ErrorBrush = Frozen(0xE5, 0x53, 0x4B);
     private static readonly SolidColorBrush IdleBrush = Frozen(0x89, 0x93, 0xA1);
+
+    /// <summary>Commits per request. One screenful and a bit, so "load more" is rarely needed.</summary>
+    private const int HistoryPageSize = 30;
 
     private readonly AlertStore _store;
     private readonly MonitorService _monitor;
@@ -75,6 +79,31 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// <summary>Which repository the list is narrowed to, or null for every project.</summary>
     [ObservableProperty]
     private string? _activeProject;
+
+    /// <summary>
+    /// True while the left pane is showing a repository's commit history rather than the alerts
+    /// GitAlert happened to catch. Alerts only start the day you point GitAlert at a repository;
+    /// the history was always there.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAlertMode))]
+    private bool _isHistoryMode;
+
+    [ObservableProperty]
+    private bool _isLoadingHistory;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHistoryMessage))]
+    private string _historyMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _canLoadMoreHistory;
+
+    /// <summary>Which page of history has been fetched so far.</summary>
+    private int _historyPage;
+
+    /// <summary>The repository the loaded history belongs to, so a project switch reloads it.</summary>
+    private string? _historyRepository;
 
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
@@ -130,6 +159,13 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     /// <summary>One chip per repository that has alerts, plus the chip that clears the filter.</summary>
     public ObservableCollection<ProjectChipViewModel> Projects { get; } = [];
+
+    /// <summary>Commits read straight from the repository, newest first.</summary>
+    public ObservableCollection<AlertViewModel> History { get; } = [];
+
+    public bool IsAlertMode => !IsHistoryMode;
+
+    public bool HasHistoryMessage => !string.IsNullOrEmpty(HistoryMessage);
 
     /// <summary>
     /// Whether narrowing by project is worth offering. With a single repository watched, the row
@@ -189,6 +225,162 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         ActiveProject = chip.Repository;
         ApplyFilter();
+
+        if (IsHistoryMode)
+        {
+            _ = LoadHistoryAsync(reset: true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShowAlertsAsync()
+    {
+        IsHistoryMode = false;
+        await ClearSelectionAsync().ConfigureAwait(true);
+        ApplyFilter();
+    }
+
+    /// <summary>Switches to history and loads the selected project's commits.</summary>
+    [RelayCommand]
+    private async Task ShowHistoryAsync()
+    {
+        IsHistoryMode = true;
+
+        // History belongs to one repository. With none picked, take the one being watched, or
+        // the first of several, so the pane is never blank for want of a click.
+        ActiveProject ??= _monitor.Watched.FirstOrDefault()?.FullName
+                          ?? _all.FirstOrDefault()?.Repository;
+
+        ApplyFilter();
+        await LoadHistoryAsync(reset: true).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private Task LoadMoreHistoryAsync() => LoadHistoryAsync(reset: false);
+
+    private async Task LoadHistoryAsync(bool reset)
+    {
+        if (ActiveProject is null)
+        {
+            History.Clear();
+            HistoryMessage = "Pick a project to read its history.";
+            CanLoadMoreHistory = false;
+            return;
+        }
+
+        if (reset)
+        {
+            History.Clear();
+            _historyPage = 0;
+            _historyRepository = ActiveProject;
+        }
+
+        if (!RepoRef.TryParse(ActiveProject, out var repo))
+        {
+            HistoryMessage = $"Cannot work out which repository {ActiveProject} refers to.";
+            return;
+        }
+
+        var watched = _monitor.Watched.FirstOrDefault(
+            w => string.Equals(w.FullName, ActiveProject, StringComparison.OrdinalIgnoreCase));
+
+        var accountId = watched?.AccountId ?? AccountIdOfAlertsIn(ActiveProject);
+        var client = _monitor.ClientFor(accountId);
+
+        if (client is null)
+        {
+            HistoryMessage = "No configured account can reach this repository.";
+            CanLoadMoreHistory = false;
+            return;
+        }
+
+        IsLoadingHistory = true;
+        HistoryMessage = string.Empty;
+
+        try
+        {
+            var page = await client.GetCommitHistoryAsync(repo, _historyPage + 1, HistoryPageSize)
+                                   .ConfigureAwait(true);
+
+            // The project may have been switched while the request was in flight.
+            if (!string.Equals(_historyRepository, ActiveProject, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            foreach (var commit in page)
+            {
+                History.Add(FromCommit(commit, ActiveProject, accountId!, watched?.Login));
+            }
+
+            _historyPage++;
+            CanLoadMoreHistory = page.Count == HistoryPageSize;
+
+            if (History.Count == 0)
+            {
+                HistoryMessage = "This repository has no commits yet.";
+            }
+        }
+        catch (GitHubException ex)
+        {
+            HistoryMessage = ex.UserMessage;
+            CanLoadMoreHistory = false;
+        }
+        finally
+        {
+            IsLoadingHistory = false;
+        }
+    }
+
+    /// <summary>
+    /// Dresses a commit as an alert. The list rows, the selection and the diff pane all already
+    /// know how to show one, so history costs a translation rather than a parallel world.
+    /// </summary>
+    private AlertViewModel FromCommit(GhCommit commit, string repository, string accountId, string? login)
+    {
+        var message = commit.Commit?.Message ?? string.Empty;
+        var newline = message.IndexOfAny(['\r', '\n']);
+        var summary = newline < 0 ? message : message[..newline];
+
+        var alert = new Alert
+        {
+            // Shares the identity a push alert for this commit would have, so the diff the detail
+            // pane already fetched is reused rather than requested again.
+            Id = $"{accountId}|commit:{commit.Sha}",
+            Kind = AlertKind.Push,
+            Title = string.IsNullOrWhiteSpace(summary) ? $"Commit {Abbreviate(commit.Sha)}" : summary.Trim(),
+            Detail = Abbreviate(commit.Sha),
+            Repository = repository,
+            Account = login,
+            AccountId = accountId,
+            Actor = commit.Author?.Login ?? commit.Commit?.Author?.Name,
+            Url = commit.HtmlUrl,
+            Timestamp = commit.Commit?.Author?.Date ?? DateTimeOffset.Now,
+            DiffHead = commit.Sha,
+
+            // Nothing in history is news, so none of it wears an unread dot.
+            IsRead = true,
+        };
+
+        return new AlertViewModel(alert) { ShowAccount = _showAccounts };
+    }
+
+    private static string Abbreviate(string sha) => sha.Length > 7 ? sha[..7] : sha;
+
+    /// <summary>Falls back to whichever account produced alerts for a repository.</summary>
+    private string? AccountIdOfAlertsIn(string repository) =>
+        _all.FirstOrDefault(a => string.Equals(a.Repository, repository, StringComparison.OrdinalIgnoreCase))
+            ?.Model.AccountId;
+
+    private async Task ClearSelectionAsync()
+    {
+        if (SelectedAlert is { } previous)
+        {
+            previous.IsSelected = false;
+        }
+
+        SelectedAlert = null;
+        await Detail.ShowAsync(null).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -392,8 +584,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RebuildProjects()
     {
-        var repositories = _all
-            .Select(a => a.Repository)
+        // Everything watched, not just what has produced an alert: a repository nobody has
+        // pushed to yet still has a history worth reading.
+        var repositories = _monitor.Watched
+            .Select(w => w.FullName)
+            .Concat(_all.Select(a => a.Repository))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -460,6 +655,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void RefreshAges()
     {
+        foreach (var alert in History)
+        {
+            alert.RefreshAge();
+        }
+
         foreach (var alert in Alerts)
         {
             alert.RefreshAge();

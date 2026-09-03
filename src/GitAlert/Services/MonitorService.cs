@@ -31,6 +31,12 @@ public sealed record MonitorStatus(
 /// <summary>A login GitAlert learned by using an account's token.</summary>
 public sealed record AccountIdentity(string AccountId, string Login);
 
+/// <summary>A repository being polled, and the account whose token reaches it.</summary>
+public sealed record WatchedRepository(string AccountId, string Login, RepoRef Repo)
+{
+    public string FullName => Repo.FullName;
+}
+
 /// <summary>
 /// The polling engine. Runs one background loop that walks every account, polls the repositories
 /// watched under it with that account's token, and translates whatever is new into alerts. All
@@ -99,6 +105,7 @@ public sealed class MonitorService : IAsyncDisposable
         _alerts.MaxHistory = _settings.MaxHistory;
 
         SyncClients();
+        RefreshWatchedList();
 
         _state.Prune(
             _settings.Repositories.Select(r => r.StateKey),
@@ -578,6 +585,23 @@ public sealed class MonitorService : IAsyncDisposable
     /// </summary>
     public GitHubClient? ClientFor(string? accountId) =>
         accountId is not null && _clients.TryGetValue(accountId, out var client) ? client : null;
+
+    /// <summary>
+    /// The repositories being polled. Browsing history needs the full watch list, not just the
+    /// repositories that happen to have produced an alert already.
+    /// </summary>
+    public IReadOnlyList<WatchedRepository> Watched { get; private set; } = [];
+
+    private void RefreshWatchedList() =>
+        Watched =
+        [
+            .. _settings.Repositories
+                .Where(r => r.Enabled)
+                .Select(r => new WatchedRepository(
+                    r.AccountId,
+                    _logins.GetValueOrDefault(r.AccountId, _settings.FindAccount(r.AccountId)?.Login ?? string.Empty),
+                    new RepoRef(r.Owner, r.Name)))
+        ];
 
     private bool ShouldDeliver(Alert alert, GitHubAccount account, AppSettings settings)
     {
