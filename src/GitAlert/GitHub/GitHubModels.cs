@@ -114,6 +114,29 @@ public sealed class GhCommit
     /// <summary>The GitHub account behind the commit; null when the email matches no account.</summary>
     [JsonPropertyName("author")]
     public GhUser? Author { get; set; }
+
+    /// <summary>
+    /// When the commit landed where it is: the committer date, falling back to the author date.
+    /// </summary>
+    /// <remarks>
+    /// The author date is when the change was written and never moves. A rebase, a squash or a
+    /// cherry-pick gives the commit a new committer date and leaves the author date alone, so
+    /// stamping alerts with the author date dated a rebased branch by the week it was started:
+    /// the push was today and the card said "6d", buried under everything from since.
+    /// </remarks>
+    [JsonIgnore]
+    public DateTimeOffset? Date
+    {
+        get
+        {
+            if (Commit?.Committer?.Date is { } committed && committed != default)
+            {
+                return committed;
+            }
+
+            return Commit?.Author?.Date is { } authored && authored != default ? authored : null;
+        }
+    }
 }
 
 public sealed class GhCommitDetail
@@ -123,6 +146,9 @@ public sealed class GhCommitDetail
 
     [JsonPropertyName("author")]
     public GhCommitAuthor? Author { get; set; }
+
+    [JsonPropertyName("committer")]
+    public GhCommitAuthor? Committer { get; set; }
 }
 
 public sealed class GhCommitAuthor

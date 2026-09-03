@@ -84,6 +84,11 @@ public sealed class MonitorState
         {
             Repositories = Rebuild(Repositories, StringComparer.OrdinalIgnoreCase);
             Inboxes = Rebuild(Inboxes, StringComparer.Ordinal);
+
+            foreach (var repository in Repositories.Values)
+            {
+                repository.PendingWorkflowRunIds ??= [];
+            }
         }
     }
 
@@ -155,9 +160,21 @@ public sealed class RepoState
     /// <summary>Newest commit already reported on the default branch; empty until the first poll.</summary>
     public string? LastCommitSha { get; set; }
 
+    /// <summary>
+    /// When <see cref="LastCommitSha"/> was committed. Tells old commits from new on a page that
+    /// no longer has that commit on it.
+    /// </summary>
+    public DateTimeOffset? LastCommitDate { get; set; }
+
     public string? RunsETag { get; set; }
 
     public long LastWorkflowRunId { get; set; }
+
+    /// <summary>
+    /// Runs seen while still going, to be announced when they finish. Kept by id so a run that
+    /// waits for an approval does not hold the mark, and every run after it, back with it.
+    /// </summary>
+    public List<long> PendingWorkflowRunIds { get; set; } = [];
 
     /// <summary>
     /// False until the first successful poll. The first poll only records a baseline so the user

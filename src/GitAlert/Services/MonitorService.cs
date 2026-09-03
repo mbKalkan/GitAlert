@@ -77,6 +77,9 @@ public sealed class MonitorService : IAsyncDisposable
     /// <summary>The primary budget comes back within the hour; nothing should silence an account longer.</summary>
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromHours(1);
 
+    /// <summary>Whether the poll in progress has deserialised anything. Poll thread only.</summary>
+    private bool _readSomething;
+
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private AppSettings _settings = new();
@@ -237,7 +240,14 @@ public sealed class MonitorService : IAsyncDisposable
                 SetStatus(new MonitorStatus(ConnectionState.Error, ex.Message, _lastSuccess));
             }
 
-            SettleBeforeIdling();
+            // Only after a poll that actually read something. With ETags doing their job most
+            // polls are a round of 304s that allocate nothing, and a forced full collection every
+            // minute for those was a blocking pause in exchange for nothing to hand back.
+            if (_readSomething)
+            {
+                _readSomething = false;
+                SettleBeforeIdling();
+            }
 
             try
             {
@@ -266,6 +276,17 @@ public sealed class MonitorService : IAsyncDisposable
     /// </remarks>
     private static void SettleBeforeIdling() =>
         GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+    /// <summary>Passes a response through, noting whether a body came with it.</summary>
+    private ConditionalResponse<T> Noted<T>(ConditionalResponse<T> response)
+    {
+        if (!response.NotModified)
+        {
+            _readSomething = true;
+        }
+
+        return response;
+    }
 
     /// <summary>Keeps the most recent interval GitHub asked for. Poll thread only.</summary>
     private void NoteServerInterval(TimeSpan? requested)
@@ -508,7 +529,7 @@ public sealed class MonitorService : IAsyncDisposable
         var state = _state.For(repository.StateKey);
         var reference = repository.Ref;
 
-        var events = await client.GetRepositoryEventsAsync(reference, state.EventsETag, ct).ConfigureAwait(false);
+        var events = Noted(await client.GetRepositoryEventsAsync(reference, state.EventsETag, ct).ConfigureAwait(false));
 
         // The events endpoint is the one GitHub documents x-poll-interval for; it was only ever
         // read off the inbox, which most accounts do not poll at all.
@@ -536,7 +557,10 @@ public sealed class MonitorService : IAsyncDisposable
                 }
 
                 var alert = EventTranslator.FromEvent(item);
-                if (alert is not null && ShouldDeliver(alert, account, settings))
+
+                if (alert is not null
+                    && !IsDefaultBranchEcho(item, state, settings)
+                    && ShouldDeliver(alert, account, settings))
                 {
                     collected.Add(Stamp(alert, account));
                 }
@@ -560,6 +584,23 @@ public sealed class MonitorService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Whether a <c>PushEvent</c> is the timeline's copy of a push the commits endpoint covers.
+    /// </summary>
+    /// <remarks>
+    /// Sharing an id by head commit only catches the last push before a poll. Two pushes in one
+    /// interval are one alert from the commits endpoint, named after the newer head; the
+    /// timeline's copy of the earlier one - hours or days later on a private repository - had a
+    /// head nothing had seen, and was announced as fresh news about an old commit. The commits
+    /// endpoint is authoritative for the default branch, so while it is being polled the
+    /// timeline's pushes to that branch add nothing. Pushes to other branches still come this way.
+    /// </remarks>
+    private static bool IsDefaultBranchEcho(GhEvent item, RepoState state, AppSettings settings) =>
+        !settings.IsMuted(AlertKind.Push)
+        && !string.IsNullOrEmpty(state.DefaultBranch)
+        && EventTranslator.PushedBranch(item) is { } branch
+        && string.Equals(branch, state.DefaultBranch, StringComparison.Ordinal);
+
     private async Task PollCommitsAsync(
         GitHubClient client,
         GitHubAccount account,
@@ -569,7 +610,7 @@ public sealed class MonitorService : IAsyncDisposable
         List<Alert> collected,
         CancellationToken ct)
     {
-        var response = await client.GetCommitsAsync(reference, state.CommitsETag, ct).ConfigureAwait(false);
+        var response = Noted(await client.GetCommitsAsync(reference, state.CommitsETag, ct).ConfigureAwait(false));
 
         if (response.NotModified || response.Value is not { Count: > 0 } commits)
         {
@@ -593,7 +634,10 @@ public sealed class MonitorService : IAsyncDisposable
         }
 
         var previous = state.LastCommitSha;
+        var previousDate = state.LastCommitDate;
+
         state.LastCommitSha = commits[0].Sha;
+        state.LastCommitDate = commits[0].Date ?? previousDate;
 
         // The first poll only records where things stand.
         if (string.IsNullOrEmpty(previous))
@@ -604,6 +648,18 @@ public sealed class MonitorService : IAsyncDisposable
         var fresh = commits
             .TakeWhile(c => !string.Equals(c.Sha, previous, StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        if (fresh.Count == commits.Count)
+        {
+            // The last head is not on the page: a force push, a change of default branch, or
+            // more than a page of commits at once. The page is not "everything since" then, it
+            // is whatever the branch has now, and most of that is old. Only what was committed
+            // after the head last reported is news; when even that cannot be told, the branch
+            // is re-baselined rather than the page announced as twenty new commits.
+            fresh = previousDate is { } since
+                ? fresh.Where(c => c.Date is { } committed && committed > since).ToList()
+                : [];
+        }
 
         if (fresh.Count == 0)
         {
@@ -627,7 +683,7 @@ public sealed class MonitorService : IAsyncDisposable
         List<Alert> collected,
         CancellationToken ct)
     {
-        var runs = await client.GetWorkflowRunsAsync(reference, state.RunsETag, ct).ConfigureAwait(false);
+        var runs = Noted(await client.GetWorkflowRunsAsync(reference, state.RunsETag, ct).ConfigureAwait(false));
 
         if (runs.NotModified || runs.Value is not { } page)
         {
@@ -638,24 +694,39 @@ public sealed class MonitorService : IAsyncDisposable
 
         var floor = state.LastWorkflowRunId;
         var isBaseline = floor == 0;
+        var pending = new List<long>(state.PendingWorkflowRunIds);
+        var onPage = new HashSet<long>();
         var highWater = floor;
 
-        // Oldest first, and stop advancing the high-water mark at the first run that is still
-        // going: otherwise a run that finishes after a newer one would never be announced.
+        // Everything on the page moves the mark. Runs finish out of order, so the ones still
+        // going are remembered by id and announced when they do finish, rather than by holding
+        // the mark back at them - a run waiting days for a deployment approval used to hold
+        // every run after it unannounced for as long as it waited.
         foreach (var run in page.WorkflowRuns.OrderBy(r => r.Id))
         {
-            if (run.Id <= floor)
+            onPage.Add(run.Id);
+            highWater = Math.Max(highWater, run.Id);
+
+            var awaited = pending.Contains(run.Id);
+
+            if (run.Id <= floor && !awaited)
             {
                 continue;
             }
 
-            var completed = string.Equals(run.Status, "completed", StringComparison.OrdinalIgnoreCase);
-            if (!completed)
+            if (!string.Equals(run.Status, "completed", StringComparison.OrdinalIgnoreCase))
             {
-                break;
+                // One in flight when the repository was added belongs to the baseline, like
+                // everything else on that first page.
+                if (!isBaseline && !awaited)
+                {
+                    pending.Add(run.Id);
+                }
+
+                continue;
             }
 
-            highWater = run.Id;
+            pending.Remove(run.Id);
 
             if (isBaseline)
             {
@@ -675,14 +746,11 @@ public sealed class MonitorService : IAsyncDisposable
             }
         }
 
-        if (isBaseline && highWater == 0)
-        {
-            // No completed runs at all yet; remember that we looked so the next poll does not
-            // treat an old run as brand new.
-            highWater = page.WorkflowRuns.Count > 0 ? page.WorkflowRuns.Max(r => r.Id) : 1;
-        }
+        // A run that has left the page will not be seen again; its result is whatever it was.
+        state.PendingWorkflowRunIds = pending.Where(onPage.Contains).ToList();
 
-        state.LastWorkflowRunId = highWater;
+        // No runs at all yet: remember that we looked, so the first one is not taken for old.
+        state.LastWorkflowRunId = highWater == 0 ? 1 : highWater;
     }
 
     private async Task PollInboxAsync(
@@ -693,7 +761,7 @@ public sealed class MonitorService : IAsyncDisposable
         CancellationToken ct)
     {
         var inbox = _state.InboxFor(account.Id);
-        var response = await client.GetInboxAsync(inbox.ETag, ct).ConfigureAwait(false);
+        var response = Noted(await client.GetInboxAsync(inbox.ETag, ct).ConfigureAwait(false));
 
         NoteServerInterval(response.PollInterval);
 

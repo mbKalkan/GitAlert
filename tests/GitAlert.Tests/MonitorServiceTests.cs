@@ -76,10 +76,11 @@ public class MonitorServiceTests : IDisposable
     public async Task A_restart_does_not_replay_what_the_previous_run_had_already_seen()
     {
         var github = new FakeGitHub { Events = Events(Push("1001", "abc1234")) };
+        var account = GitHubAccount.Create("octocat");
         var state = NewFile();
         var history = NewFile();
 
-        await using (var first = NewHarness(github, state, history))
+        await using (var first = NewHarness(github, state, history, account: account))
         {
             await first.PollAsync();
 
@@ -89,9 +90,11 @@ public class MonitorServiceTests : IDisposable
             Assert.Single(first.Delivered);
         }
 
-        await using var second = NewHarness(github, state, history);
-        await second.PollAsync();
+        await using var second = NewHarness(github, state, history, account: account);
+        var status = await second.PollAsync();
 
+        // Same state, not a fresh baseline: the mark was read back, and everything is below it.
+        Assert.Equal(ConnectionState.Connected, status.State);
         Assert.Empty(second.Delivered);
     }
 
@@ -420,26 +423,59 @@ public class MonitorServiceTests : IDisposable
     // ---- CI runs -----------------------------------------------------------
 
     /// <summary>
-    /// Runs finish out of order. Advancing the mark past a run that is still going would mean it
-    /// was never announced when it did finish, which is the one everybody is waiting on.
+    /// Runs finish out of order, and one can wait days for a deployment approval. Holding the
+    /// mark back at it meant nothing after it was announced until it finished, which for a
+    /// stuck approval was never. It is remembered by id instead: the runs after it go out as
+    /// they finish, and it is still announced when it does.
     /// </summary>
     [Fact]
-    public async Task A_run_that_is_still_going_does_not_take_the_mark_past_itself()
+    public async Task A_run_that_is_still_going_neither_holds_up_the_runs_after_it_nor_is_forgotten()
     {
-        var github = new FakeGitHub
-        {
-            Runs = Runs((10, "completed", "success"), (11, "in_progress", null)),
-        };
+        var github = new FakeGitHub { Runs = Runs((10, "completed", "success")) };
 
         await using var harness = NewHarness(github, configure: s => s.WatchWorkflowRuns = true);
         await harness.PollAsync();
 
-        github.Runs = Runs((10, "completed", "success"), (11, "completed", "failure"));
+        github.Runs = Runs((12, "completed", "success"), (11, "waiting", null), (10, "completed", "success"));
         await harness.PollAsync();
 
-        var alert = Assert.Single(harness.Delivered);
-        Assert.Equal(AlertSeverity.Error, alert.Severity);
-        Assert.Contains("failed", alert.Title);
+        var first = Assert.Single(harness.Delivered);
+        Assert.Contains("#12", first.Title);
+
+        github.Runs = Runs((12, "completed", "success"), (11, "completed", "failure"), (10, "completed", "success"));
+        await harness.PollAsync();
+
+        Assert.Equal(2, harness.Delivered.Count);
+        Assert.Contains("#11", harness.Delivered[1].Title);
+        Assert.Equal(AlertSeverity.Error, harness.Delivered[1].Severity);
+    }
+
+    /// <summary>The run being waited on survives a restart, like every other mark does.</summary>
+    [Fact]
+    public async Task A_run_being_waited_on_is_still_waited_on_after_a_restart()
+    {
+        var github = new FakeGitHub { Runs = Runs((10, "completed", "success")) };
+        var account = GitHubAccount.Create("octocat");
+        var state = NewFile();
+        var history = NewFile();
+
+        await using (var first = NewHarness(github, state, history, s => s.WatchWorkflowRuns = true, account: account))
+        {
+            await first.PollAsync();
+
+            github.Runs = Runs((11, "in_progress", null), (10, "completed", "success"));
+            await first.PollAsync();
+
+            Assert.Empty(first.Delivered);
+        }
+
+        github.Runs = Runs((11, "completed", "success"), (10, "completed", "success"));
+
+        await using var second = NewHarness(github, state, history, s => s.WatchWorkflowRuns = true, account: account);
+        await second.PollAsync();
+
+        var alert = Assert.Single(second.Delivered);
+        Assert.Contains("#11", alert.Title);
     }
 
     [Fact]
@@ -594,6 +630,99 @@ public class MonitorServiceTests : IDisposable
 
     // ---- Harness -----------------------------------------------------------
 
+    // ---- Pushes that arrive late, or look old ------------------------------
+
+    /// <summary>
+    /// Two pushes in one interval are one alert from the commits endpoint, named after the newer
+    /// head. The timeline's copy of the earlier push - hours or days later on a private
+    /// repository - carried a head nothing had seen, and was announced as news about an old
+    /// commit. The commits endpoint covers the default branch; the timeline only adds the rest.
+    /// </summary>
+    [Fact]
+    public async Task The_timelines_late_copy_of_a_default_branch_push_is_not_announced_again()
+    {
+        var github = new FakeGitHub { Commits = Commits(("aaa1111", "Baseline")) };
+        await using var harness = NewHarness(github);
+        await harness.PollAsync();
+
+        github.Commits = Commits(("ccc3333", "Second push"), ("bbb2222", "First push"), ("aaa1111", "Baseline"));
+        await harness.PollAsync();
+
+        var fromCommits = Assert.Single(harness.Delivered);
+        Assert.Equal("commit:ccc3333", Unstamped(fromCommits.Id));
+
+        // Days later the timeline catches up with both pushes, and with one to another branch.
+        github.Events = Events(
+            Push("1003", "ddd4444", gitRef: "refs/heads/feature"),
+            Push("1002", "ccc3333"),
+            Push("1001", "bbb2222"));
+        await harness.PollAsync();
+
+        Assert.Equal(2, harness.Delivered.Count);
+        Assert.Equal("commit:ddd4444", Unstamped(harness.Delivered[1].Id));
+        Assert.Contains("feature", harness.Delivered[1].Title);
+    }
+
+    /// <summary>
+    /// A rebase, a squash or a cherry-pick gives a commit a new committer date and keeps the
+    /// author date. Stamped with the author date, a branch rebased and pushed today was filed
+    /// under the week it was started and shown as days old.
+    /// </summary>
+    [Fact]
+    public async Task A_rebased_commit_is_dated_by_when_it_landed_rather_than_when_it_was_written()
+    {
+        var github = new FakeGitHub
+        {
+            Commits = CommitsAt(("aaa1111", "Baseline", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z")),
+        };
+
+        await using var harness = NewHarness(github);
+        await harness.PollAsync();
+
+        github.Commits = CommitsAt(
+            ("bbb2222", "Written last week, rebased today", "2026-01-01T09:00:00Z", "2026-01-08T15:00:00Z"),
+            ("aaa1111", "Baseline", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z"));
+        await harness.PollAsync();
+
+        var alert = Assert.Single(harness.Delivered);
+        Assert.Equal(DateTimeOffset.Parse("2026-01-08T15:00:00Z"), alert.Timestamp);
+    }
+
+    /// <summary>
+    /// After a force push, or a change of default branch, the last head is not on the page at
+    /// all. Every commit on it used to count as new - a page of old commits in one card. Only
+    /// what was committed after the last head is news.
+    /// </summary>
+    [Fact]
+    public async Task A_head_that_is_no_longer_on_the_page_does_not_make_the_whole_page_news()
+    {
+        var github = new FakeGitHub
+        {
+            Commits = CommitsAt(
+                ("bbb2222", "Second", "2026-01-02T10:00:00Z", "2026-01-02T10:00:00Z"),
+                ("aaa1111", "First", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z")),
+        };
+
+        await using var harness = NewHarness(github);
+        await harness.PollAsync();
+
+        // bbb2222 is force-pushed away; ccc3333 replaces it, and aaa1111 is still there below.
+        github.Commits = CommitsAt(
+            ("ccc3333", "Rewritten", "2026-01-03T10:00:00Z", "2026-01-03T10:00:00Z"),
+            ("aaa1111", "First", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z"));
+        await harness.PollAsync();
+
+        var alert = Assert.Single(harness.Delivered);
+        Assert.Equal("New commit on main", alert.Title);
+        Assert.Equal("ccc3333", alert.DiffHead);
+
+        // A plain rewind to an older commit is nothing to announce at all.
+        github.Commits = CommitsAt(("aaa1111", "First", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z"));
+        await harness.PollAsync();
+
+        Assert.Single(harness.Delivered);
+    }
+
     // ---- Being told to slow down -------------------------------------------
 
     /// <summary>
@@ -652,14 +781,19 @@ public class MonitorServiceTests : IDisposable
         return path;
     }
 
+    /// <param name="account">
+    /// Pass the same account to two harnesses to model a restart. The sync state is keyed by
+    /// account id, and a fresh id is a fresh baseline - which quietly proves nothing.
+    /// </param>
     private Harness NewHarness(
         FakeGitHub github,
         string? statePath = null,
         string? historyPath = null,
         Action<AppSettings>? configure = null,
-        bool withToken = true)
+        bool withToken = true,
+        GitHubAccount? account = null)
     {
-        var account = GitHubAccount.Create("octocat");
+        account ??= GitHubAccount.Create("octocat");
         account.IncludeInbox = false;
 
         var settings = new AppSettings
@@ -784,7 +918,8 @@ public class MonitorServiceTests : IDisposable
         string id,
         string head,
         string actor = "someone",
-        string repository = "acme/api-gateway") =>
+        string repository = "acme/api-gateway",
+        string gitRef = "refs/heads/main") =>
         $$"""
         {
           "id": "{{id}}",
@@ -793,7 +928,7 @@ public class MonitorServiceTests : IDisposable
           "repo": { "name": "{{repository}}" },
           "created_at": "2026-01-01T10:00:00Z",
           "payload": {
-            "ref": "refs/heads/main",
+            "ref": "{{gitRef}}",
             "size": 1,
             "distinct_size": 1,
             "head": "{{head}}",
@@ -811,6 +946,20 @@ public class MonitorServiceTests : IDisposable
           "commit": {
             "message": "{{c.Message}}",
             "author": { "name": "Someone", "date": "2026-01-01T10:00:00Z" }
+          }
+        }
+        """)) + "]";
+
+    /// <summary>Commits with both dates, for the cases where the two disagree.</summary>
+    private static string CommitsAt(params (string Sha, string Message, string Authored, string Committed)[] commits) =>
+        "[" + string.Join(",", commits.Select(c => $$"""
+        {
+          "sha": "{{c.Sha}}",
+          "html_url": "https://github.com/acme/api-gateway/commit/{{c.Sha}}",
+          "commit": {
+            "message": "{{c.Message}}",
+            "author": { "name": "Someone", "date": "{{c.Authored}}" },
+            "committer": { "name": "GitHub", "date": "{{c.Committed}}" }
           }
         }
         """)) + "]";

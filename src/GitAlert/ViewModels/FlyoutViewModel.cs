@@ -267,7 +267,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             AccountId = accountId,
             Actor = commit.Author?.Login ?? commit.Commit?.Author?.Name,
             Url = commit.HtmlUrl,
-            Timestamp = commit.Commit?.Author?.Date ?? DateTimeOffset.Now,
+            Timestamp = commit.Date ?? DateTimeOffset.Now,
             DiffHead = commit.Sha,
 
             // Nothing in history is news, so none of it wears an unread dot.

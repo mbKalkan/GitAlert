@@ -42,6 +42,17 @@ public static class EventTranslator
         };
     }
 
+    /// <summary>
+    /// The branch a <c>PushEvent</c> went to, or null for anything else. The poller uses it to
+    /// tell the timeline's copy of a default-branch push from a push it has no other source for.
+    /// </summary>
+    public static string? PushedBranch(GhEvent source) =>
+        source.Type == "PushEvent"
+        && source.Payload.GetStringOrNull("ref") is { } gitRef
+        && gitRef.StartsWith("refs/heads/", StringComparison.Ordinal)
+            ? gitRef["refs/heads/".Length..]
+            : null;
+
     private static Alert Push(GhEvent source, string repository, string? actor, JsonElement payload)
     {
         var branch = ShortRef(payload.GetStringOrNull("ref"));
@@ -395,7 +406,7 @@ public static class EventTranslator
             Repository = repository,
             Actor = newest.Author?.Login ?? newest.Commit?.Author?.Name,
             Url = url,
-            Timestamp = newest.Commit?.Author?.Date ?? DateTimeOffset.Now,
+            Timestamp = newest.Date ?? DateTimeOffset.Now,
             DiffHead = newest.Sha,
 
             // One commit is its own diff; several are shown as the net change across the range.
