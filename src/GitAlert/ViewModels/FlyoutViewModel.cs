@@ -341,18 +341,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             alert.IsRead = true;
         }
 
-        UnreadCount = 0;
-        RefreshChipCounts();
-        RecountSections();
-        _shell.UnreadChanged();
-    }
-
-    private void RecountSections()
-    {
-        foreach (var section in Groups)
-        {
-            section.Recount();
-        }
+        RefreshCounts();
     }
 
     [RelayCommand]
@@ -362,9 +351,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _store.Save();
         _all.Clear();
         _sections.Clear();
-        UnreadCount = 0;
         ApplyFilter();
-        _shell.UnreadChanged();
 
         SelectedAlert = null;
         await Detail.ShowAsync(null).ConfigureAwait(true);
@@ -386,13 +373,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         alert.MarkRead();
         _store.MarkRead(alert.Model.Id);
         _store.Save();
-        UnreadCount = Math.Max(0, UnreadCount - 1);
 
-        // The filter chips, the badge beside the project and the number on the tray icon are all
-        // counting this same alert, and none of them is watching the row.
-        RefreshChipCounts();
-        _sections.GetValueOrDefault(alert.Repository)?.Recount();
-        _shell.UnreadChanged();
+        // Reading is not rearranging: the row stays where it is, and only the numbers move.
+        RefreshCounts();
     }
 
     private void OnAlertsReceived(object? sender, IReadOnlyList<Alert> alerts) =>
@@ -404,7 +387,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             }
 
             TrimToStore();
-            UnreadCount = _store.UnreadCount;
             ApplyFilter();
         });
 
@@ -468,7 +450,10 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void ApplyFilter()
     {
-        RefreshChipCounts();
+        foreach (var chip in Filters)
+        {
+            chip.IsSelected = chip.Filter == ActiveFilter;
+        }
 
         Alerts.Clear();
 
@@ -478,27 +463,41 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         RebuildGroups();
+        RefreshCounts();
 
         IsEmpty = Groups.Count == 0;
         UpdateEmptyMessage(_monitor.Status);
     }
 
     /// <summary>
-    /// The number on each filter chip: what is unread in that category.
+    /// Brings every number back in step with what is unread, without rearranging anything.
     /// </summary>
     /// <remarks>
-    /// Counted here rather than inside the filter pass, because reading an alert changes these
-    /// numbers without changing which alerts are shown. Left to the filter pass, a chip went on
-    /// showing the count it had when the list was last rearranged, however many of those alerts
-    /// you had since read.
+    /// Four counters describe the same alerts: the filter chips, the badge on each project, the
+    /// line in the header, and the tray icon drawn outside this window entirely. Each of them
+    /// used to be recomputed by a different event, and reading an alert changes all four while
+    /// rearranging none of them - so it went through the one path that recomputed nothing. That
+    /// was reported three separate times, about three different counters, each fixed on its own
+    /// while the next one was left. They are counted here, in one place, for that reason: the
+    /// question "which of them did I remember" should not be askable.
     /// </remarks>
-    private void RefreshChipCounts()
+    private void RefreshCounts()
     {
+        UnreadCount = _store.UnreadCount;
+
+        // Each chip counts against the other axis rather than against the whole history, so it
+        // says what picking it would leave.
         foreach (var chip in Filters)
         {
-            chip.IsSelected = chip.Filter == ActiveFilter;
             chip.Count = _all.Count(a => !a.IsRead && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
         }
+
+        foreach (var section in Groups)
+        {
+            section.Recount();
+        }
+
+        _shell.UnreadChanged();
     }
 
     private bool OfKind(AlertViewModel alert) => ActiveFilter == AlertFilter.All || alert.Group == ActiveFilter;
@@ -685,7 +684,6 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         // The rows the sections hold are wrappers around models that have just been replaced.
         _sections.Clear();
-        UnreadCount = _store.UnreadCount;
         ApplyFilter();
 
         // The selected alert is a wrapper around a model that has just been replaced, so the

@@ -24,6 +24,9 @@ public sealed partial class AlertViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Meta))]
     [NotifyPropertyChangedFor(nameof(RowMeta))]
+    // The tooltip embeds Meta, so it goes stale with it. Adding a second account is what changes
+    // this, and the row updated while its tooltip went on naming nobody.
+    [NotifyPropertyChangedFor(nameof(Tooltip))]
     private bool _showAccount;
 
     public AlertViewModel(Alert model)

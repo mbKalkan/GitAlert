@@ -125,12 +125,14 @@ public class FlyoutCountTests : IDisposable
             Assert.Equal(2, flyout.UnreadCount);
             Assert.Equal(2, Chip(flyout, AlertFilter.All).Count);
 
+            var toldBefore = shell.UnreadChangedCalls;
+
             Read(flyout, "a");
 
             Assert.Equal(1, Chip(flyout, AlertFilter.All).Count);
             Assert.Equal(1, project.UnreadCount);
             Assert.Equal("1 unread alert", flyout.UnreadText);
-            Assert.Equal(1, shell.UnreadChangedCalls);
+            Assert.Equal(toldBefore + 1, shell.UnreadChangedCalls);
         });
     }
 
@@ -143,6 +145,7 @@ public class FlyoutCountTests : IDisposable
             var flyout = Build(shell, Alert("a", AlertKind.Issue), Alert("b", AlertKind.Push));
 
             var project = Assert.Single(flyout.Groups);
+            var toldBefore = shell.UnreadChangedCalls;
 
             flyout.MarkAllReadCommand.Execute(null);
 
@@ -151,7 +154,7 @@ public class FlyoutCountTests : IDisposable
             Assert.False(project.HasUnread);
             Assert.False(flyout.HasUnread);
             Assert.Equal("No unread alerts", flyout.UnreadText);
-            Assert.Equal(1, shell.UnreadChangedCalls);
+            Assert.Equal(toldBefore + 1, shell.UnreadChangedCalls);
         });
     }
 
