@@ -100,22 +100,22 @@
 
           <StackPanel Grid.Column="1" Margin="11,0,8,0" VerticalAlignment="Center">
             <TextBlock x:Name="TitleLine"
-                       Text="{Binding Title}"
+                       Text="{Binding PrimaryText}"
                        FontSize="13"
                        FontWeight="SemiBold"
                        Foreground="{DynamicResource TextPrimary}"
                        TextTrimming="CharacterEllipsis" />
 
-            <TextBlock Text="{Binding Detail}"
+            <TextBlock Text="{Binding SecondaryText}"
                        FontSize="12"
                        Margin="0,2,0,0"
                        Foreground="{DynamicResource TextSecondary}"
                        TextTrimming="CharacterEllipsis"
-                       Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
+                       Visibility="{Binding HasSecondaryText, Converter={StaticResource BoolToVisibility}}" />
 
             <TextBlock Text="{Binding RowMeta}"
                        FontSize="11.5"
-                       Margin="0,3,0,0"
+                       Margin="0,2,0,0"
                        Foreground="{DynamicResource TextMuted}"
                        TextTrimming="CharacterEllipsis"
                        Visibility="{Binding RowMeta, Converter={StaticResource StringToVisibility}}" />
@@ -151,11 +151,10 @@
     <!-- Alerts / History. Selection comes in through Tag so the buttons stay plain buttons. -->
     <Style x:Key="ModeChip" TargetType="Button">
       <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Margin" Value="0,0,4,0" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bg" Background="{DynamicResource ChipBackground}" CornerRadius="12" Padding="12,4">
+            <Border x:Name="Bg" Background="Transparent" CornerRadius="11" Padding="14,4">
               <TextBlock x:Name="Text"
                          Text="{TemplateBinding Content}"
                          FontSize="11.5"
@@ -545,19 +544,69 @@
 
       <!-- ==================== Filters ==================== -->
 
-      <StackPanel Grid.Row="1" Margin="16,0,16,8">
+      <StackPanel Grid.Row="1" Margin="16,0,14,8">
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
-          <Button Style="{StaticResource ModeChip}"
-                  Content="Alerts"
-                  Tag="{Binding IsAlertMode}"
-                  Command="{Binding ShowAlertsCommand}" />
-          <Button Style="{StaticResource ModeChip}"
-                  Content="History"
-                  Tag="{Binding IsHistoryMode}"
-                  ToolTip="Every commit in the repository, not only what arrived while GitAlert was running"
-                  Command="{Binding ShowHistoryCommand}" />
-        </StackPanel>
+        <!-- One toolbar, not a row of pills per axis: mode on the left, project on the right. -->
+        <Grid Margin="0,0,0,7">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <Border Grid.Column="0"
+                  CornerRadius="13"
+                  Padding="2"
+                  Background="{DynamicResource ChipBackground}">
+            <StackPanel Orientation="Horizontal">
+              <Button Style="{StaticResource ModeChip}"
+                      Content="Alerts"
+                      Tag="{Binding IsAlertMode}"
+                      ToolTip="What arrived while GitAlert was running"
+                      Command="{Binding ShowAlertsCommand}" />
+              <Button Style="{StaticResource ModeChip}"
+                      Content="History"
+                      Tag="{Binding IsHistoryMode}"
+                      ToolTip="Every commit in the repository, however far back"
+                      Command="{Binding ShowHistoryCommand}" />
+            </StackPanel>
+          </Border>
+
+          <ComboBox Grid.Column="2"
+                    Style="{StaticResource ModernComboBox}"
+                    MinWidth="150"
+                    MaxWidth="210"
+                    Height="28"
+                    VerticalAlignment="Center"
+                    ItemsSource="{Binding Projects}"
+                    SelectedItem="{Binding SelectedProject}"
+                    ToolTip="Narrow to one project"
+                    Visibility="{Binding HasSeveralProjects, Converter={StaticResource BoolToVisibility}}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding Label}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" />
+
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding Count}"
+                             Margin="10,0,0,0"
+                             FontSize="10.5"
+                             Foreground="{DynamicResource TextMuted}"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding HasCount, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </Grid>
 
         <ItemsControl ItemsSource="{Binding Filters}"
                       Visibility="{Binding IsAlertMode, Converter={StaticResource BoolToVisibility}}">
@@ -571,26 +620,6 @@
               <Button Style="{StaticResource FilterChip}"
                       Margin="0,0,4,5"
                       Command="{Binding DataContext.SelectFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                      CommandParameter="{Binding}" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-
-        <!-- The second axis: which project. Only worth showing once there is more than one. -->
-        <ItemsControl ItemsSource="{Binding Projects}"
-                      Margin="0,3,0,0"
-                      Visibility="{Binding HasSeveralProjects, Converter={StaticResource BoolToVisibility}}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <WrapPanel Orientation="Horizontal" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Button Style="{StaticResource FilterChip}"
-                      Margin="0,0,4,5"
-                      ToolTip="{Binding Tooltip}"
-                      Command="{Binding DataContext.SelectProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                       CommandParameter="{Binding}" />
             </DataTemplate>
           </ItemsControl.ItemTemplate>
@@ -720,18 +749,19 @@
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                          <TextBlock Text="{Binding Alert.Title}"
+                          <TextBlock Text="{Binding Alert.PrimaryText}"
                                      FontSize="14"
                                      FontWeight="SemiBold"
                                      Foreground="{DynamicResource TextPrimary}"
-                                     TextTrimming="CharacterEllipsis" />
+                                     TextWrapping="Wrap"
+                                     MaxHeight="56" />
 
-                          <TextBlock Text="{Binding Alert.Detail}"
+                          <TextBlock Text="{Binding Alert.SecondaryText}"
                                      Style="{StaticResource SecondaryText}"
                                      Margin="0,3,0,0"
                                      TextWrapping="Wrap"
                                      MaxHeight="54"
-                                     Visibility="{Binding Alert.HasDetail, Converter={StaticResource BoolToVisibility}}" />
+                                     Visibility="{Binding Alert.HasSecondaryText, Converter={StaticResource BoolToVisibility}}" />
 
                           <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                             <TextBlock Text="{Binding Alert.Meta}" Style="{StaticResource MutedText}" />

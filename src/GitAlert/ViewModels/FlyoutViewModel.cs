@@ -168,10 +168,27 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     public bool HasHistoryMessage => !string.IsNullOrEmpty(HistoryMessage);
 
     /// <summary>
-    /// Whether narrowing by project is worth offering. With a single repository watched, the row
-    /// would be one chip that does nothing.
+    /// Whether narrowing by project is worth offering. With a single repository watched, the
+    /// control would be a menu with one entry that does nothing.
     /// </summary>
     public bool HasSeveralProjects => Projects.Count > 2;
+
+    /// <summary>
+    /// The project the list is narrowed to, as a picker rather than a row of chips: the chips
+    /// grew a row per axis and buried the alerts under their own controls.
+    /// </summary>
+    public ProjectChipViewModel? SelectedProject
+    {
+        get => Projects.FirstOrDefault(
+            p => string.Equals(p.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase));
+        set
+        {
+            if (value is not null && !ReferenceEquals(value, SelectedProject))
+            {
+                SelectProject(value);
+            }
+        }
+    }
 
     /// <summary>The right-hand pane: the selected alert and the files it changed.</summary>
     public AlertDetailViewModel Detail { get; }
@@ -348,8 +365,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             // pane already fetched is reused rather than requested again.
             Id = $"{accountId}|commit:{commit.Sha}",
             Kind = AlertKind.Push,
-            Title = string.IsNullOrWhiteSpace(summary) ? $"Commit {Abbreviate(commit.Sha)}" : summary.Trim(),
-            Detail = Abbreviate(commit.Sha),
+
+            // Shaped like a push alert on purpose: the headline is the boilerplate and the
+            // message is the detail, which is what makes the row lead with the message.
+            Title = $"Commit {Abbreviate(commit.Sha)}",
+            Detail = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim(),
             Repository = repository,
             Account = login,
             AccountId = accountId,
@@ -608,6 +628,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(HasSeveralProjects));
         }
 
+        OnPropertyChanged(nameof(SelectedProject));
+
         // A project the user had narrowed to can disappear when history is trimmed or cleared.
         if (ActiveProject is not null && !repositories.Contains(ActiveProject, StringComparer.OrdinalIgnoreCase))
         {
@@ -617,6 +639,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         foreach (var chip in Projects)
         {
             chip.IsSelected = string.Equals(chip.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase);
+            chip.Summary = chip.Repository ?? "Every watched repository";
             chip.Count = _all.Count(a =>
                 !a.IsRead
                 && OfKind(a)

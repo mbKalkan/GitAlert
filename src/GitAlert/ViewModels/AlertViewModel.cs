@@ -41,6 +41,20 @@ public sealed partial class AlertViewModel : ObservableObject
 
     public bool HasDetail => !string.IsNullOrWhiteSpace(Model.Detail);
 
+    /// <summary>
+    /// The line a row leads with. For a push that is the commit message: "New commit on main" is
+    /// the same sentence on every push and says nothing about which commit this is, so it is
+    /// demoted to the meta line and the message takes the top.
+    /// </summary>
+    public string PrimaryText => LeadsWithDetail ? Model.Detail! : Model.Title;
+
+    /// <summary>The supporting line, or null when the row only needs one.</summary>
+    public string? SecondaryText => LeadsWithDetail ? null : Model.Detail;
+
+    public bool HasSecondaryText => !string.IsNullOrWhiteSpace(SecondaryText);
+
+    private bool LeadsWithDetail => Model.Kind == AlertKind.Push && HasDetail;
+
     public string Repository => Model.Repository;
 
     public string? Url => Model.Url;
@@ -69,12 +83,22 @@ public sealed partial class AlertViewModel : ObservableObject
             parts.Add(Model.Repository);
         }
 
+        // When the message has taken the top line, the headline belongs here instead.
+        if (LeadsWithDetail)
+        {
+            parts.Add(Model.Title);
+        }
+
         if (!string.IsNullOrWhiteSpace(Model.Actor))
         {
             parts.Add(Model.Actor!);
         }
 
-        if (ShowAccount && !string.IsNullOrWhiteSpace(Model.Account))
+        // "deniz · via @deniz" is the same name twice. The account is only worth naming when it
+        // is not already obvious from who caused the alert.
+        if (ShowAccount
+            && !string.IsNullOrWhiteSpace(Model.Account)
+            && !string.Equals(Model.Account, Model.Actor, StringComparison.OrdinalIgnoreCase))
         {
             parts.Add($"via @{Model.Account}");
         }

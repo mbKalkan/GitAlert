@@ -29,5 +29,9 @@ public sealed partial class ProjectChipViewModel : ObservableObject
 
     public string Tooltip { get; }
 
+    /// <summary>The full slug, shown under the name in the picker.</summary>
+    [ObservableProperty]
+    private string _summary = string.Empty;
+
     public bool HasCount => Count > 0;
 }
