@@ -474,6 +474,11 @@
                         IsChecked="{Binding IgnoreOwnActivity}"
                         Content="Ignore activity I caused myself" />
 
+              <TextBlock Style="{StaticResource MutedText}"
+                         TextWrapping="Wrap"
+                         Margin="26,-4,0,10"
+                         Text="Off by default, so you see your own pushes too. Turn it on once the echo of your own work stops being useful." />
+
               <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,8,0,18" />
 
               <TextBlock Text="DELIVERY" Style="{StaticResource SectionHeader}" />

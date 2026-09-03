@@ -39,8 +39,12 @@ public sealed class AppSettings
     /// <summary>When set, only failed / cancelled CI runs raise an alert.</summary>
     public bool OnlyFailedWorkflowRuns { get; set; }
 
-    /// <summary>Ignore activity produced by the signed-in account itself.</summary>
-    public bool IgnoreOwnActivity { get; set; } = true;
+    /// <summary>
+    /// Skip activity the signed-in account caused itself. Off by default: the first thing anyone
+    /// does with a notification app is push something and wait to see it appear, and silently
+    /// filtering exactly that made GitAlert look broken.
+    /// </summary>
+    public bool IgnoreOwnActivity { get; set; }
 
     public bool ShowToasts { get; set; } = true;
 

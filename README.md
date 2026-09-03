@@ -63,7 +63,7 @@ Mentions, review requests and assignments from `/notifications`, per account, fo
 list. With more than one account the cards say which identity saw each alert.
 
 **Quiet by design**
-Mute any category you do not care about. Ignore activity you caused yourself. Choose how often it
+Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it
 checks, from every minute to every three hours.
 
 **Native Windows behaviour**
@@ -228,8 +228,8 @@ CI builds and tests every push. Tagging `v1.2.3` builds the installer and publis
   timeline's schedule.
 - Commit polling follows the default branch. A push to another branch is reported when the events
   timeline catches up.
-- **"Ignore activity I caused myself" is on by default**, so your own pushes stay quiet. Turn it off
-  under Notifications if you want to see them - useful when testing the app on your own repository.
+- **"Ignore activity I caused myself" is off by default**, so your own pushes are reported too.
+  Turn it on under Notifications once seeing your own work echoed back stops being useful.
 - Notifications are delivered as tray balloons, which Windows renders as toasts. They carry no
   action buttons; clicking one opens the relevant page.
 - The build is not code signed, so SmartScreen will warn on first run.

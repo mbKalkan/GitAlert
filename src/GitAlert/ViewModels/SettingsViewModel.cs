@@ -66,7 +66,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private bool _onlyFailedWorkflowRuns;
 
     [ObservableProperty]
-    private bool _ignoreOwnActivity = true;
+    private bool _ignoreOwnActivity;
 
     [ObservableProperty]
     private bool _showToasts = true;
