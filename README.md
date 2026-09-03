@@ -70,6 +70,10 @@ push of several the net change across the range, a pull request its whole file l
 Mentions, review requests and assignments from `/notifications`, per account, folded into the same
 list. With more than one account the cards say which identity saw each alert.
 
+**Grouped by project, filtered two ways**
+Alerts are gathered under a collapsible header per repository, each carrying its own unread count,
+so a busy project can be folded away without muting it. Narrow by category, by project, or both.
+
 **Quiet by design**
 Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it
 checks, from every minute to every three hours.

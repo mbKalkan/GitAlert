@@ -23,6 +23,7 @@ public sealed partial class AlertViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Meta))]
+    [NotifyPropertyChangedFor(nameof(RowMeta))]
     private bool _showAccount;
 
     public AlertViewModel(Alert model)
@@ -51,24 +52,34 @@ public sealed partial class AlertViewModel : ObservableObject
     public Brush Accent => AlertGlyphs.BrushFor(Model.Kind, Model.Severity);
 
     /// <summary>The dimmed line under the title: repository, who caused it, and which account saw it.</summary>
-    public string Meta
+    public string Meta => Describe(withRepository: true);
+
+    /// <summary>
+    /// The same line for a row in the list, where the repository is already named by the group
+    /// header above it and repeating it on every row is just noise.
+    /// </summary>
+    public string RowMeta => Describe(withRepository: false);
+
+    private string Describe(bool withRepository)
     {
-        get
+        var parts = new List<string>();
+
+        if (withRepository)
         {
-            var parts = new List<string> { Model.Repository };
-
-            if (!string.IsNullOrWhiteSpace(Model.Actor))
-            {
-                parts.Add(Model.Actor!);
-            }
-
-            if (ShowAccount && !string.IsNullOrWhiteSpace(Model.Account))
-            {
-                parts.Add($"via @{Model.Account}");
-            }
-
-            return string.Join(" · ", parts);
+            parts.Add(Model.Repository);
         }
+
+        if (!string.IsNullOrWhiteSpace(Model.Actor))
+        {
+            parts.Add(Model.Actor!);
+        }
+
+        if (ShowAccount && !string.IsNullOrWhiteSpace(Model.Account))
+        {
+            parts.Add($"via @{Model.Account}");
+        }
+
+        return string.Join(" · ", parts);
     }
 
     /// <summary>Full text for the tooltip, where there is room for everything.</summary>

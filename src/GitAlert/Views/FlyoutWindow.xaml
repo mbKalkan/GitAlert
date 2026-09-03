@@ -113,11 +113,12 @@
                        TextTrimming="CharacterEllipsis"
                        Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
 
-            <TextBlock Text="{Binding Meta}"
+            <TextBlock Text="{Binding RowMeta}"
                        FontSize="11.5"
                        Margin="0,3,0,0"
                        Foreground="{DynamicResource TextMuted}"
-                       TextTrimming="CharacterEllipsis" />
+                       TextTrimming="CharacterEllipsis"
+                       Visibility="{Binding RowMeta, Converter={StaticResource StringToVisibility}}" />
           </StackPanel>
 
           <StackPanel Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
@@ -143,6 +144,107 @@
           <Setter TargetName="UnreadDot" Property="Visibility" Value="Hidden" />
           <Setter TargetName="TitleLine" Property="FontWeight" Value="Normal" />
           <Setter TargetName="TitleLine" Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- The repository header above a group of alerts. Clicking it folds the group away. -->
+    <Style x:Key="GroupHeaderButton" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bg" Background="Transparent" CornerRadius="6" Padding="6,5" Margin="0,4,0,1">
+              <ContentPresenter />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceHover}" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceHover}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <DataTemplate x:Key="AlertGroupTemplate" DataType="{x:Type vm:AlertGroupViewModel}">
+      <StackPanel>
+        <Button Style="{StaticResource GroupHeaderButton}"
+                Command="{Binding DataContext.ToggleGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                CommandParameter="{Binding}"
+                ToolTip="{Binding Repository}">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Path x:Name="Chevron"
+                  Grid.Column="0"
+                  Data="M4,2.5 L8.5,7 L4,11.5"
+                  Stroke="{DynamicResource TextMuted}"
+                  StrokeThickness="1.5"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  Width="11"
+                  Height="12"
+                  Stretch="Uniform"
+                  VerticalAlignment="Center"
+                  RenderTransformOrigin="0.5,0.5" />
+
+            <TextBlock Grid.Column="1"
+                       Margin="7,0,8,0"
+                       VerticalAlignment="Center"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextSecondary}" /></TextBlock>
+
+            <Border x:Name="CountBadge"
+                    Grid.Column="2"
+                    MinWidth="16"
+                    Height="16"
+                    CornerRadius="8"
+                    VerticalAlignment="Center"
+                    Background="{DynamicResource ChipBackground}">
+              <TextBlock x:Name="CountText"
+                         Text="{Binding CountText}"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         Margin="5,0"
+                         Foreground="{DynamicResource TextMuted}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+            </Border>
+          </Grid>
+        </Button>
+
+        <!-- Bound only while expanded, so a folded repository costs nothing to keep on screen. -->
+        <ItemsControl x:Name="Rows"
+                      Visibility="Collapsed"
+                      ItemTemplate="{StaticResource AlertTemplate}"
+                      Margin="0,0,0,2" />
+      </StackPanel>
+
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+          <Setter TargetName="Rows" Property="Visibility" Value="Visible" />
+          <Setter TargetName="Rows" Property="ItemsSource" Value="{Binding Alerts}" />
+          <Setter TargetName="Chevron" Property="RenderTransform">
+            <Setter.Value>
+              <RotateTransform Angle="90" />
+            </Setter.Value>
+          </Setter>
+        </DataTrigger>
+
+        <!-- A group with unread alerts wears the accent, so a folded one still says so. -->
+        <DataTrigger Binding="{Binding HasUnread}" Value="True">
+          <Setter TargetName="CountBadge" Property="Background" Value="{DynamicResource Accent}" />
+          <Setter TargetName="CountText" Property="Foreground" Value="{DynamicResource OnAccent}" />
         </DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
@@ -414,21 +516,43 @@
 
       <!-- ==================== Filters ==================== -->
 
-      <ItemsControl Grid.Row="1" ItemsSource="{Binding Filters}" Margin="16,0,16,10">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <WrapPanel Orientation="Horizontal" />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate>
-            <Button Style="{StaticResource FilterChip}"
-                    Margin="0,0,4,5"
-                    Command="{Binding DataContext.SelectFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                    CommandParameter="{Binding}" />
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+      <StackPanel Grid.Row="1" Margin="16,0,16,8">
+        <ItemsControl ItemsSource="{Binding Filters}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource FilterChip}"
+                      Margin="0,0,4,5"
+                      Command="{Binding DataContext.SelectFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- The second axis: which project. Only worth showing once there is more than one. -->
+        <ItemsControl ItemsSource="{Binding Projects}"
+                      Margin="0,3,0,0"
+                      Visibility="{Binding HasSeveralProjects, Converter={StaticResource BoolToVisibility}}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Style="{StaticResource FilterChip}"
+                      Margin="0,0,4,5"
+                      ToolTip="{Binding Tooltip}"
+                      Command="{Binding DataContext.SelectProjectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
 
       <!-- ==================== List and detail ==================== -->
 
@@ -446,8 +570,8 @@
           <ScrollViewer Style="{StaticResource SlimScrollViewer}"
                         Margin="8,0,4,0"
                         Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-            <ItemsControl ItemsSource="{Binding Alerts}"
-                          ItemTemplate="{StaticResource AlertTemplate}"
+            <ItemsControl ItemsSource="{Binding Groups}"
+                          ItemTemplate="{StaticResource AlertGroupTemplate}"
                           Margin="0,0,4,8" />
           </ScrollViewer>
 

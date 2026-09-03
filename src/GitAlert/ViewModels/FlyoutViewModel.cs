@@ -72,8 +72,18 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private AlertViewModel? _selectedAlert;
 
+    /// <summary>Which repository the list is narrowed to, or null for every project.</summary>
+    [ObservableProperty]
+    private string? _activeProject;
+
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
+
+    /// <summary>
+    /// Repositories the user has folded away. Held separately from the groups because the groups
+    /// are rebuilt on every filter change and would otherwise spring open again.
+    /// </summary>
+    private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
 
     public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell)
     {
@@ -110,9 +120,22 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _ageTimer.Tick += (_, _) => RefreshAges();
     }
 
+    /// <summary>The filtered alerts, flat. The list on screen renders <see cref="Groups"/>.</summary>
     public ObservableCollection<AlertViewModel> Alerts { get; } = [];
 
+    /// <summary>The same alerts, gathered under one collapsible header per repository.</summary>
+    public ObservableCollection<AlertGroupViewModel> Groups { get; } = [];
+
     public ObservableCollection<FilterChipViewModel> Filters { get; }
+
+    /// <summary>One chip per repository that has alerts, plus the chip that clears the filter.</summary>
+    public ObservableCollection<ProjectChipViewModel> Projects { get; } = [];
+
+    /// <summary>
+    /// Whether narrowing by project is worth offering. With a single repository watched, the row
+    /// would be one chip that does nothing.
+    /// </summary>
+    public bool HasSeveralProjects => Projects.Count > 2;
 
     /// <summary>The right-hand pane: the selected alert and the files it changed.</summary>
     public AlertDetailViewModel Detail { get; }
@@ -154,6 +177,38 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         ActiveFilter = chip.Filter;
         ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void SelectProject(ProjectChipViewModel? chip)
+    {
+        if (chip is null)
+        {
+            return;
+        }
+
+        ActiveProject = chip.Repository;
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    private void ToggleGroup(AlertGroupViewModel? group)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        group.IsExpanded = !group.IsExpanded;
+
+        if (group.IsExpanded)
+        {
+            _collapsed.Remove(group.Repository);
+        }
+        else
+        {
+            _collapsed.Add(group.Repository);
+        }
     }
 
     /// <summary>
@@ -295,6 +350,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         {
             ConnectionState.NotConfigured => "Add your access token and a repository to get started.",
             ConnectionState.Error => status.Message,
+            _ when ActiveProject is not null => $"Nothing from {ShortName(ActiveProject)} yet.",
             _ => ActiveFilter == AlertFilter.All
                 ? "You are all caught up."
                 : "Nothing here yet.",
@@ -302,23 +358,97 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private void ApplyFilter()
     {
+        // Chip counts describe what picking that chip would leave, so each counts against the
+        // other axis rather than against the whole history.
         foreach (var chip in Filters)
         {
             chip.IsSelected = chip.Filter == ActiveFilter;
-            chip.Count = chip.Filter == AlertFilter.All
-                ? _all.Count(a => !a.IsRead)
-                : _all.Count(a => !a.IsRead && a.Group == chip.Filter);
+            chip.Count = _all.Count(a => !a.IsRead && InProject(a) && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
         }
+
+        RebuildProjects();
 
         Alerts.Clear();
 
-        foreach (var alert in _all.Where(a => ActiveFilter == AlertFilter.All || a.Group == ActiveFilter))
+        foreach (var alert in _all.Where(a => InProject(a) && OfKind(a)))
         {
             Alerts.Add(alert);
         }
 
+        RebuildGroups();
+
         IsEmpty = Alerts.Count == 0;
         UpdateEmptyMessage(_monitor.Status);
+    }
+
+    private bool OfKind(AlertViewModel alert) => ActiveFilter == AlertFilter.All || alert.Group == ActiveFilter;
+
+    private bool InProject(AlertViewModel alert) =>
+        ActiveProject is null || string.Equals(alert.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Keeps a chip per repository that has alerts. The chips are only rebuilt when that set
+    /// actually changes, so clicking one does not make the whole row flicker.
+    /// </summary>
+    private void RebuildProjects()
+    {
+        var repositories = _all
+            .Select(a => a.Repository)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(r => r, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var current = Projects.Skip(1).Select(p => p.Repository!).ToList();
+
+        if (!current.SequenceEqual(repositories, StringComparer.OrdinalIgnoreCase))
+        {
+            Projects.Clear();
+            Projects.Add(new ProjectChipViewModel(null, "All projects"));
+
+            foreach (var repository in repositories)
+            {
+                Projects.Add(new ProjectChipViewModel(repository, ShortName(repository)));
+            }
+
+            OnPropertyChanged(nameof(HasSeveralProjects));
+        }
+
+        // A project the user had narrowed to can disappear when history is trimmed or cleared.
+        if (ActiveProject is not null && !repositories.Contains(ActiveProject, StringComparer.OrdinalIgnoreCase))
+        {
+            ActiveProject = null;
+        }
+
+        foreach (var chip in Projects)
+        {
+            chip.IsSelected = string.Equals(chip.Repository, ActiveProject, StringComparison.OrdinalIgnoreCase);
+            chip.Count = _all.Count(a =>
+                !a.IsRead
+                && OfKind(a)
+                && (chip.Repository is null
+                    || string.Equals(a.Repository, chip.Repository, StringComparison.OrdinalIgnoreCase)));
+        }
+    }
+
+    private void RebuildGroups()
+    {
+        Groups.Clear();
+
+        // Alerts are newest first, so grouping in encounter order puts the repository with the
+        // most recent activity at the top.
+        foreach (var group in Alerts.GroupBy(a => a.Repository, StringComparer.OrdinalIgnoreCase))
+        {
+            Groups.Add(new AlertGroupViewModel(group.Key, group)
+            {
+                IsExpanded = !_collapsed.Contains(group.Key),
+            });
+        }
+    }
+
+    private static string ShortName(string repository)
+    {
+        var cut = repository.IndexOf('/');
+        return cut > 0 ? repository[(cut + 1)..] : repository;
     }
 
     /// <summary>Keeps the in-memory list aligned with the trimmed, persisted history.</summary>
