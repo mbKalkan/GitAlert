@@ -49,7 +49,7 @@ public static class EventTranslator
         var head = payload.GetStringOrNull("head");
         var before = payload.GetStringOrNull("before");
 
-        var commits = payload.TryGetProperty("commits", out var list) && list.ValueKind == JsonValueKind.Array
+        var commits = payload.TryGetChild("commits", out var list) && list.ValueKind == JsonValueKind.Array
             ? list
             : default;
 
@@ -85,14 +85,14 @@ public static class EventTranslator
 
     private static Alert? PullRequest(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (!payload.TryGetProperty("pull_request", out var pr))
+        if (!payload.TryGetChild("pull_request", out var pr))
         {
             return null;
         }
 
         var action = payload.GetStringOrNull("action");
         var number = pr.GetIntOrDefault("number", payload.GetIntOrDefault("number", 0));
-        var merged = pr.TryGetProperty("merged", out var m) && m.ValueKind == JsonValueKind.True;
+        var merged = pr.TryGetChild("merged", out var m) && m.ValueKind == JsonValueKind.True;
 
         var verb = action switch
         {
@@ -127,7 +127,7 @@ public static class EventTranslator
 
     private static Alert? Review(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (!payload.TryGetProperty("review", out var review) || !payload.TryGetProperty("pull_request", out var pr))
+        if (!payload.TryGetChild("review", out var review) || !payload.TryGetChild("pull_request", out var pr))
         {
             return null;
         }
@@ -155,12 +155,12 @@ public static class EventTranslator
 
     private static Alert? ReviewComment(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (!payload.TryGetProperty("pull_request", out var pr))
+        if (!payload.TryGetChild("pull_request", out var pr))
         {
             return null;
         }
 
-        var comment = payload.TryGetProperty("comment", out var c) ? c : default;
+        var comment = payload.TryGetChild("comment", out var c) ? c : default;
         var number = pr.GetIntOrDefault("number", 0);
 
         return Build(
@@ -175,7 +175,7 @@ public static class EventTranslator
 
     private static Alert? Issue(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (!payload.TryGetProperty("issue", out var issue))
+        if (!payload.TryGetChild("issue", out var issue))
         {
             return null;
         }
@@ -208,16 +208,16 @@ public static class EventTranslator
 
     private static Alert? IssueComment(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (payload.GetStringOrNull("action") != "created" || !payload.TryGetProperty("issue", out var issue))
+        if (payload.GetStringOrNull("action") != "created" || !payload.TryGetChild("issue", out var issue))
         {
             return null;
         }
 
-        var comment = payload.TryGetProperty("comment", out var c) ? c : default;
+        var comment = payload.TryGetChild("comment", out var c) ? c : default;
         var number = issue.GetIntOrDefault("number", 0);
 
         // GitHub models pull requests as issues, so the payload tells us which one this is.
-        var isPullRequest = issue.TryGetProperty("pull_request", out _);
+        var isPullRequest = issue.TryGetChild("pull_request", out _);
         var noun = isPullRequest ? "PR" : "issue";
 
         return Build(
@@ -232,7 +232,7 @@ public static class EventTranslator
 
     private static Alert? CommitComment(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (!payload.TryGetProperty("comment", out var comment))
+        if (!payload.TryGetChild("comment", out var comment))
         {
             return null;
         }
@@ -249,14 +249,14 @@ public static class EventTranslator
 
     private static Alert? Release(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (payload.GetStringOrNull("action") != "published" || !payload.TryGetProperty("release", out var release))
+        if (payload.GetStringOrNull("action") != "published" || !payload.TryGetChild("release", out var release))
         {
             return null;
         }
 
         var tag = release.GetStringOrNull("tag_name");
         var name = release.GetStringOrNull("name");
-        var prerelease = release.TryGetProperty("prerelease", out var p) && p.ValueKind == JsonValueKind.True;
+        var prerelease = release.TryGetChild("prerelease", out var p) && p.ValueKind == JsonValueKind.True;
 
         return Build(
             source,
@@ -302,7 +302,7 @@ public static class EventTranslator
 
     private static Alert Fork(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        var forkee = payload.TryGetProperty("forkee", out var f) ? f : default;
+        var forkee = payload.TryGetChild("forkee", out var f) ? f : default;
 
         return Build(
             source,
@@ -326,7 +326,7 @@ public static class EventTranslator
 
     private static Alert? Member(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (payload.GetStringOrNull("action") != "added" || !payload.TryGetProperty("member", out var member))
+        if (payload.GetStringOrNull("action") != "added" || !payload.TryGetChild("member", out var member))
         {
             return null;
         }
@@ -343,7 +343,7 @@ public static class EventTranslator
 
     private static Alert? Wiki(GhEvent source, string repository, string? actor, JsonElement payload)
     {
-        if (!payload.TryGetProperty("pages", out var pages)
+        if (!payload.TryGetChild("pages", out var pages)
             || pages.ValueKind != JsonValueKind.Array
             || pages.GetArrayLength() == 0)
         {
@@ -580,16 +580,34 @@ public static class EventTranslator
 
 internal static class JsonElementExtensions
 {
+    /// <summary>A property of an element, when the element is an object that has one.</summary>
+    /// <remarks>
+    /// <see cref="JsonElement.TryGetProperty(string, out JsonElement)"/> is a "try" about the
+    /// property, not about the element: called on anything that is not an object it throws, and
+    /// that includes the <see cref="JsonValueKind.Undefined"/> an absent payload deserialises to.
+    /// Every payload here is whatever GitHub happened to send, and the shapes vary by event type
+    /// and by age, so the check belongs in one place rather than at twenty call sites - one
+    /// malformed event used to take the whole poll down with it, including the repositories it
+    /// had not reached yet.
+    /// </remarks>
+    public static bool TryGetChild(this JsonElement element, string property, out JsonElement value)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            return element.TryGetProperty(property, out value);
+        }
+
+        value = default;
+        return false;
+    }
+
     public static string? GetStringOrNull(this JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object
-        && element.TryGetProperty(property, out var value)
-        && value.ValueKind == JsonValueKind.String
+        element.TryGetChild(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
 
     public static int GetIntOrDefault(this JsonElement element, string property, int fallback) =>
-        element.ValueKind == JsonValueKind.Object
-        && element.TryGetProperty(property, out var value)
+        element.TryGetChild(property, out var value)
         && value.ValueKind == JsonValueKind.Number
         && value.TryGetInt32(out var number)
             ? number

@@ -140,6 +140,14 @@ public sealed class MonitorService : IAsyncDisposable
             return;
         }
 
+        // Configure runs before this and asks for a refresh whenever the credentials changed,
+        // which at startup they always have. The loop polls immediately anyway, so that pending
+        // request was being consumed by the first wait and everything was polled twice in a row.
+        if (_refreshSignal.CurrentCount > 0)
+        {
+            _refreshSignal.Wait(0);
+        }
+
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => RunAsync(_cts.Token));
     }
