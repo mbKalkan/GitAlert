@@ -68,6 +68,13 @@ public partial class App : Application
         _alerts = new AlertStore { MaxHistory = settings.MaxHistory };
         _alerts.Load();
 
+        // A repository removed while GitAlert was not running leaves its alerts behind in the
+        // history file. Reconcile before anything has a chance to count them or list the project.
+        if (_alerts.RemoveUnwatched(settings.Repositories.Where(r => r.Enabled).Select(r => r.FullName)) > 0)
+        {
+            _alerts.Save();
+        }
+
         _monitor = new MonitorService(_alerts, new StateStore());
         _monitor.Configure(settings, tokenStore.ReadAll(settings.Accounts.Select(a => a.Id)));
 

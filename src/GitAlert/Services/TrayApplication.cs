@@ -147,6 +147,9 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         Application.Current.Shutdown();
     }
 
+    /// <summary>The list read or cleared something; the tray icon carries the same count.</summary>
+    public void UnreadChanged() => UpdateTrayPresentation(_monitor.Status);
+
     // ---- ISettingsHost -----------------------------------------------------
 
     public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
@@ -157,6 +160,19 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         _alerts.MaxHistory = settings.MaxHistory;
         _flyout.ApplyPreferences(settings);
         _monitor.Configure(settings, tokens);
+
+        // A repository that is no longer watched takes its alerts with it. Without this the
+        // project stayed in the list, with a count beside it, for something just removed.
+        if (_alerts.RemoveUnwatched(settings.Repositories.Where(r => r.Enabled).Select(r => r.FullName)) > 0)
+        {
+            _alerts.Save();
+        }
+
+        // And the list is rebuilt either way: it is the only thing that knows which projects
+        // exist, and nothing else was telling it the watch list had changed at all.
+        _flyoutViewModel.Reload();
+        UpdateTrayPresentation(_monitor.Status);
+
         _monitor.RequestRefresh();
     }
 

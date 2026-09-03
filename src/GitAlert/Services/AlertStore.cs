@@ -117,6 +117,38 @@ public sealed class AlertStore
         }
     }
 
+    /// <summary>
+    /// Forgets alerts about repositories that are no longer being watched, and reports how many
+    /// went.
+    /// </summary>
+    /// <remarks>
+    /// Removing a repository in settings should take its notifications with it. Leaving them
+    /// behind kept the project in the list, with a count beside it, for something the user had
+    /// just said they were finished with.
+    ///
+    /// Inbox alerts are exempt. They come from the account's own notification inbox rather than
+    /// from the watch list, and can perfectly well be about a repository that was never on it -
+    /// somebody mentioning you in a thread somewhere is still worth keeping.
+    /// </remarks>
+    public int RemoveUnwatched(IEnumerable<string> watched)
+    {
+        var live = new HashSet<string>(watched, StringComparer.OrdinalIgnoreCase);
+
+        lock (_gate)
+        {
+            // The ids stay in the seen set. Nothing would re-fetch these anyway - removing a
+            // repository drops its sync state too, so adding it back starts from now.
+            return _alerts.RemoveAll(a => !IsFromInbox(a) && !live.Contains(a.Repository));
+        }
+    }
+
+    /// <summary>
+    /// Whether an alert came from the notification inbox rather than from a watched repository.
+    /// Stamping prefixes the account onto the id, so the source is whatever follows the bar.
+    /// </summary>
+    private static bool IsFromInbox(Alert alert) =>
+        alert.Id.AsSpan(alert.Id.LastIndexOf('|') + 1).StartsWith("inbox:", StringComparison.Ordinal);
+
     public void Clear()
     {
         lock (_gate)

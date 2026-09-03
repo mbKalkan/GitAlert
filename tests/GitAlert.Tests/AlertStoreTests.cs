@@ -19,6 +19,81 @@ public class AlertStoreTests : IDisposable
         IsRead = read,
     };
 
+    private static Alert In(string id, string repository) => new()
+    {
+        Id = id,
+        Kind = AlertKind.Push,
+        Title = $"Alert {id}",
+        Repository = repository,
+        Timestamp = DateTimeOffset.UtcNow,
+    };
+
+    /// <summary>
+    /// Removing a repository in settings has to take its alerts with it. Left behind, they kept
+    /// the project in the list with a count beside it for something just removed.
+    /// </summary>
+    [Fact]
+    public void Alerts_about_a_repository_that_is_no_longer_watched_are_dropped()
+    {
+        var store = new AlertStore(_path);
+
+        store.Add(
+        [
+            In("acc|event:1", "acme/api-gateway"),
+            In("acc|event:2", "acme/dropped"),
+            In("acc|event:3", "acme/dropped"),
+        ]);
+
+        var removed = store.RemoveUnwatched(["acme/api-gateway"]);
+
+        Assert.Equal(2, removed);
+        Assert.Equal(["acc|event:1"], store.Snapshot.Select(a => a.Id));
+    }
+
+    /// <summary>
+    /// The inbox is not the watch list. Somebody mentioning you in a repository you never
+    /// watched is still worth keeping, and dropping it would empty the inbox on every save.
+    /// </summary>
+    [Fact]
+    public void An_inbox_alert_survives_even_for_a_repository_that_is_not_watched()
+    {
+        var store = new AlertStore(_path);
+
+        store.Add(
+        [
+            In("acc|inbox:99:1700000000", "stranger/project"),
+            In("acc|event:2", "stranger/project"),
+        ]);
+
+        Assert.Equal(1, store.RemoveUnwatched(["acme/api-gateway"]));
+        Assert.Equal(["acc|inbox:99:1700000000"], store.Snapshot.Select(a => a.Id));
+    }
+
+    [Fact]
+    public void Watching_is_matched_the_way_github_writes_it_rather_than_case_sensitively()
+    {
+        var store = new AlertStore(_path);
+        store.Add([In("acc|event:1", "Acme/API-Gateway")]);
+
+        Assert.Equal(0, store.RemoveUnwatched(["acme/api-gateway"]));
+        Assert.Single(store.Snapshot);
+    }
+
+    [Fact]
+    public void Reading_an_alert_lowers_the_unread_count()
+    {
+        var store = new AlertStore(_path);
+        store.Add([Make("a"), Make("b"), Make("c")]);
+
+        Assert.Equal(3, store.UnreadCount);
+
+        store.MarkRead("b");
+        Assert.Equal(2, store.UnreadCount);
+
+        store.MarkAllRead();
+        Assert.Equal(0, store.UnreadCount);
+    }
+
     [Fact]
     public void Add_returns_only_what_was_new()
     {

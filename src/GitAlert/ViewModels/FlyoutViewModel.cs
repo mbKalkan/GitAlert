@@ -25,6 +25,13 @@ public interface IShellCommands
     /// sorted inside them, whether read alerts are hidden - so they survive a restart.
     /// </summary>
     void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly);
+
+    /// <summary>
+    /// Something in the list was read or cleared. The tray icon carries the same number and has
+    /// no other way of learning it changed, so it would otherwise keep the old one until the
+    /// next poll happened to redraw it.
+    /// </summary>
+    void UnreadChanged();
 }
 
 /// <summary>
@@ -335,6 +342,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         UnreadCount = 0;
+        RecountSections();
+        _shell.UnreadChanged();
+    }
+
+    private void RecountSections()
+    {
+        foreach (var section in Groups)
+        {
+            section.Recount();
+        }
     }
 
     [RelayCommand]
@@ -346,6 +363,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _sections.Clear();
         UnreadCount = 0;
         ApplyFilter();
+        _shell.UnreadChanged();
 
         SelectedAlert = null;
         await Detail.ShowAsync(null).ConfigureAwait(true);
@@ -368,6 +386,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _store.MarkRead(alert.Model.Id);
         _store.Save();
         UnreadCount = Math.Max(0, UnreadCount - 1);
+
+        // The badge beside the project and the number on the tray icon are both counting this
+        // same alert, and neither of them is watching the row.
+        _sections.GetValueOrDefault(alert.Repository)?.Recount();
+        _shell.UnreadChanged();
     }
 
     private void OnAlertsReceived(object? sender, IReadOnlyList<Alert> alerts) =>

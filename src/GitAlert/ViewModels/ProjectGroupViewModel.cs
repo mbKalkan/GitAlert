@@ -144,6 +144,20 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowCount));
     }
 
+    /// <summary>
+    /// Recounts what is unread here.
+    /// </summary>
+    /// <remarks>
+    /// Reading an alert happens on the row, which the group knows nothing about - it counts when
+    /// it builds its list and never again. That left the badge beside a project showing the
+    /// number of unread alerts it had when you opened it, however many of them you then read.
+    /// </remarks>
+    public void Recount()
+    {
+        UnreadCount = Items.Count(i => !i.IsRead);
+        OnPropertyChanged(nameof(CountText));
+    }
+
     [RelayCommand]
     private void MoveUp() => _move?.Invoke(this, -1);
 
