@@ -90,6 +90,74 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    // ---- Foreground activation ---------------------------------------------
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AttachThreadInput(uint thread, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    /// <summary>
+    /// Brings a window to the foreground even when Windows would normally refuse.
+    /// <c>SetForegroundWindow</c> only obeys the process that already owns the foreground or that
+    /// received the last input event, and a click on a tray icon satisfies neither: Explorer got
+    /// the click, not us. Left at that, the flyout is activated by our own thread but never by the
+    /// system, so Windows takes the activation straight back and the panel blinks shut on its own.
+    /// Briefly sharing an input queue with the foreground thread is the documented way past it.
+    /// </summary>
+    public static void ForceForeground(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || SetForegroundWindow(hWnd))
+        {
+            return;
+        }
+
+        var foreground = GetForegroundWindow();
+        var self = GetCurrentThreadId();
+        var owner = foreground == IntPtr.Zero ? 0u : GetWindowThreadProcessId(foreground, IntPtr.Zero);
+
+        if (owner == 0 || owner == self)
+        {
+            BringWindowToTop(hWnd);
+            SetActiveWindow(hWnd);
+            return;
+        }
+
+        var attached = AttachThreadInput(self, owner, true);
+
+        try
+        {
+            SetForegroundWindow(hWnd);
+            BringWindowToTop(hWnd);
+            SetActiveWindow(hWnd);
+        }
+        finally
+        {
+            if (attached)
+            {
+                AttachThreadInput(self, owner, false);
+            }
+        }
+    }
+
+    /// <summary>True when the given window is the one Windows currently considers foreground.</summary>
+    public static bool IsForeground(IntPtr hWnd) => hWnd != IntPtr.Zero && GetForegroundWindow() == hWnd;
+
     // ---- Icon creation -----------------------------------------------------
 
     public const int BI_RGB = 0;

@@ -95,6 +95,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         if (_settingsWindow is not null)
         {
             _settingsWindow.Activate();
+            BringToFront(_settingsWindow);
             return;
         }
 
@@ -109,7 +110,15 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
         _settingsWindow.Show();
         _settingsWindow.Activate();
+        BringToFront(_settingsWindow);
     }
+
+    /// <summary>
+    /// Settings is usually opened from the tray menu, and a window opened while Explorer owns the
+    /// foreground is allowed to appear but not to come forward. Same reason the flyout needs it.
+    /// </summary>
+    private static void BringToFront(Window window) =>
+        NativeMethods.ForceForeground(new WindowInteropHelper(window).Handle);
 
     public void HideFlyout() => _flyout.HideFlyout();
 
