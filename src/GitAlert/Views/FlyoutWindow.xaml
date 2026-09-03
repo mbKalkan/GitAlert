@@ -43,7 +43,7 @@
                     BorderBrush="Transparent"
                     BorderThickness="2,0,0,0"
                     CornerRadius="9"
-                    Padding="9,9,10,9"
+                    Padding="9,7,10,7"
                     Margin="0,1">
               <ContentPresenter />
             </Border>
@@ -255,16 +255,16 @@
             <TextBlock Grid.Column="1"
                        Margin="7,0,8,0"
                        VerticalAlignment="Center"
-                       FontSize="12"
+                       FontSize="12.5"
                        FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextSecondary}" /></TextBlock>
+                       TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" /></TextBlock>
 
             <StackPanel x:Name="Arrows"
                         Grid.Column="2"
                         Orientation="Horizontal"
                         Margin="0,0,6,0"
                         VerticalAlignment="Center"
-                        Opacity="0.4">
+                        Opacity="0">
               <Button Style="{StaticResource ArrowButton}"
                       Command="{Binding MoveUpCommand}"
                       IsEnabled="{Binding CanMoveUp}"
@@ -449,8 +449,8 @@
       <Border x:Name="Row" Background="Transparent">
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="44" />
-            <ColumnDefinition Width="44" />
+            <ColumnDefinition Width="38" />
+            <ColumnDefinition Width="38" />
             <ColumnDefinition Width="14" />
             <ColumnDefinition Width="*" />
           </Grid.ColumnDefinitions>
@@ -623,36 +623,43 @@
 
       <StackPanel Grid.Row="1" Margin="16,0,14,8">
 
-        <!-- Alerts and commits are one timeline now, so there is no mode to choose. What is
-             left is the one switch that changes what the list contains rather than how it is
-             arranged; ordering the projects is done on the sections themselves. -->
-        <Border CornerRadius="13"
-                Padding="2"
-                Margin="0,0,0,7"
-                HorizontalAlignment="Left"
-                Background="{DynamicResource ChipBackground}">
-          <Button Style="{StaticResource ModeChip}"
-                  Content="Unread only"
-                  Tag="{Binding UnreadOnly}"
-                  ToolTip="Show only alerts you have not read, and only the projects that have some"
-                  Command="{Binding ToggleUnreadOnlyCommand}" />
-        </Border>
+        <!-- Both filters on one row: what kind, and whether read alerts count. A row per
+             control cost more height than the first alert was worth. -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
 
-        <ItemsControl ItemsSource="{Binding Filters}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <WrapPanel Orientation="Horizontal" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <Button Style="{StaticResource FilterChip}"
-                      Margin="0,0,4,5"
-                      Command="{Binding DataContext.SelectFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                      CommandParameter="{Binding}" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+          <ItemsControl Grid.Column="0" ItemsSource="{Binding Filters}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Style="{StaticResource FilterChip}"
+                        Margin="0,0,4,5"
+                        Command="{Binding DataContext.SelectFilterCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        CommandParameter="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Border Grid.Column="1"
+                  CornerRadius="13"
+                  Padding="2"
+                  Margin="8,0,0,5"
+                  VerticalAlignment="Top"
+                  Background="{DynamicResource ChipBackground}">
+            <Button Style="{StaticResource ModeChip}"
+                    Content="Unread only"
+                    Tag="{Binding UnreadOnly}"
+                    ToolTip="Show only alerts you have not read, and only the projects that have some"
+                    Command="{Binding ToggleUnreadOnlyCommand}" />
+          </Border>
+        </Grid>
       </StackPanel>
 
       <!-- ==================== List and detail ==================== -->
@@ -829,9 +836,11 @@
 
                         <ScrollViewer Grid.Row="1"
                                       Style="{StaticResource SlimScrollViewer}"
+                                      Background="{DynamicResource SurfaceSunken}"
                                       HorizontalScrollBarVisibility="Auto">
                           <ItemsControl ItemsSource="{Binding SelectedFile.Lines}"
-                                        ItemTemplate="{StaticResource DiffLineTemplate}" />
+                                        ItemTemplate="{StaticResource DiffLineTemplate}"
+                                        VerticalAlignment="Top" />
                         </ScrollViewer>
 
                         <TextBlock Grid.Row="2"

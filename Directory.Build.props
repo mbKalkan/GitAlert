@@ -13,7 +13,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="Product">
-    <VersionPrefix>1.8.0</VersionPrefix>
+    <VersionPrefix>1.8.1</VersionPrefix>
     <Company>Mert Berkan Kalkan</Company>
     <Authors>Mert Berkan Kalkan</Authors>
     <Product>GitAlert</Product>

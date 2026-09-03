@@ -414,7 +414,15 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private void UpdateLastUpdated()
     {
         var last = _monitor.Status.LastSuccess;
-        LastUpdatedText = last is null ? string.Empty : $"updated {RelativeTime.Format(last.Value)} ago";
+        if (last is null)
+        {
+            LastUpdatedText = string.Empty;
+            return;
+        }
+
+        // Format returns "now" for anything under a minute, and "updated now ago" is not English.
+        var age = RelativeTime.Format(last.Value);
+        LastUpdatedText = age == "now" ? "updated just now" : $"updated {age} ago";
     }
 
     private void UpdateEmptyMessage(MonitorStatus status) =>
