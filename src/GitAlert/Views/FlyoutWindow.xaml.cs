@@ -84,6 +84,12 @@ public partial class FlyoutWindow : Window
             _hasStoredPlacement = true;
             KeepOnScreen();
         }
+
+        if (settings.FilesPaneHeight is >= 0 and var files)
+        {
+            _filesPaneHeight = files;
+            ApplyFilesPaneHeight();
+        }
     }
 
     /// <summary>Copies the current size, position and pinned state back into the settings.</summary>
@@ -102,6 +108,7 @@ public partial class FlyoutWindow : Window
         }
 
         settings.AlwaysOnTop = Topmost;
+        settings.FilesPaneHeight = _filesPaneHeight;
     }
 
     /// <summary>
@@ -515,92 +522,82 @@ public partial class FlyoutWindow : Window
 
     // ---- The bar under the change list ---------------------------------------
 
-    /// <summary>The cap the change list starts with, and goes back to on a double click.</summary>
+    /// <summary>The height the change list starts with, and goes back to on a double click.</summary>
     private const double DefaultFilesHeight = 176;
 
-    private const double MinFilesHeight = 44;
-
-    /// <summary>What the diff keeps however far down the list is pulled.</summary>
-    private const double MinDiffHeight = 120;
-
-    /// <summary>The cap as it was when the bar was pressed, put back if the press turns out to be a click.</summary>
-    private double _filesCapBeforeDrag;
+    /// <summary>
+    /// How tall the change list is. A height, not a cap: the bar stays where it was put whatever
+    /// the next commit brings, which is the point of putting it somewhere. Kept here as well as
+    /// on the pane, because the pane is stamped out of the detail template and may not exist
+    /// yet when the settings arrive.
+    /// </summary>
+    private double _filesPaneHeight = DefaultFilesHeight;
 
     private bool _filesBarMoved;
 
+    /// <summary>The pane has just been built from its template: give it the remembered height.</summary>
+    private void OnFilesPaneLoaded(object sender, RoutedEventArgs e) => ApplyFilesPaneHeight();
+
     /// <summary>
-    /// The list is capped rather than sized: a short list stays short and only a long one grows
-    /// into the room. So the bar moves the cap, and starts moving it from what is on screen -
-    /// with three files the list sits well under its cap, and dragging would otherwise do
-    /// nothing until the cap had caught up with it.
+    /// The pane shrank or grew with the window. The list keeps its height as long as there is
+    /// room for it, and gives way only so that the bar itself stays reachable at the bottom.
     /// </summary>
-    private void OnFilesSplitterDragStarted(object sender, DragStartedEventArgs e)
+    private void OnDetailSizeChanged(object sender, SizeChangedEventArgs e) => ApplyFilesPaneHeight();
+
+    private void ApplyFilesPaneHeight()
     {
-        if (FilesPaneBeside(sender) is not { } pane)
+        if (FindDescendant<ScrollViewer>(this, s => s.Name == "FilesPane") is { } pane)
         {
-            return;
-        }
-
-        _filesCapBeforeDrag = pane.MaxHeight;
-        _filesBarMoved = false;
-
-        if (pane.ActualHeight < pane.MaxHeight)
-        {
-            pane.MaxHeight = pane.ActualHeight;
+            pane.Height = Math.Min(_filesPaneHeight, RoomFor(pane));
         }
     }
+
+    /// <summary>
+    /// The most the list can be given: the pane minus the header, the summary line, the padding
+    /// round the list and the bar. There is no other limit - the list may take everything, or
+    /// nothing at all.
+    /// </summary>
+    private static double RoomFor(ScrollViewer pane)
+    {
+        if (FindAncestor<Grid>(pane) is not { } grid || grid.ActualHeight <= 0)
+        {
+            return double.PositiveInfinity;
+        }
+
+        var rows = grid.RowDefinitions;
+        var around = rows[0].ActualHeight + (rows[1].ActualHeight - pane.ActualHeight) + rows[2].ActualHeight;
+
+        return Math.Max(0, grid.ActualHeight - around);
+    }
+
+    private void OnFilesSplitterDragStarted(object sender, DragStartedEventArgs e) => _filesBarMoved = false;
 
     private void OnFilesSplitterDragDelta(object sender, DragDeltaEventArgs e)
     {
-        if (sender is not Thumb bar || FilesPaneBeside(bar) is not { } pane || FindAncestor<Grid>(bar) is not { } grid)
-        {
-            return;
-        }
-
-        // Everything in the pane that is not the list itself: the header, the summary line, the
-        // padding round the list and the bar. What is left after that and the diff's share is
-        // the most the list may take.
-        var rows = grid.RowDefinitions;
-        var around = rows[0].ActualHeight + rows[1].ActualHeight + rows[2].ActualHeight - pane.ActualHeight;
-        var most = Math.Max(MinFilesHeight, grid.ActualHeight - around - MinDiffHeight);
-
-        _filesBarMoved = true;
-        pane.MaxHeight = Math.Clamp(pane.MaxHeight + e.VerticalChange, MinFilesHeight, most);
-    }
-
-    /// <summary>
-    /// A press that never moved is a click, and leaves the cap as it was. A drag that ended with
-    /// the list still shorter than its cap moved nothing the eye could see, and must not quietly
-    /// leave a lower cap behind for the next commit with forty files.
-    /// </summary>
-    private void OnFilesSplitterDragCompleted(object sender, DragCompletedEventArgs e)
-    {
         if (FilesPaneBeside(sender) is not { } pane)
         {
             return;
         }
 
-        if (!_filesBarMoved || e.Canceled)
-        {
-            pane.MaxHeight = _filesCapBeforeDrag;
-            return;
-        }
+        _filesBarMoved = true;
+        _filesPaneHeight = Math.Clamp(pane.ActualHeight + e.VerticalChange, 0, RoomFor(pane));
+        pane.Height = _filesPaneHeight;
+    }
 
-        pane.UpdateLayout();
-
-        if (pane.ActualHeight < pane.MaxHeight - 0.5)
+    /// <summary>Where the bar was left is worth keeping, like the window's own size.</summary>
+    private void OnFilesSplitterDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (_filesBarMoved)
         {
-            pane.MaxHeight = Math.Max(pane.MaxHeight, DefaultFilesHeight);
+            PlacementChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
     private void OnFilesSplitterDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FilesPaneBeside(sender) is { } pane)
-        {
-            pane.MaxHeight = DefaultFilesHeight;
-            _filesCapBeforeDrag = DefaultFilesHeight;
-        }
+        _filesPaneHeight = DefaultFilesHeight;
+        ApplyFilesPaneHeight();
+        PlacementChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -625,6 +622,27 @@ public partial class FlyoutWindow : Window
             if (current is T match)
             {
                 return match;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The first descendant of a type that also passes a test, such as carrying a name.</summary>
+    private static T? FindDescendant<T>(DependencyObject root, Func<T, bool> where) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+
+            if (child is T match && where(match))
+            {
+                return match;
+            }
+
+            if (FindDescendant(child, where) is { } deeper)
+            {
+                return deeper;
             }
         }
 

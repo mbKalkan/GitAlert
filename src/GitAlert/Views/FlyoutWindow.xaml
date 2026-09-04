@@ -820,7 +820,8 @@
                                MaxWidth="280" />
                   </StackPanel>
 
-                  <Grid Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                  <Grid Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}"
+                        SizeChanged="OnDetailSizeChanged">
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="Auto" />
@@ -885,9 +886,12 @@
                                    Style="{StaticResource SectionHeader}"
                                    Margin="6,0,0,6" />
 
-                        <!-- Capped rather than sized, so a short list stays short and only a
-                             long one fills the room. The bar below moves the cap. -->
-                        <ScrollViewer x:Name="FilesPane" Style="{StaticResource SlimScrollViewer}" MaxHeight="176">
+                        <!-- A height, not a cap: the bar below stays where it was put whatever
+                             the next commit brings. The window keeps the number. -->
+                        <ScrollViewer x:Name="FilesPane"
+                                      Style="{StaticResource SlimScrollViewer}"
+                                      Height="176"
+                                      Loaded="OnFilesPaneLoaded">
                           <ItemsControl ItemsSource="{Binding Files}"
                                         ItemTemplate="{StaticResource FileRowTemplate}"
                                         Margin="0,0,4,0" />
@@ -896,7 +900,8 @@
                     </Border>
 
                     <!-- Pull it down to see more of the change list, up to give the diff the
-                         room. A double click puts the list back to its usual size. -->
+                         room - all the way either way. It stays where it is left, across
+                         commits and restarts; a double click puts it back where it started. -->
                     <Thumb Grid.Row="2"
                            Style="{StaticResource PaneSplitter}"
                            ToolTip="Drag to resize the change list. Double-click to reset."

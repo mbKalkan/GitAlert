@@ -91,6 +91,12 @@ public sealed class AppSettings
 
     public double? WindowHeight { get; set; }
 
+    /// <summary>
+    /// How tall the change list in the detail pane is, as the user left the bar under it. Null
+    /// until the bar has been dragged once.
+    /// </summary>
+    public double? FilesPaneHeight { get; set; }
+
     public bool IsMuted(AlertKind kind) => MutedKinds.Contains(kind);
 
     /// <summary>The repositories watched under one account.</summary>
@@ -125,6 +131,7 @@ public sealed class AppSettings
         WindowTop = WindowTop,
         WindowWidth = WindowWidth,
         WindowHeight = WindowHeight,
+        FilesPaneHeight = FilesPaneHeight,
     };
 
     /// <summary>Clamps anything a hand-edited settings file may have got wrong.</summary>

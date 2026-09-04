@@ -304,6 +304,21 @@ public class SettingsTests : IDisposable
         Assert.Equal("@octocat", GitHubAccount.Create("octocat").DisplayName);
     }
 
+    /// <summary>
+    /// The bar under the change list is placed once and expected to stay put, so its height
+    /// travels with the window placement: saved, loaded and cloned like the window's own size.
+    /// </summary>
+    [Fact]
+    public void The_change_list_height_is_kept_with_the_window_placement()
+    {
+        var store = new SettingsStore(_path);
+        Assert.True(store.Save(new AppSettings { FilesPaneHeight = 240 }));
+
+        Assert.Equal(240, store.Load().FilesPaneHeight);
+        Assert.Equal(240, new AppSettings { FilesPaneHeight = 240 }.Clone().FilesPaneHeight);
+        Assert.Null(new AppSettings().FilesPaneHeight);
+    }
+
     public void Dispose()
     {
         foreach (var file in new[] { _path, _path + ".corrupt", _path + ".tmp" })
