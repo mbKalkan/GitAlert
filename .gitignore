@@ -30,3 +30,6 @@ installer/Output/
 *.log
 Thumbs.db
 desktop.ini
+
+## Claude Code (personal rules, never committed)
+CLAUDE.local.md
