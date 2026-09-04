@@ -84,6 +84,11 @@ public sealed partial class FileDiffViewModel : ObservableObject
 
     public string Counts => $"+{Additions}  -{Deletions}";
 
+    /// <summary>The whole path and the counts, for the row that only has room for the name.</summary>
+    public string Tooltip => WasRenamed
+        ? $"{Path}\nRenamed from {PreviousPath}\n{Counts}"
+        : $"{Path}\n{Counts}";
+
     public string? BlobUrl { get; }
 
     /// <summary>
@@ -195,9 +200,9 @@ public sealed partial class FileDiffViewModel : ObservableObject
 }
 
 /// <summary>
-/// The right-hand pane: whatever is known about the selected alert, and for anything that touches
-/// code, the files it changed with their diffs fetched on demand. Nothing is requested until an
-/// alert is actually selected, so browsing the list costs no rate limit.
+/// The selected alert's changes: the files it touched, which unfold under its card in the list,
+/// and the diff of the one that is picked, which fills the pane beside the list. Nothing is
+/// requested until an alert is actually selected, so browsing the list costs no rate limit.
 /// </summary>
 public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 {
@@ -225,31 +230,50 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
+    [NotifyPropertyChangedFor(nameof(CanReload))]
     private AlertViewModel? _alert;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Caption))]
+    [NotifyPropertyChangedFor(nameof(CanReload))]
     private bool _isLoading;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(Caption))]
     private string? _error;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSummary))]
+    [NotifyPropertyChangedFor(nameof(Caption))]
     private string _summary = string.Empty;
 
     /// <summary>Shown instead of a diff when the alert points at no files.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNotice))]
+    [NotifyPropertyChangedFor(nameof(Caption))]
     private string? _notice;
 
     /// <summary>
-    /// The file whose diff is on screen. The change list above it works the way a source control
-    /// view does: every changed file is listed, and picking one shows what happened to it.
+    /// How many changed files are waiting behind "show all". A merge across hundreds of files
+    /// would otherwise push every other project off the bottom of the list the files unfold in.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHiddenFiles))]
+    [NotifyPropertyChangedFor(nameof(ShowAllFilesLabel))]
+    private int _hiddenFileCount;
+
+    /// <summary>
+    /// The file whose diff is on screen. The change list under the open alert works the way a
+    /// source control view does: every changed file is listed, and picking one shows what
+    /// happened to it.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedFile))]
     private FileDiffViewModel? _selectedFile;
+
+    /// <summary>Every changed file, whether or not <see cref="Files"/> is showing it yet.</summary>
+    private List<FileDiffViewModel> _all = [];
 
     public AlertDetailViewModel(MonitorService monitor) => _monitor = monitor;
 
@@ -265,6 +289,29 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
     public bool HasNotice => !string.IsNullOrEmpty(Notice);
 
+    /// <summary>How many files unfold under the alert before the rest wait behind a click.</summary>
+    public const int InlineLimit = 30;
+
+    public bool HasHiddenFiles => HiddenFileCount > 0;
+
+    public string ShowAllFilesLabel => $"Show all {_all.Count} files";
+
+    /// <summary>
+    /// The one line under the open alert: the count once it is known, and until then what is
+    /// happening instead. The pane beside the list carries the longer version.
+    /// </summary>
+    public string Caption => this switch
+    {
+        { IsLoading: true } => "Fetching the changed files…",
+        { HasError: true } => "The changed files could not be fetched",
+        { HasSummary: true } => Summary,
+        { HasNotice: true } => "No changed files",
+        _ => string.Empty,
+    };
+
+    /// <summary>Only an alert with a diff has anything to fetch again.</summary>
+    public bool CanReload => Alert?.Model.HasDiff == true && !IsLoading;
+
     /// <summary>Shows an alert, fetching its diff if it has one.</summary>
     public async Task ShowAsync(AlertViewModel? alert)
     {
@@ -273,6 +320,8 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
         Alert = alert;
         Files.Clear();
+        _all = [];
+        HiddenFileCount = 0;
         SelectedFile = null;
         Error = null;
         Summary = string.Empty;
@@ -414,12 +463,16 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
     private void Render(IReadOnlyList<GhFileChange> files)
     {
+        _all = [.. files.Select(f => new FileDiffViewModel(f))];
+
         Files.Clear();
 
-        foreach (var file in files)
+        foreach (var file in _all.Take(InlineLimit))
         {
-            Files.Add(new FileDiffViewModel(file));
+            Files.Add(file);
         }
+
+        HiddenFileCount = _all.Count - Files.Count;
 
         var additions = files.Sum(f => f.Additions);
         var deletions = files.Sum(f => f.Deletions);
@@ -434,6 +487,21 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
         // Landing on the first file means one click gets you to a diff rather than two.
         SelectFile(Files.FirstOrDefault());
+    }
+
+    /// <summary>
+    /// Lets the rest of a long change list out. Only the tail is added, so the rows already on
+    /// screen - the picked one among them - stay exactly where they are.
+    /// </summary>
+    [RelayCommand]
+    private void ShowAllFiles()
+    {
+        foreach (var file in _all.Skip(Files.Count))
+        {
+            Files.Add(file);
+        }
+
+        HiddenFileCount = 0;
     }
 
     private static string Describe(AlertKind kind) => kind switch

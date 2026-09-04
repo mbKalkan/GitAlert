@@ -161,7 +161,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<FilterChipViewModel> Filters { get; }
 
-    /// <summary>The right-hand pane: the selected alert and the files it changed.</summary>
+    /// <summary>The selected alert's changes: the files under its card, the diff beside the list.</summary>
     public AlertDetailViewModel Detail { get; }
 
     public bool HasUnread => UnreadCount > 0;
@@ -296,8 +296,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Clicking a row shows the change in the detail pane rather than throwing the user at a
-    /// browser. Opening on GitHub is still one click away, from the detail pane's own header.
+    /// Clicking a row unfolds the change under it rather than throwing the user at a browser.
+    /// Opening on GitHub is still one click away, from the line under the open card.
     /// </summary>
     [RelayCommand]
     private async Task SelectAlertAsync(AlertViewModel? alert)
@@ -308,6 +308,13 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         MarkRead(alert);
+
+        // The open card again: fold it, the way a second click on a project header folds the project.
+        if (ReferenceEquals(alert, SelectedAlert))
+        {
+            await ClearSelectionAsync().ConfigureAwait(true);
+            return;
+        }
 
         if (SelectedAlert is { } previous)
         {

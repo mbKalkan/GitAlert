@@ -68,82 +68,149 @@
     </Style>
 
     <DataTemplate x:Key="AlertTemplate" DataType="{x:Type vm:AlertViewModel}">
-      <Button Style="{StaticResource AlertCard}"
-              Command="{Binding DataContext.SelectAlertCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-              CommandParameter="{Binding}"
-              ToolTip="{Binding Tooltip}">
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
+      <StackPanel>
+        <Button Style="{StaticResource AlertCard}"
+                Command="{Binding DataContext.SelectAlertCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                CommandParameter="{Binding}"
+                ToolTip="{Binding Tooltip}">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-          <!-- Kind badge: the glyph in its accent colour on a tile tinted with the same hue. -->
-          <Border Grid.Column="0"
-                  Width="30"
-                  Height="30"
-                  CornerRadius="8"
-                  Background="{Binding Accent}"
-                  Opacity="0.16"
+            <!-- Kind badge: the glyph in its accent colour on a tile tinted with the same hue. -->
+            <Border Grid.Column="0"
+                    Width="30"
+                    Height="30"
+                    CornerRadius="8"
+                    Background="{Binding Accent}"
+                    Opacity="0.16"
+                    VerticalAlignment="Top" />
+
+            <Path Grid.Column="0"
+                  Data="{Binding Glyph}"
+                  Fill="{Binding Accent}"
+                  Width="16"
+                  Height="16"
+                  Stretch="Uniform"
+                  Margin="0,7,0,0"
+                  HorizontalAlignment="Center"
                   VerticalAlignment="Top" />
 
-          <Path Grid.Column="0"
-                Data="{Binding Glyph}"
-                Fill="{Binding Accent}"
-                Width="16"
-                Height="16"
-                Stretch="Uniform"
-                Margin="0,7,0,0"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top" />
+            <StackPanel Grid.Column="1" Margin="11,0,8,0" VerticalAlignment="Center">
+              <TextBlock x:Name="TitleLine"
+                         Text="{Binding PrimaryText}"
+                         FontSize="13"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextPrimary}"
+                         TextTrimming="CharacterEllipsis" />
 
-          <StackPanel Grid.Column="1" Margin="11,0,8,0" VerticalAlignment="Center">
-            <TextBlock x:Name="TitleLine"
-                       Text="{Binding PrimaryText}"
-                       FontSize="13"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextPrimary}"
+              <TextBlock Text="{Binding SecondaryText}"
+                         FontSize="12"
+                         Margin="0,2,0,0"
+                         Foreground="{DynamicResource TextSecondary}"
+                         TextTrimming="CharacterEllipsis"
+                         Visibility="{Binding HasSecondaryText, Converter={StaticResource BoolToVisibility}}" />
+
+              <TextBlock Text="{Binding RowMeta}"
+                         FontSize="11.5"
+                         Margin="0,2,0,0"
+                         Foreground="{DynamicResource TextMuted}"
+                         TextTrimming="CharacterEllipsis"
+                         Visibility="{Binding RowMeta, Converter={StaticResource StringToVisibility}}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
+              <TextBlock Text="{Binding Age}"
+                         FontSize="11.5"
+                         Foreground="{DynamicResource TextMuted}"
+                         HorizontalAlignment="Right" />
+
+              <Ellipse x:Name="UnreadDot"
+                       Width="7"
+                       Height="7"
+                       Margin="0,6,1,0"
+                       Fill="{DynamicResource Accent}"
+                       HorizontalAlignment="Right" />
+            </StackPanel>
+          </Grid>
+        </Button>
+
+        <!-- What the open alert unfolds: one line with the count and the two actions, then the
+             files it touched. They belong to the detail view model, which only ever holds the
+             selected alert's, so every card may bind to it and only the open one shows it. -->
+        <StackPanel x:Name="Changes"
+                    Visibility="Collapsed"
+                    Margin="36,0,4,6"
+                    DataContext="{Binding DataContext.Detail, RelativeSource={RelativeSource AncestorType=Window}}">
+          <Grid Margin="10,3,2,3">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="{Binding Caption}"
+                       Style="{StaticResource MutedText}"
+                       Margin="0,0,8,0"
+                       VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" />
 
-            <TextBlock Text="{Binding SecondaryText}"
-                       FontSize="12"
-                       Margin="0,2,0,0"
-                       Foreground="{DynamicResource TextSecondary}"
-                       TextTrimming="CharacterEllipsis"
-                       Visibility="{Binding HasSecondaryText, Converter={StaticResource BoolToVisibility}}" />
+            <Button Grid.Column="1"
+                    Content="Reload"
+                    Style="{StaticResource LinkButton}"
+                    Command="{Binding ReloadCommand}"
+                    ToolTip="Fetch the changed files again"
+                    Visibility="{Binding CanReload, Converter={StaticResource BoolToVisibility}}" />
 
-            <TextBlock Text="{Binding RowMeta}"
-                       FontSize="11.5"
-                       Margin="0,2,0,0"
-                       Foreground="{DynamicResource TextMuted}"
-                       TextTrimming="CharacterEllipsis"
-                       Visibility="{Binding RowMeta, Converter={StaticResource StringToVisibility}}" />
-          </StackPanel>
+            <Button Grid.Column="2"
+                    Content="Open on GitHub"
+                    Style="{StaticResource LinkButton}"
+                    Margin="4,0,0,0"
+                    Command="{Binding OpenOnGitHubCommand}" />
+          </Grid>
 
-          <StackPanel Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
-            <TextBlock Text="{Binding Age}"
-                       FontSize="11.5"
-                       Foreground="{DynamicResource TextMuted}"
-                       HorizontalAlignment="Right" />
+          <!-- Bound only while open, like a project's rows, so a folded card keeps no row containers.
+               The row template is defined further down with the rest of the diff, hence dynamic. -->
+          <ItemsControl x:Name="FileRows" ItemTemplate="{DynamicResource FileRowTemplate}" />
 
-            <Ellipse x:Name="UnreadDot"
-                     Width="7"
-                     Height="7"
-                     Margin="0,6,1,0"
-                     Fill="{DynamicResource Accent}"
-                     HorizontalAlignment="Right" />
-          </StackPanel>
-        </Grid>
+          <!-- A merge across hundreds of files would otherwise push every other project off the
+               bottom of the list. -->
+          <Button Content="{Binding ShowAllFilesLabel}"
+                  Style="{StaticResource LinkButton}"
+                  HorizontalAlignment="Left"
+                  Margin="6,2,0,0"
+                  Command="{Binding ShowAllFilesCommand}"
+                  Visibility="{Binding HasHiddenFiles, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+      </StackPanel>
 
-      </Button>
-
-      <!-- Read alerts lose the dot and the emphasis, but stay in the list. -->
       <DataTemplate.Triggers>
+        <!-- Read alerts lose the dot and the emphasis, but stay in the list. -->
         <DataTrigger Binding="{Binding IsRead}" Value="True">
           <Setter TargetName="UnreadDot" Property="Visibility" Value="Hidden" />
           <Setter TargetName="TitleLine" Property="FontWeight" Value="Normal" />
           <Setter TargetName="TitleLine" Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </DataTrigger>
+
+        <!-- The open card: its changes unfold under it, fading in rather than snapping. -->
+        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+          <Setter TargetName="Changes" Property="Visibility" Value="Visible" />
+          <Setter TargetName="FileRows" Property="ItemsSource" Value="{Binding Files}" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard>
+              <Storyboard>
+                <DoubleAnimation Storyboard.TargetName="Changes"
+                                 Storyboard.TargetProperty="Opacity"
+                                 From="0"
+                                 To="1"
+                                 Duration="0:0:0.15" />
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
         </DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
@@ -220,36 +287,6 @@
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Bg" Property="Background" Value="{DynamicResource SurfaceHover}" />
-              </Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-
-    <!-- The bar between the change list and the diff. Dragging it gives the list more or less of
-         the pane; it shows itself only under the pointer, like the splitter beside the list. -->
-    <Style x:Key="PaneSplitter" TargetType="Thumb">
-      <Setter Property="Height" Value="7" />
-      <Setter Property="Cursor" Value="SizeNS" />
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Thumb">
-            <Border Background="Transparent">
-              <Border x:Name="Line"
-                      Height="2"
-                      Margin="12,0"
-                      CornerRadius="1"
-                      VerticalAlignment="Center"
-                      Background="{DynamicResource Accent}"
-                      Opacity="0" />
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Line" Property="Opacity" Value="0.6" />
-              </Trigger>
-              <Trigger Property="IsDragging" Value="True">
-                <Setter TargetName="Line" Property="Opacity" Value="1" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -467,34 +504,32 @@
 
     <DataTemplate x:Key="FileRowTemplate" DataType="{x:Type vm:FileDiffViewModel}">
       <Button Style="{StaticResource FileRow}"
-              Command="{Binding DataContext.Detail.SelectFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+              Command="{Binding DataContext.SelectFileCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
               CommandParameter="{Binding}"
-              ToolTip="{Binding Path}">
+              ToolTip="{Binding Tooltip}">
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
-          <TextBlock Grid.Column="0"
-                     VerticalAlignment="Center"
-                     TextTrimming="CharacterEllipsis"
-                     Margin="0,0,10,0">
-            <Run Text="{Binding FileName, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" />
-            <Run Text="{Binding Folder, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontSize="11" />
-          </TextBlock>
+          <Path Grid.Column="0"
+                Data="M2,1 L8,1 L11,4 L11,14 L2,14 Z M8,1 L8,4 L11,4"
+                Stroke="{DynamicResource TextMuted}"
+                StrokeThickness="1.3"
+                StrokeLineJoin="Round"
+                Width="10"
+                Height="13"
+                Stretch="Uniform"
+                VerticalAlignment="Center" />
 
+          <!-- The name first, the folder dimmed after it; the counts wait in the tooltip and on
+               the bar above the diff, where there is room for them. -->
           <TextBlock Grid.Column="1"
+                     Margin="9,0,8,0"
                      VerticalAlignment="Center"
-                     Margin="0,0,10,0"
-                     FontFamily="{StaticResource CodeFont}"
-                     FontSize="10.5">
-            <Run Text="{Binding Additions, Mode=OneWay, StringFormat=+{0}}"
-                 Foreground="{DynamicResource DiffAddedAccent}" />
-            <Run Text="{Binding Deletions, Mode=OneWay, StringFormat=-{0}}"
-                 Foreground="{DynamicResource DiffRemovedAccent}" />
-          </TextBlock>
+                     TextTrimming="CharacterEllipsis"><Run Text="{Binding FileName, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" /><Run Text="  " /><Run Text="{Binding Folder, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontSize="11" /></TextBlock>
 
           <TextBlock x:Name="Letter"
                      Grid.Column="2"
@@ -790,7 +825,7 @@
           </StackPanel>
         </Grid>
 
-        <!-- Where it is left is kept with the window's placement, like the bar in the detail pane. -->
+        <!-- Where it is left is kept with the window's placement, like its size. -->
         <GridSplitter Grid.Column="1"
                       Width="4"
                       HorizontalAlignment="Center"
@@ -799,10 +834,12 @@
                       ShowsPreview="False"
                       DragCompleted="OnListSplitterDragCompleted" />
 
+        <!-- The diff of whichever file is picked under the open alert. The alert, its count and
+             its actions are all on the card, so the pane carries nothing but the file. -->
         <Border Grid.Column="2"
                 BorderBrush="{DynamicResource BorderSubtle}"
                 BorderThickness="1,0,0,0"
-                Background="{DynamicResource SurfaceElevated}">
+                Background="{DynamicResource SurfaceSunken}">
           <ContentControl Content="{Binding Detail}">
             <ContentControl.ContentTemplate>
               <DataTemplate DataType="{x:Type vm:AlertDetailViewModel}">
@@ -816,7 +853,7 @@
                                Style="{StaticResource SecondaryText}"
                                FontSize="13.5"
                                HorizontalAlignment="Center" />
-                    <TextBlock Text="Pick an alert or a commit and its changed files appear here, without leaving GitAlert."
+                    <TextBlock Text="Pick an alert or a commit. The files it changed unfold under it, and the diff of the one you pick opens here."
                                Style="{StaticResource MutedText}"
                                Margin="0,6,0,0"
                                TextAlignment="Center"
@@ -824,172 +861,89 @@
                                MaxWidth="280" />
                   </StackPanel>
 
-                  <Grid Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}"
-                        SizeChanged="OnDetailSizeChanged">
-                    <Grid.RowDefinitions>
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+                  <Grid Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                    <Grid Visibility="{Binding HasSelectedFile, Converter={StaticResource BoolToVisibility}}">
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
 
-                    <!-- Detail header -->
-                    <Border Grid.Row="0"
-                            Padding="16,14,12,12"
-                            BorderBrush="{DynamicResource BorderSubtle}"
-                            BorderThickness="0,0,0,1">
-                      <Grid>
-                        <Grid.ColumnDefinitions>
-                          <ColumnDefinition Width="*" />
-                          <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                      <!-- The file bar: where the file lives, dimmed, then its name, then its counts. -->
+                      <Border Grid.Row="0"
+                              Padding="14,10,10,10"
+                              Background="{DynamicResource SurfaceElevated}"
+                              BorderBrush="{DynamicResource BorderSubtle}"
+                              BorderThickness="0,0,0,1">
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                          </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                          <TextBlock Text="{Binding Alert.PrimaryText}"
-                                     FontSize="14"
-                                     FontWeight="SemiBold"
-                                     Foreground="{DynamicResource TextPrimary}"
-                                     TextWrapping="Wrap"
-                                     MaxHeight="56" />
+                          <TextBlock Grid.Column="0"
+                                     FontFamily="{StaticResource CodeFont}"
+                                     FontSize="11.5"
+                                     VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"
+                                     ToolTip="{Binding SelectedFile.Tooltip}"><Run Text="{Binding SelectedFile.Folder, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" /><Run Text="{Binding SelectedFile.FileName, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" /></TextBlock>
 
-                          <TextBlock Text="{Binding Alert.SecondaryText}"
-                                     Style="{StaticResource SecondaryText}"
-                                     Margin="0,3,0,0"
-                                     TextWrapping="Wrap"
-                                     MaxHeight="54"
-                                     Visibility="{Binding Alert.HasSecondaryText, Converter={StaticResource BoolToVisibility}}" />
+                          <TextBlock Grid.Column="1"
+                                     VerticalAlignment="Center"
+                                     Margin="12,0,6,0"
+                                     FontFamily="{StaticResource CodeFont}"
+                                     FontSize="10.5"><Run Text="{Binding SelectedFile.Additions, Mode=OneWay, StringFormat=+{0}}" Foreground="{DynamicResource DiffAddedAccent}" /><Run Text="  " /><Run Text="{Binding SelectedFile.Deletions, Mode=OneWay, StringFormat=-{0}}" Foreground="{DynamicResource DiffRemovedAccent}" /></TextBlock>
 
-                          <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                            <TextBlock Text="{Binding Alert.Meta}" Style="{StaticResource MutedText}" />
-                            <TextBlock Text="&#183;" Style="{StaticResource MutedText}" Margin="6,0" />
-                            <TextBlock Text="{Binding Alert.Age}" Style="{StaticResource MutedText}" />
-                          </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Right">
-                          <Button Content="Open on GitHub"
-                                  Style="{StaticResource SecondaryButton}"
-                                  Command="{Binding OpenOnGitHubCommand}" />
-                          <Button Content="Reload"
+                          <Button Grid.Column="2"
+                                  Content="Open file"
                                   Style="{StaticResource GhostButton}"
-                                  Margin="0,6,0,0"
-                                  HorizontalAlignment="Right"
-                                  Command="{Binding ReloadCommand}" />
-                        </StackPanel>
-                      </Grid>
-                    </Border>
+                                  Command="{Binding SelectedFile.OpenOnGitHubCommand}" />
+                        </Grid>
+                      </Border>
 
-                    <!-- The change list: every file the alert touched, source-control style. -->
-                    <Border Grid.Row="1"
-                            Padding="10,10,8,8"
-                            BorderBrush="{DynamicResource BorderSubtle}"
-                            BorderThickness="0,0,0,1"
-                            Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}">
-                      <StackPanel>
-                        <TextBlock Text="{Binding Summary}"
-                                   Style="{StaticResource SectionHeader}"
-                                   Margin="6,0,0,6" />
+                      <ScrollViewer Grid.Row="1"
+                                    Style="{StaticResource SlimScrollViewer}"
+                                    HorizontalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding SelectedFile.Lines}"
+                                      ItemTemplate="{StaticResource DiffLineTemplate}"
+                                      VerticalAlignment="Top" />
+                      </ScrollViewer>
 
-                        <!-- A height, not a cap: the bar below stays where it was put whatever
-                             the next commit brings. The window keeps the number. -->
-                        <ScrollViewer x:Name="FilesPane"
-                                      Style="{StaticResource SlimScrollViewer}"
-                                      Height="176"
-                                      Loaded="OnFilesPaneLoaded">
-                          <ItemsControl ItemsSource="{Binding Files}"
-                                        ItemTemplate="{StaticResource FileRowTemplate}"
-                                        Margin="0,0,4,0" />
-                        </ScrollViewer>
-                      </StackPanel>
-                    </Border>
-
-                    <!-- Pull it down to see more of the change list, up to give the diff the
-                         room - all the way either way. It stays where it is left, across
-                         commits and restarts; a double click puts it back where it started. -->
-                    <Thumb Grid.Row="2"
-                           Style="{StaticResource PaneSplitter}"
-                           ToolTip="Drag to resize the change list. Double-click to reset."
-                           DragStarted="OnFilesSplitterDragStarted"
-                           DragDelta="OnFilesSplitterDragDelta"
-                           DragCompleted="OnFilesSplitterDragCompleted"
-                           MouseDoubleClick="OnFilesSplitterDoubleClick"
-                           Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}" />
-
-                    <!-- The diff of whichever file is picked. -->
-                    <Grid Grid.Row="3">
-                      <Grid Visibility="{Binding HasSelectedFile, Converter={StaticResource BoolToVisibility}}">
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="*" />
-                          <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" Padding="14,8" Background="{DynamicResource SurfaceSunken}">
-                          <Grid>
-                            <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="*" />
-                              <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Grid.Column="0"
-                                       Text="{Binding SelectedFile.Path}"
-                                       FontFamily="{StaticResource CodeFont}"
-                                       FontSize="11.5"
-                                       Foreground="{DynamicResource TextSecondary}"
-                                       VerticalAlignment="Center"
-                                       TextTrimming="CharacterEllipsis" />
-
-                            <Button Grid.Column="1"
-                                    Content="Open file"
-                                    Style="{StaticResource GhostButton}"
-                                    Command="{Binding SelectedFile.OpenOnGitHubCommand}" />
-                          </Grid>
-                        </Border>
-
-                        <ScrollViewer Grid.Row="1"
-                                      Style="{StaticResource SlimScrollViewer}"
-                                      Background="{DynamicResource SurfaceSunken}"
-                                      HorizontalScrollBarVisibility="Auto">
-                          <ItemsControl ItemsSource="{Binding SelectedFile.Lines}"
-                                        ItemTemplate="{StaticResource DiffLineTemplate}"
-                                        VerticalAlignment="Top" />
-                        </ScrollViewer>
-
-                        <TextBlock Grid.Row="2"
-                                   Text="{Binding SelectedFile.Note}"
-                                   Margin="14,8,12,10"
-                                   FontSize="11.5"
-                                   TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextMuted}"
-                                   Visibility="{Binding SelectedFile.HasNote, Converter={StaticResource BoolToVisibility}}" />
-                      </Grid>
-
-                      <TextBlock Text="Fetching the changed files from GitHub&#8230;"
-                                 Style="{StaticResource SecondaryText}"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"
-                                 Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
-
-                      <TextBlock Text="{Binding Error}"
-                                 Foreground="{DynamicResource Danger}"
-                                 FontSize="12.5"
-                                 Margin="30"
+                      <TextBlock Grid.Row="2"
+                                 Text="{Binding SelectedFile.Note}"
+                                 Margin="14,8,12,10"
+                                 FontSize="11.5"
                                  TextWrapping="Wrap"
-                                 TextAlignment="Center"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"
-                                 Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
-
-                      <TextBlock Text="{Binding Notice}"
-                                 Style="{StaticResource MutedText}"
-                                 Margin="30"
-                                 MaxWidth="320"
-                                 TextWrapping="Wrap"
-                                 TextAlignment="Center"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"
-                                 Visibility="{Binding HasNotice, Converter={StaticResource BoolToVisibility}}" />
+                                 Foreground="{DynamicResource TextMuted}"
+                                 Visibility="{Binding SelectedFile.HasNote, Converter={StaticResource BoolToVisibility}}" />
                     </Grid>
+
+                    <TextBlock Text="Fetching the changed files from GitHub&#8230;"
+                               Style="{StaticResource SecondaryText}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+
+                    <TextBlock Text="{Binding Error}"
+                               Foreground="{DynamicResource Danger}"
+                               FontSize="12.5"
+                               Margin="30"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
+
+                    <TextBlock Text="{Binding Notice}"
+                               Style="{StaticResource MutedText}"
+                               Margin="30"
+                               MaxWidth="320"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasNotice, Converter={StaticResource BoolToVisibility}}" />
                   </Grid>
                 </Grid>
               </DataTemplate>

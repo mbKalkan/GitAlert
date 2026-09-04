@@ -304,21 +304,6 @@ public class SettingsTests : IDisposable
         Assert.Equal("@octocat", GitHubAccount.Create("octocat").DisplayName);
     }
 
-    /// <summary>
-    /// The bar under the change list is placed once and expected to stay put, so its height
-    /// travels with the window placement: saved, loaded and cloned like the window's own size.
-    /// </summary>
-    [Fact]
-    public void The_change_list_height_is_kept_with_the_window_placement()
-    {
-        var store = new SettingsStore(_path);
-        Assert.True(store.Save(new AppSettings { FilesPaneHeight = 240 }));
-
-        Assert.Equal(240, store.Load().FilesPaneHeight);
-        Assert.Equal(240, new AppSettings { FilesPaneHeight = 240 }.Clone().FilesPaneHeight);
-        Assert.Null(new AppSettings().FilesPaneHeight);
-    }
-
     [Fact]
     public void The_list_width_is_kept_as_a_share_and_a_bad_one_is_forgotten()
     {
@@ -328,11 +313,25 @@ public class SettingsTests : IDisposable
         Assert.Equal(0.4, store.Load().ListPaneShare);
         Assert.Equal(0.4, new AppSettings { ListPaneShare = 0.4 }.Clone().ListPaneShare);
 
-        var edited = new AppSettings { ListPaneShare = 1.5, FilesPaneHeight = -20 };
+        var edited = new AppSettings { ListPaneShare = 1.5 };
         edited.Normalise();
 
         Assert.Null(edited.ListPaneShare);
-        Assert.Null(edited.FilesPaneHeight);
+    }
+
+    /// <summary>
+    /// A settings file from before the change list moved under the alert still names the height
+    /// of the bar that used to sit beneath it. It is simply not read; nothing else is lost.
+    /// </summary>
+    [Fact]
+    public void A_settings_file_with_the_old_change_list_height_still_loads()
+    {
+        File.WriteAllText(_path, """{"filesPaneHeight": 240, "listPaneShare": 0.4, "pollIntervalMinutes": 7}""");
+
+        var loaded = new SettingsStore(_path).Load();
+
+        Assert.Equal(0.4, loaded.ListPaneShare);
+        Assert.Equal(7, loaded.PollIntervalMinutes);
     }
 
     [Fact]

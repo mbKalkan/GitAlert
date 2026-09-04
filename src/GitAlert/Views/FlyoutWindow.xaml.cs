@@ -85,12 +85,6 @@ public partial class FlyoutWindow : Window
             KeepOnScreen();
         }
 
-        if (settings.FilesPaneHeight is >= 0 and var files)
-        {
-            _filesPaneHeight = files;
-            ApplyFilesPaneHeight();
-        }
-
         if (settings.ListPaneShare is > 0 and < 1 and var share)
         {
             ListColumn.Width = new GridLength(share, GridUnitType.Star);
@@ -114,7 +108,6 @@ public partial class FlyoutWindow : Window
         }
 
         settings.AlwaysOnTop = Topmost;
-        settings.FilesPaneHeight = _filesPaneHeight;
 
         if (ListShare() is { } share)
         {
@@ -562,93 +555,6 @@ public partial class FlyoutWindow : Window
         return list > 0 && detail > 0 ? list / (list + detail) : null;
     }
 
-    // ---- The bar under the change list ---------------------------------------
-
-    /// <summary>The height the change list starts with, and goes back to on a double click.</summary>
-    private const double DefaultFilesHeight = 176;
-
-    /// <summary>
-    /// How tall the change list is. A height, not a cap: the bar stays where it was put whatever
-    /// the next commit brings, which is the point of putting it somewhere. Kept here as well as
-    /// on the pane, because the pane is stamped out of the detail template and may not exist
-    /// yet when the settings arrive.
-    /// </summary>
-    private double _filesPaneHeight = DefaultFilesHeight;
-
-    private bool _filesBarMoved;
-
-    /// <summary>The pane has just been built from its template: give it the remembered height.</summary>
-    private void OnFilesPaneLoaded(object sender, RoutedEventArgs e) => ApplyFilesPaneHeight();
-
-    /// <summary>
-    /// The pane shrank or grew with the window. The list keeps its height as long as there is
-    /// room for it, and gives way only so that the bar itself stays reachable at the bottom.
-    /// </summary>
-    private void OnDetailSizeChanged(object sender, SizeChangedEventArgs e) => ApplyFilesPaneHeight();
-
-    private void ApplyFilesPaneHeight()
-    {
-        if (FindDescendant<ScrollViewer>(this, s => s.Name == "FilesPane") is { } pane)
-        {
-            pane.Height = Math.Min(_filesPaneHeight, RoomFor(pane));
-        }
-    }
-
-    /// <summary>
-    /// The most the list can be given: the pane minus the header, the summary line, the padding
-    /// round the list and the bar. There is no other limit - the list may take everything, or
-    /// nothing at all.
-    /// </summary>
-    private static double RoomFor(ScrollViewer pane)
-    {
-        if (FindAncestor<Grid>(pane) is not { } grid || grid.ActualHeight <= 0)
-        {
-            return double.PositiveInfinity;
-        }
-
-        var rows = grid.RowDefinitions;
-        var around = rows[0].ActualHeight + (rows[1].ActualHeight - pane.ActualHeight) + rows[2].ActualHeight;
-
-        return Math.Max(0, grid.ActualHeight - around);
-    }
-
-    private void OnFilesSplitterDragStarted(object sender, DragStartedEventArgs e) => _filesBarMoved = false;
-
-    private void OnFilesSplitterDragDelta(object sender, DragDeltaEventArgs e)
-    {
-        if (FilesPaneBeside(sender) is not { } pane)
-        {
-            return;
-        }
-
-        _filesBarMoved = true;
-        _filesPaneHeight = Math.Clamp(pane.ActualHeight + e.VerticalChange, 0, RoomFor(pane));
-        pane.Height = _filesPaneHeight;
-    }
-
-    /// <summary>Where the bar was left is worth keeping, like the window's own size.</summary>
-    private void OnFilesSplitterDragCompleted(object sender, DragCompletedEventArgs e)
-    {
-        if (_filesBarMoved)
-        {
-            PlacementChanged?.Invoke(this, EventArgs.Empty);
-        }
-    }
-
-    private void OnFilesSplitterDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        _filesPaneHeight = DefaultFilesHeight;
-        ApplyFilesPaneHeight();
-        PlacementChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    /// <summary>
-    /// The change list the bar sits under. Both are stamped out of the detail template, so the
-    /// bar looks it up by name in that template's own scope rather than through a field here.
-    /// </summary>
-    private static ScrollViewer? FilesPaneBeside(object bar) =>
-        (bar as FrameworkElement)?.FindName("FilesPane") as ScrollViewer;
-
     // ---- Tree walking --------------------------------------------------------
 
     /// <summary>The parent of a node, whichever tree it lives in: a Run has no visual parent.</summary>
@@ -664,27 +570,6 @@ public partial class FlyoutWindow : Window
             if (current is T match)
             {
                 return match;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>The first descendant of a type that also passes a test, such as carrying a name.</summary>
-    private static T? FindDescendant<T>(DependencyObject root, Func<T, bool> where) where T : DependencyObject
-    {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-
-            if (child is T match && where(match))
-            {
-                return match;
-            }
-
-            if (FindDescendant(child, where) is { } deeper)
-            {
-                return deeper;
             }
         }
 

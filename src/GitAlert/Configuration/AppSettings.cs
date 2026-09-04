@@ -96,12 +96,6 @@ public sealed class AppSettings
     public double? WindowHeight { get; set; }
 
     /// <summary>
-    /// How tall the change list in the detail pane is, as the user left the bar under it. Null
-    /// until the bar has been dragged once.
-    /// </summary>
-    public double? FilesPaneHeight { get; set; }
-
-    /// <summary>
     /// The alert list's share of the window's width, between 0 and 1, as the splitter beside it
     /// was left. Null until it has been dragged once.
     /// </summary>
@@ -142,7 +136,6 @@ public sealed class AppSettings
         WindowTop = WindowTop,
         WindowWidth = WindowWidth,
         WindowHeight = WindowHeight,
-        FilesPaneHeight = FilesPaneHeight,
         ListPaneShare = ListPaneShare,
     };
 
@@ -159,13 +152,8 @@ public sealed class AppSettings
         PollIntervalMinutes = Math.Clamp(PollIntervalMinutes, MinimumPollMinutes, MaximumPollMinutes);
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
 
-        // The splitters are stored as numbers a hand-edited file can get wrong; a bad one is
+        // The splitter is stored as a number a hand-edited file can get wrong; a bad one is
         // simply forgotten rather than applied.
-        if (FilesPaneHeight is { } height && (double.IsNaN(height) || height < 0))
-        {
-            FilesPaneHeight = null;
-        }
-
         if (ListPaneShare is { } share && (double.IsNaN(share) || share <= 0 || share >= 1))
         {
             ListPaneShare = null;
