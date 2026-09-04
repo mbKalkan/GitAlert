@@ -159,7 +159,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     {
         _settings = settings;
 
-        ThemeService.Apply(settings.Theme);
+        ThemeService.Apply(settings.Theme, settings.DarkPalette);
         _alerts.MaxHistory = settings.MaxHistory;
         _flyout.ApplyPreferences(settings);
         _monitor.Configure(settings, tokens);
@@ -407,6 +407,10 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     {
         // The tray glyph is drawn in the taskbar's contrast colour, so it has to be redrawn too.
         _tray.Refresh();
+
+        // So do the glyphs on the cards: their colours come from the palette, and the rows keep
+        // the brush they were built with until told otherwise.
+        _flyoutViewModel.RefreshAccents();
         UpdateTrayPresentation(_monitor.Status);
     }
 

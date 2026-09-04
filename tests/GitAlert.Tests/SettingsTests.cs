@@ -335,6 +335,21 @@ public class SettingsTests : IDisposable
         Assert.Null(edited.FilesPaneHeight);
     }
 
+    [Fact]
+    public void The_dark_palette_round_trips_and_an_unknown_one_falls_back_to_the_default()
+    {
+        var store = new SettingsStore(_path);
+        Assert.True(store.Save(new AppSettings { DarkPalette = DarkPalette.GitHub }));
+
+        Assert.Contains("GitHub", File.ReadAllText(_path));
+        Assert.Equal(DarkPalette.GitHub, store.Load().DarkPalette);
+        Assert.Equal(DarkPalette.GitHub, new AppSettings { DarkPalette = DarkPalette.GitHub }.Clone().DarkPalette);
+
+        File.WriteAllText(_path, "{\"darkPalette\":\"Neon\"}");
+        Assert.Equal(DarkPalette.VsCode, store.Load().DarkPalette);
+        Assert.Equal(DarkPalette.VsCode, new AppSettings().DarkPalette);
+    }
+
     public void Dispose()
     {
         foreach (var file in new[] { _path, _path + ".corrupt", _path + ".tmp" })

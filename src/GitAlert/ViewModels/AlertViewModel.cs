@@ -68,6 +68,9 @@ public sealed partial class AlertViewModel : ObservableObject
 
     public Brush Accent => AlertGlyphs.BrushFor(Model.Kind, Model.Severity);
 
+    /// <summary>The palette changed under the row: read the brush again.</summary>
+    public void RefreshAccent() => OnPropertyChanged(nameof(Accent));
+
     /// <summary>The dimmed line under the title: repository, who caused it, and which account saw it.</summary>
     public string Meta => Describe(withRepository: true);
 

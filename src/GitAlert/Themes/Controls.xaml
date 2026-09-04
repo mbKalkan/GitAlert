@@ -15,6 +15,7 @@
   <conv:EmptyCountToVisibilityConverter x:Key="EmptyCountToVisibility" />
   <conv:MinutesConverter x:Key="MinutesToText" />
   <conv:AppThemeConverter x:Key="ThemeToText" />
+  <conv:DarkPaletteConverter x:Key="DarkPaletteToText" />
   <conv:HistorySizeConverter x:Key="HistoryToText" />
 
   <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>

@@ -81,6 +81,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private AppTheme _theme = AppTheme.System;
 
     [ObservableProperty]
+    private DarkPalette _darkPalette = DarkPalette.VsCode;
+
+    [ObservableProperty]
     private int _maxHistory = 300;
 
     [ObservableProperty]
@@ -118,6 +121,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _playSound = _settings.PlaySound;
         _startWithWindows = StartupManager.IsEnabled;
         _theme = _settings.Theme;
+        _darkPalette = _settings.DarkPalette;
         _maxHistory = _settings.MaxHistory;
         _autoHideWindow = _settings.AutoHideWindow;
         _alwaysOnTop = _settings.AlwaysOnTop;
@@ -159,6 +163,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public IReadOnlyList<int> HistoryOptions { get; } = [100, 200, 300, 500, 1000];
 
     public IReadOnlyList<AppTheme> ThemeOptions { get; } = [AppTheme.System, AppTheme.Dark, AppTheme.Light];
+
+    public IReadOnlyList<DarkPalette> DarkPaletteOptions { get; } = [DarkPalette.VsCode, DarkPalette.GitHub];
 
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
@@ -303,6 +309,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings.PlaySound = PlaySound;
         _settings.StartWithWindows = StartWithWindows;
         _settings.Theme = Theme;
+        _settings.DarkPalette = DarkPalette;
         _settings.MaxHistory = MaxHistory;
         _settings.AutoHideWindow = AutoHideWindow;
         _settings.AlwaysOnTop = AlwaysOnTop;

@@ -663,6 +663,23 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
 
+              <TextBlock Text="Dark palette" Style="{StaticResource FieldLabel}" />
+              <ComboBox Style="{StaticResource ModernComboBox}"
+                        Width="260"
+                        HorizontalAlignment="Left"
+                        ItemsSource="{Binding DarkPaletteOptions}"
+                        SelectedItem="{Binding DarkPalette}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding Converter={StaticResource DarkPaletteToText}}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <TextBlock Style="{StaticResource MutedText}"
+                         Margin="0,6,0,18"
+                         TextWrapping="Wrap"
+                         Text="Used whenever the window comes out dark. Light has the one look." />
+
               <TextBlock Text="History" Style="{StaticResource FieldLabel}" />
               <ComboBox Style="{StaticResource ModernComboBox}"
                         Width="260"

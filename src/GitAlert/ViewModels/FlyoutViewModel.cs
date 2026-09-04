@@ -749,6 +749,18 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private AlertViewModel Create(Alert alert) => new(alert) { ShowAccount = _showAccounts };
 
+    /// <summary>
+    /// The palette changed: every card's glyph colour comes from it, and the rows would otherwise
+    /// keep the brushes they were built with until the next rebuild.
+    /// </summary>
+    public void RefreshAccents()
+    {
+        foreach (var alert in _all.Concat(Groups.SelectMany(g => g.Items)).Distinct())
+        {
+            alert.RefreshAccent();
+        }
+    }
+
     /// <summary>Re-reads the store after settings changed the history size or cleared it.</summary>
     public void Reload()
     {

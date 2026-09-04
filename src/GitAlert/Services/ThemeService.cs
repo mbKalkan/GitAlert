@@ -11,19 +11,26 @@ namespace GitAlert.Services;
 /// </summary>
 public static class ThemeService
 {
-    private static readonly Uri DarkPalette = new("/Themes/Dark.xaml", UriKind.Relative);
-    private static readonly Uri LightPalette = new("/Themes/Light.xaml", UriKind.Relative);
+    private static readonly Uri VsCodeDark = new("/Themes/Dark.xaml", UriKind.Relative);
+    private static readonly Uri GitHubDark = new("/Themes/DarkGitHub.xaml", UriKind.Relative);
+    private static readonly Uri Light = new("/Themes/Light.xaml", UriKind.Relative);
 
     private static AppTheme _mode = AppTheme.System;
+    private static DarkPalette _palette = DarkPalette.VsCode;
 
     /// <summary>True when the app is currently painting itself dark.</summary>
     public static bool IsDark { get; private set; } = true;
 
     public static event EventHandler? Applied;
 
-    public static void Apply(AppTheme mode)
+    /// <summary>
+    /// Light has one look; dark has a choice, which only matters when dark is what comes out -
+    /// whether because it was asked for or because Windows is dark.
+    /// </summary>
+    public static void Apply(AppTheme mode, DarkPalette palette = DarkPalette.VsCode)
     {
         _mode = mode;
+        _palette = palette;
         Reapply();
     }
 
@@ -44,7 +51,8 @@ public static class ThemeService
             return;
         }
 
-        var palette = new ResourceDictionary { Source = dark ? DarkPalette : LightPalette };
+        var source = !dark ? Light : _palette == DarkPalette.GitHub ? GitHubDark : VsCodeDark;
+        var palette = new ResourceDictionary { Source = source };
         var merged = application.Resources.MergedDictionaries;
 
         // The palette always sits first so the control styles that follow can override nothing

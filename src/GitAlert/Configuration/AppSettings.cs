@@ -56,6 +56,10 @@ public sealed class AppSettings
     [JsonConverter(typeof(AppThemeConverter))]
     public AppTheme Theme { get; set; } = AppTheme.System;
 
+    /// <summary>Which dark palette to paint with, whenever the theme comes out dark.</summary>
+    [JsonConverter(typeof(DarkPaletteConverter))]
+    public DarkPalette DarkPalette { get; set; } = DarkPalette.VsCode;
+
     /// <summary>How many alerts are kept on disk and shown in the flyout.</summary>
     public int MaxHistory { get; set; } = 300;
 
@@ -128,6 +132,7 @@ public sealed class AppSettings
         PlaySound = PlaySound,
         StartWithWindows = StartWithWindows,
         Theme = Theme,
+        DarkPalette = DarkPalette,
         MaxHistory = MaxHistory,
         ProjectOrder = [.. ProjectOrder],
         UnreadOnly = UnreadOnly,
@@ -288,3 +293,16 @@ public enum AppTheme
 
 /// <summary>A theme this build has not heard of follows Windows, which is what a fresh install does.</summary>
 public sealed class AppThemeConverter() : TolerantEnumConverter<AppTheme>(AppTheme.System);
+
+/// <summary>The dark palettes on offer. Light has one look; dark has a choice.</summary>
+public enum DarkPalette
+{
+    /// <summary>VS Code's Dark Modern: neutral greys and a single blue.</summary>
+    VsCode,
+
+    /// <summary>GitHub's own dark theme, so the window matches the site the alerts come from.</summary>
+    GitHub,
+}
+
+/// <summary>A palette this build has not heard of falls back to the default, as a fresh install has.</summary>
+public sealed class DarkPaletteConverter() : TolerantEnumConverter<DarkPalette>(DarkPalette.VsCode);

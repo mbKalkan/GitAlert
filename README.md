@@ -93,7 +93,8 @@ checks, from every minute to every three hours.
 **A window, not a popup**
 The panel opens beside the tray icon but behaves like a real window: resizable, remembered where
 you left it and how you split it, and it stays put while you read. Clicking a row never scrolls
-the list out from under the pointer. Pin it above other windows, or turn on click-away
+the list out from under the pointer. Dark follows VS Code's Dark Modern out of the box;
+GitHub's own dark palette is one setting away. Pin it above other windows, or turn on click-away
 dismissal if you prefer the popup behaviour.
 
 **Native Windows behaviour**
@@ -226,7 +227,7 @@ src/GitAlert/
   Platform/        Shell_NotifyIcon, vector icon rendering, startup registration, interop
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
   Views/           The main window with its diff pane, and the settings window
-  Themes/          Light and dark palettes plus the shared control styles
+  Themes/          The light palette, two dark ones (VS Code Dark Modern, GitHub) and the shared control styles
 tests/             xUnit tests for parsing, translation, history and settings
 installer/         Inno Setup script
 ```

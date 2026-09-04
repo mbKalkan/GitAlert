@@ -1,3 +1,4 @@
+using System.Windows;
 using System.Windows.Media;
 using GitAlert.Core;
 
@@ -113,8 +114,25 @@ public static class AlertGlyphs
     /// The accent for a card: severity wins when the event carries one, which is what makes a
     /// failed CI run read as red at a glance.
     /// </summary>
+    /// <summary>The resource key a palette uses for this glyph: the severity's when it carries one, the kind's otherwise.</summary>
+    private static string KeyFor(AlertKind kind, AlertSeverity severity) =>
+        severity switch
+        {
+            AlertSeverity.Success => "SeveritySuccess",
+            AlertSeverity.Warning => "SeverityWarning",
+            AlertSeverity.Error => "SeverityError",
+            _ => "Kind" + kind,
+        };
+
     public static SolidColorBrush BrushFor(AlertKind kind, AlertSeverity severity)
     {
+        // The palette decides, so the glyphs recolour with the theme. The table below is for a
+        // process with no palette loaded, such as the tests.
+        if (Application.Current?.TryFindResource(KeyFor(kind, severity)) is SolidColorBrush themed)
+        {
+            return themed;
+        }
+
         var colour = SeverityAccents.TryGetValue(severity, out var bySeverity)
             ? bySeverity
             : Accents.TryGetValue(kind, out var byKind) ? byKind : Accents[AlertKind.Other];

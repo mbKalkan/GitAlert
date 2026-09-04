@@ -42,6 +42,23 @@
   <SolidColorBrush x:Key="DiffGutterText" Color="#8C959F" />
   <SolidColorBrush x:Key="DiffCodeText" Color="#1F2328" />
 
+  <!-- The glyph on each alert card, by kind, and the severity that overrides it. -->
+  <SolidColorBrush x:Key="KindPush" Color="#4C8DF6" />
+  <SolidColorBrush x:Key="KindPullRequest" Color="#A371F7" />
+  <SolidColorBrush x:Key="KindIssue" Color="#34A853" />
+  <SolidColorBrush x:Key="KindComment" Color="#8993A1" />
+  <SolidColorBrush x:Key="KindReview" Color="#34A853" />
+  <SolidColorBrush x:Key="KindRelease" Color="#DB6D28" />
+  <SolidColorBrush x:Key="KindBranch" Color="#589CF0" />
+  <SolidColorBrush x:Key="KindWorkflow" Color="#8993A1" />
+  <SolidColorBrush x:Key="KindStar" Color="#D4A022" />
+  <SolidColorBrush x:Key="KindFork" Color="#8993A1" />
+  <SolidColorBrush x:Key="KindMention" Color="#E066A6" />
+  <SolidColorBrush x:Key="KindOther" Color="#8993A1" />
+  <SolidColorBrush x:Key="SeveritySuccess" Color="#34A853" />
+  <SolidColorBrush x:Key="SeverityWarning" Color="#C7931F" />
+  <SolidColorBrush x:Key="SeverityError" Color="#E5534B" />
+
   <Color x:Key="ShadowColor">#3D4A5C</Color>
   <system:Double xmlns:system="clr-namespace:System;assembly=System.Runtime" x:Key="ShadowOpacity">0.28</system:Double>
 

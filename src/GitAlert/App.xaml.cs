@@ -86,7 +86,7 @@ public partial class App : Application
             settingsStore.Save(settings);
         }
 
-        ThemeService.Apply(settings.Theme);
+        ThemeService.Apply(settings.Theme, settings.DarkPalette);
 
         _alerts = new AlertStore { MaxHistory = settings.MaxHistory };
         _alerts.Load();

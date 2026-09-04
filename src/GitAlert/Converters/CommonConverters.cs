@@ -77,6 +77,21 @@ public sealed class AppThemeConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>Turns the dark palette enum into the label shown in the settings combo box.</summary>
+public sealed class DarkPaletteConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value switch
+        {
+            DarkPalette.VsCode => "VS Code Dark Modern",
+            DarkPalette.GitHub => "GitHub",
+            _ => string.Empty,
+        };
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>Formats the history-size options.</summary>
 public sealed class HistorySizeConverter : IValueConverter
 {
