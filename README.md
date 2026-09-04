@@ -61,7 +61,8 @@ Failures are red, and you can ask to hear about failures only.
 Pick an alert and every file it touched is listed beside it — name, path, `+`/`-` counts and an
 M/A/D badge, the way a source control view does. Pick a file and its unified diff opens underneath,
 with both line-number gutters and the colours GitHub uses. A single commit shows its own diff, a
-push of several the net change across the range, a pull request its whole file list.
+push of several the net change across the range, a pull request its whole file list. Drag the bar between
+the file list and the diff to give either more room; double-click it to put things back.
 
 </td>
 <td width="50%" valign="top">

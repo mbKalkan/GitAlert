@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -511,6 +512,103 @@ public partial class FlyoutWindow : Window
             scroller.ScrollToVerticalOffset(scroller.VerticalOffset + Step);
         }
     }
+
+    // ---- The bar under the change list ---------------------------------------
+
+    /// <summary>The cap the change list starts with, and goes back to on a double click.</summary>
+    private const double DefaultFilesHeight = 176;
+
+    private const double MinFilesHeight = 44;
+
+    /// <summary>What the diff keeps however far down the list is pulled.</summary>
+    private const double MinDiffHeight = 120;
+
+    /// <summary>The cap as it was when the bar was pressed, put back if the press turns out to be a click.</summary>
+    private double _filesCapBeforeDrag;
+
+    private bool _filesBarMoved;
+
+    /// <summary>
+    /// The list is capped rather than sized: a short list stays short and only a long one grows
+    /// into the room. So the bar moves the cap, and starts moving it from what is on screen -
+    /// with three files the list sits well under its cap, and dragging would otherwise do
+    /// nothing until the cap had caught up with it.
+    /// </summary>
+    private void OnFilesSplitterDragStarted(object sender, DragStartedEventArgs e)
+    {
+        if (FilesPaneBeside(sender) is not { } pane)
+        {
+            return;
+        }
+
+        _filesCapBeforeDrag = pane.MaxHeight;
+        _filesBarMoved = false;
+
+        if (pane.ActualHeight < pane.MaxHeight)
+        {
+            pane.MaxHeight = pane.ActualHeight;
+        }
+    }
+
+    private void OnFilesSplitterDragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (sender is not Thumb bar || FilesPaneBeside(bar) is not { } pane || FindAncestor<Grid>(bar) is not { } grid)
+        {
+            return;
+        }
+
+        // Everything in the pane that is not the list itself: the header, the summary line, the
+        // padding round the list and the bar. What is left after that and the diff's share is
+        // the most the list may take.
+        var rows = grid.RowDefinitions;
+        var around = rows[0].ActualHeight + rows[1].ActualHeight + rows[2].ActualHeight - pane.ActualHeight;
+        var most = Math.Max(MinFilesHeight, grid.ActualHeight - around - MinDiffHeight);
+
+        _filesBarMoved = true;
+        pane.MaxHeight = Math.Clamp(pane.MaxHeight + e.VerticalChange, MinFilesHeight, most);
+    }
+
+    /// <summary>
+    /// A press that never moved is a click, and leaves the cap as it was. A drag that ended with
+    /// the list still shorter than its cap moved nothing the eye could see, and must not quietly
+    /// leave a lower cap behind for the next commit with forty files.
+    /// </summary>
+    private void OnFilesSplitterDragCompleted(object sender, DragCompletedEventArgs e)
+    {
+        if (FilesPaneBeside(sender) is not { } pane)
+        {
+            return;
+        }
+
+        if (!_filesBarMoved || e.Canceled)
+        {
+            pane.MaxHeight = _filesCapBeforeDrag;
+            return;
+        }
+
+        pane.UpdateLayout();
+
+        if (pane.ActualHeight < pane.MaxHeight - 0.5)
+        {
+            pane.MaxHeight = Math.Max(pane.MaxHeight, DefaultFilesHeight);
+        }
+    }
+
+    private void OnFilesSplitterDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FilesPaneBeside(sender) is { } pane)
+        {
+            pane.MaxHeight = DefaultFilesHeight;
+            _filesCapBeforeDrag = DefaultFilesHeight;
+        }
+    }
+
+    /// <summary>
+    /// The change list the bar sits under. Both are stamped out of the detail template, so the
+    /// bar looks it up by name in that template's own scope rather than through a field here.
+    /// </summary>
+    private static ScrollViewer? FilesPaneBeside(object bar) =>
+        (bar as FrameworkElement)?.FindName("FilesPane") as ScrollViewer;
 
     // ---- Tree walking --------------------------------------------------------
 

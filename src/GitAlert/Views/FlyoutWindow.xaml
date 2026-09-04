@@ -227,6 +227,36 @@
       </Setter>
     </Style>
 
+    <!-- The bar between the change list and the diff. Dragging it gives the list more or less of
+         the pane; it shows itself only under the pointer, like the splitter beside the list. -->
+    <Style x:Key="PaneSplitter" TargetType="Thumb">
+      <Setter Property="Height" Value="7" />
+      <Setter Property="Cursor" Value="SizeNS" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border Background="Transparent">
+              <Border x:Name="Line"
+                      Height="2"
+                      Margin="12,0"
+                      CornerRadius="1"
+                      VerticalAlignment="Center"
+                      Background="{DynamicResource Accent}"
+                      Opacity="0" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Line" Property="Opacity" Value="0.6" />
+              </Trigger>
+              <Trigger Property="IsDragging" Value="True">
+                <Setter TargetName="Line" Property="Opacity" Value="1" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- The line that says where a dragged project will land. -->
     <Style x:Key="DropLine" TargetType="Border">
       <Setter Property="Height" Value="2" />
@@ -794,6 +824,7 @@
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
                       <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -854,7 +885,9 @@
                                    Style="{StaticResource SectionHeader}"
                                    Margin="6,0,0,6" />
 
-                        <ScrollViewer Style="{StaticResource SlimScrollViewer}" MaxHeight="176">
+                        <!-- Capped rather than sized, so a short list stays short and only a
+                             long one fills the room. The bar below moves the cap. -->
+                        <ScrollViewer x:Name="FilesPane" Style="{StaticResource SlimScrollViewer}" MaxHeight="176">
                           <ItemsControl ItemsSource="{Binding Files}"
                                         ItemTemplate="{StaticResource FileRowTemplate}"
                                         Margin="0,0,4,0" />
@@ -862,8 +895,19 @@
                       </StackPanel>
                     </Border>
 
+                    <!-- Pull it down to see more of the change list, up to give the diff the
+                         room. A double click puts the list back to its usual size. -->
+                    <Thumb Grid.Row="2"
+                           Style="{StaticResource PaneSplitter}"
+                           ToolTip="Drag to resize the change list. Double-click to reset."
+                           DragStarted="OnFilesSplitterDragStarted"
+                           DragDelta="OnFilesSplitterDragDelta"
+                           DragCompleted="OnFilesSplitterDragCompleted"
+                           MouseDoubleClick="OnFilesSplitterDoubleClick"
+                           Visibility="{Binding HasSummary, Converter={StaticResource BoolToVisibility}}" />
+
                     <!-- The diff of whichever file is picked. -->
-                    <Grid Grid.Row="2">
+                    <Grid Grid.Row="3">
                       <Grid Visibility="{Binding HasSelectedFile, Converter={StaticResource BoolToVisibility}}">
                         <Grid.RowDefinitions>
                           <RowDefinition Height="Auto" />
