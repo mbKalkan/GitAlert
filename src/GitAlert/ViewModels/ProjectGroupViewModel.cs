@@ -29,6 +29,9 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     /// <summary>Told which way the project should move, so the list can reorder and remember it.</summary>
     private readonly Action<ProjectGroupViewModel, int>? _move;
 
+    /// <summary>Reads everything the project is showing. The list owns the store, so it does the work.</summary>
+    private readonly Action<ProjectGroupViewModel>? _markRead;
+
     private int _page;
 
     /// <summary>Alerts handed in from the store, which carry the read state.</summary>
@@ -74,12 +77,14 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         string repository,
         string? accountId,
         Func<ProjectGroupViewModel, int, Task<GroupPage>>? loadPage = null,
-        Action<ProjectGroupViewModel, int>? move = null)
+        Action<ProjectGroupViewModel, int>? move = null,
+        Action<ProjectGroupViewModel>? markRead = null)
     {
         Repository = repository;
         AccountId = accountId;
         _loadPage = loadPage;
         _move = move;
+        _markRead = markRead;
 
         var cut = repository.IndexOf('/');
         Owner = cut > 0 ? repository[..cut] : string.Empty;
@@ -179,6 +184,10 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
 
     [RelayCommand]
     private void MoveDown() => _move?.Invoke(this, 1);
+
+    /// <summary>The tick on the header: every row in the project read, in one go.</summary>
+    [RelayCommand]
+    private void MarkRead() => _markRead?.Invoke(this);
 
     [RelayCommand]
     private async Task ToggleAsync()

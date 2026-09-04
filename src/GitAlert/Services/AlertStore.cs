@@ -117,6 +117,20 @@ public sealed class AlertStore
         }
     }
 
+    /// <summary>Marks several alerts read under one lock, so reading a whole project is one save.</summary>
+    public void MarkRead(IEnumerable<string> ids)
+    {
+        var wanted = new HashSet<string>(ids, StringComparer.Ordinal);
+
+        lock (_gate)
+        {
+            foreach (var alert in _alerts.Where(a => wanted.Contains(a.Id)))
+            {
+                alert.IsRead = true;
+            }
+        }
+    }
+
     /// <summary>
     /// Forgets alerts about repositories that are no longer being watched, and reports how many
     /// went.

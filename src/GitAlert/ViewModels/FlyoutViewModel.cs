@@ -378,6 +378,32 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         RefreshCounts();
     }
 
+    /// <summary>
+    /// Reads everything a project is showing, in one go. What it is showing, not everything it
+    /// ever had: with a kind picked in the chips, the badge counts that kind alone, and the tick
+    /// beside it clears the number it sits next to and nothing more.
+    /// </summary>
+    private void MarkProjectRead(ProjectGroupViewModel group)
+    {
+        var unread = group.Items.Where(a => !a.IsRead).ToList();
+
+        if (unread.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var alert in unread)
+        {
+            alert.MarkRead();
+        }
+
+        _store.MarkRead(unread.Select(a => a.Model.Id));
+        _store.Save();
+
+        // As with a single row: nothing moves, only the numbers do.
+        RefreshCounts();
+    }
+
     private void OnAlertsReceived(object? sender, IReadOnlyList<Alert> alerts) =>
         _dispatcher.InvokeAsync(() =>
         {
@@ -618,7 +644,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
             if (group is null)
             {
-                group = new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject);
+                group = new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject, MarkProjectRead);
                 _sections[repository] = group;
 
                 group.SetAlerts(byRepository.GetValueOrDefault(repository, []));

@@ -148,8 +148,9 @@
       </DataTemplate.Triggers>
     </DataTemplate>
 
-    <!-- The two arrows that order the projects. Small, and only visible on hover. -->
-    <Style x:Key="ArrowButton" TargetType="Button">
+    <!-- The small buttons on a project header: the tick that reads it and the two arrows that
+         order it. Only visible on hover. -->
+    <Style x:Key="HeaderToolButton" TargetType="Button">
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="Width" Value="20" />
       <Setter Property="Height" Value="18" />
@@ -274,13 +275,26 @@
                        FontWeight="SemiBold"
                        TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix, Mode=OneWay}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name, Mode=OneWay}" Foreground="{DynamicResource TextPrimary}" /></TextBlock>
 
-            <StackPanel x:Name="Arrows"
+            <StackPanel x:Name="HeaderTools"
                         Grid.Column="2"
                         Orientation="Horizontal"
                         Margin="0,0,6,0"
                         VerticalAlignment="Center"
                         Opacity="0">
-              <Button Style="{StaticResource ArrowButton}"
+              <!-- One tick reads the whole project, so a busy repository need not be read row by row. -->
+              <Button Style="{StaticResource HeaderToolButton}"
+                      Command="{Binding MarkReadCommand}"
+                      IsEnabled="{Binding HasUnread}"
+                      Margin="0,0,4,0"
+                      ToolTip="Mark everything in this project read">
+                <Path Data="M2,7.2 L5.6,10.6 L11.6,3.6"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.6"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      StrokeLineJoin="Round" />
+              </Button>
+              <Button Style="{StaticResource HeaderToolButton}"
                       Command="{Binding MoveUpCommand}"
                       IsEnabled="{Binding CanMoveUp}"
                       ToolTip="Move this project up">
@@ -290,7 +304,7 @@
                       StrokeStartLineCap="Round"
                       StrokeEndLineCap="Round" />
               </Button>
-              <Button Style="{StaticResource ArrowButton}"
+              <Button Style="{StaticResource HeaderToolButton}"
                       Command="{Binding MoveDownCommand}"
                       IsEnabled="{Binding CanMoveDown}"
                       ToolTip="Move this project down">
@@ -362,10 +376,10 @@
         </DataTrigger>
 
         <!-- The header's own hover, by name. Looking for the nearest StackPanel found the
-             panel that hosts every project, so the arrows lit up on all of them at once
+             panel that hosts every project, so the buttons lit up on all of them at once
              whenever the mouse was anywhere over the list. -->
         <DataTrigger Binding="{Binding IsMouseOver, ElementName=Header}" Value="True">
-          <Setter TargetName="Arrows" Property="Opacity" Value="1" />
+          <Setter TargetName="HeaderTools" Property="Opacity" Value="1" />
         </DataTrigger>
 
         <DataTrigger Binding="{Binding IsExpanded}" Value="True">
