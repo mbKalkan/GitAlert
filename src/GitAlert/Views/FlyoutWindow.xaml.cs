@@ -90,6 +90,12 @@ public partial class FlyoutWindow : Window
             _filesPaneHeight = files;
             ApplyFilesPaneHeight();
         }
+
+        if (settings.ListPaneShare is > 0 and < 1 and var share)
+        {
+            ListColumn.Width = new GridLength(share, GridUnitType.Star);
+            DetailColumn.Width = new GridLength(1 - share, GridUnitType.Star);
+        }
     }
 
     /// <summary>Copies the current size, position and pinned state back into the settings.</summary>
@@ -109,6 +115,11 @@ public partial class FlyoutWindow : Window
 
         settings.AlwaysOnTop = Topmost;
         settings.FilesPaneHeight = _filesPaneHeight;
+
+        if (ListShare() is { } share)
+        {
+            settings.ListPaneShare = share;
+        }
     }
 
     /// <summary>
@@ -518,6 +529,37 @@ public partial class FlyoutWindow : Window
         {
             scroller.ScrollToVerticalOffset(scroller.VerticalOffset + Step);
         }
+    }
+
+    // ---- The list beside the detail pane ---------------------------------------
+
+    /// <summary>
+    /// Clicking a row that sits half off the edge focuses it, and focus asks the list to scroll
+    /// the row fully into view - so the list jumped under the pointer. A pointer is already
+    /// where it wants to be; only the keyboard needs the help.
+    /// </summary>
+    private void OnListRequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        if (InputManager.Current.MostRecentInputDevice is not KeyboardDevice)
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Where the splitter is left is worth keeping, like the window's own size.</summary>
+    private void OnListSplitterDragCompleted(object sender, DragCompletedEventArgs e) =>
+        PlacementChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// The list's share of the width. A share rather than a width, so the two panes keep
+    /// splitting the window the same way when it is dragged wider or narrower.
+    /// </summary>
+    private double? ListShare()
+    {
+        var list = ListColumn.ActualWidth;
+        var detail = DetailColumn.ActualWidth;
+
+        return list > 0 && detail > 0 ? list / (list + detail) : null;
     }
 
     // ---- The bar under the change list ---------------------------------------

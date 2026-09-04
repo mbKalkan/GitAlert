@@ -92,7 +92,8 @@ checks, from every minute to every three hours.
 
 **A window, not a popup**
 The panel opens beside the tray icon but behaves like a real window: resizable, remembered where
-you left it, and it stays put while you read. Pin it above other windows, or turn on click-away
+you left it and how you split it, and it stays put while you read. Clicking a row never scrolls
+the list out from under the pointer. Pin it above other windows, or turn on click-away
 dismissal if you prefer the popup behaviour.
 
 **Native Windows behaviour**

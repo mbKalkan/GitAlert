@@ -319,6 +319,22 @@ public class SettingsTests : IDisposable
         Assert.Null(new AppSettings().FilesPaneHeight);
     }
 
+    [Fact]
+    public void The_list_width_is_kept_as_a_share_and_a_bad_one_is_forgotten()
+    {
+        var store = new SettingsStore(_path);
+        Assert.True(store.Save(new AppSettings { ListPaneShare = 0.4 }));
+
+        Assert.Equal(0.4, store.Load().ListPaneShare);
+        Assert.Equal(0.4, new AppSettings { ListPaneShare = 0.4 }.Clone().ListPaneShare);
+
+        var edited = new AppSettings { ListPaneShare = 1.5, FilesPaneHeight = -20 };
+        edited.Normalise();
+
+        Assert.Null(edited.ListPaneShare);
+        Assert.Null(edited.FilesPaneHeight);
+    }
+
     public void Dispose()
     {
         foreach (var file in new[] { _path, _path + ".corrupt", _path + ".tmp" })

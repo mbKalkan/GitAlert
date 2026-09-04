@@ -753,7 +753,7 @@
                pane instead of shrinking with it when the window is dragged narrow. -->
           <ColumnDefinition x:Name="ListColumn" Width="0.6*" MinWidth="250" />
           <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="*" MinWidth="320" />
+          <ColumnDefinition x:Name="DetailColumn" Width="*" MinWidth="320" />
         </Grid.ColumnDefinitions>
 
         <!-- Alerts -->
@@ -761,11 +761,13 @@
           <ScrollViewer Style="{StaticResource SlimScrollViewer}"
                         Margin="8,0,4,0"
                         Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-            <!-- A background, so a drop in the space under the last project still lands. -->
+            <!-- A background, so a drop in the space under the last project still lands. The
+                 bring-into-view handler keeps a click from scrolling the list. -->
             <ItemsControl ItemsSource="{Binding Groups}"
                           ItemTemplate="{StaticResource ProjectGroupTemplate}"
                           Margin="0,0,4,8"
                           Background="Transparent"
+                          RequestBringIntoView="OnListRequestBringIntoView"
                           AllowDrop="True"
                           DragOver="OnGroupsDragOver"
                           DragLeave="OnGroupsDragLeave"
@@ -788,12 +790,14 @@
           </StackPanel>
         </Grid>
 
+        <!-- Where it is left is kept with the window's placement, like the bar in the detail pane. -->
         <GridSplitter Grid.Column="1"
                       Width="4"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Stretch"
                       Background="Transparent"
-                      ShowsPreview="False" />
+                      ShowsPreview="False"
+                      DragCompleted="OnListSplitterDragCompleted" />
 
         <Border Grid.Column="2"
                 BorderBrush="{DynamicResource BorderSubtle}"

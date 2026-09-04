@@ -97,6 +97,12 @@ public sealed class AppSettings
     /// </summary>
     public double? FilesPaneHeight { get; set; }
 
+    /// <summary>
+    /// The alert list's share of the window's width, between 0 and 1, as the splitter beside it
+    /// was left. Null until it has been dragged once.
+    /// </summary>
+    public double? ListPaneShare { get; set; }
+
     public bool IsMuted(AlertKind kind) => MutedKinds.Contains(kind);
 
     /// <summary>The repositories watched under one account.</summary>
@@ -132,6 +138,7 @@ public sealed class AppSettings
         WindowWidth = WindowWidth,
         WindowHeight = WindowHeight,
         FilesPaneHeight = FilesPaneHeight,
+        ListPaneShare = ListPaneShare,
     };
 
     /// <summary>Clamps anything a hand-edited settings file may have got wrong.</summary>
@@ -146,6 +153,18 @@ public sealed class AppSettings
 
         PollIntervalMinutes = Math.Clamp(PollIntervalMinutes, MinimumPollMinutes, MaximumPollMinutes);
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
+
+        // The splitters are stored as numbers a hand-edited file can get wrong; a bad one is
+        // simply forgotten rather than applied.
+        if (FilesPaneHeight is { } height && (double.IsNaN(height) || height < 0))
+        {
+            FilesPaneHeight = null;
+        }
+
+        if (ListPaneShare is { } share && (double.IsNaN(share) || share <= 0 || share >= 1))
+        {
+            ListPaneShare = null;
+        }
 
         Accounts = Accounts
             .Where(a => a is not null)
