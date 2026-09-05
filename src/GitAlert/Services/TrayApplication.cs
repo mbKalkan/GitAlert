@@ -53,10 +53,10 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         _settings = settings;
         _dispatcher = Dispatcher.CurrentDispatcher;
 
-        _tray = new TrayIcon();
+        _tray = new TrayIcon(IconArtwork.RenderTrayIcon);
         _tray.Activated += OnTrayActivated;
         _tray.ContextMenuRequested += OnTrayContextMenu;
-        _tray.BalloonClicked += OnBalloonClicked;
+        _tray.NotificationClicked += OnBalloonClicked;
 
         _flyoutViewModel = new FlyoutViewModel(_alerts, _monitor, this, settings);
         _flyout = new FlyoutWindow(_flyoutViewModel);
@@ -82,10 +82,10 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     {
         ShowSettings();
 
-        _tray.ShowBalloon(
+        _tray.ShowNotification(
             "GitAlert is running",
             "Add a GitHub account, then the repositories you want to watch.",
-            BalloonIcon.Info,
+            NotificationKind.Info,
             playSound: false);
     }
 
@@ -230,9 +230,11 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
     // ---- Tray interaction --------------------------------------------------
 
-    private void OnTrayActivated(object? sender, Point screenPoint) => _flyout.ToggleFromTray(screenPoint);
+    private void OnTrayActivated(object? sender, ScreenPoint screenPoint) => _flyout.ToggleFromTray(ToPoint(screenPoint));
 
-    private void OnTrayContextMenu(object? sender, Point screenPoint)
+    private static Point ToPoint(ScreenPoint point) => new(point.X, point.Y);
+
+    private void OnTrayContextMenu(object? sender, ScreenPoint screenPoint)
     {
         _flyout.HideFlyout();
 
@@ -323,10 +325,10 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
             : ($"{alerts.Count} new alerts", Summarise(alerts));
 
         var icon = alerts.Any(a => a.Severity == AlertSeverity.Error)
-            ? BalloonIcon.Warning
-            : BalloonIcon.Info;
+            ? NotificationKind.Warning
+            : NotificationKind.Info;
 
-        _tray.ShowBalloon(title, body, icon, _settings.PlaySound);
+        _tray.ShowNotification(title, body, icon, _settings.PlaySound);
     }
 
     private static string Summarise(IReadOnlyList<Alert> alerts)

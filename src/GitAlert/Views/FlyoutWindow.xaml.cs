@@ -174,7 +174,11 @@ public partial class FlyoutWindow : Window
         }
         else
         {
-            FlyoutPositioner.PositionNear(this, screenPoint);
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var height = ActualHeight > 0 ? ActualHeight : Height;
+            var anchor = new ScreenPoint((int)screenPoint.X, (int)screenPoint.Y);
+
+            (Left, Top) = FlyoutPositioner.Place(anchor, Width, height, dpi.DpiScaleX, dpi.DpiScaleY);
         }
 
         Activate();

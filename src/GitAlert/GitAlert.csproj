@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../GitAlert.Core/GitAlert.Core.csproj" />
+    <ProjectReference Include="../GitAlert.Windows/GitAlert.Windows.csproj" />
   </ItemGroup>
 
 </Project>

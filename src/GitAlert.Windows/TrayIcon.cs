@@ -1,36 +1,19 @@
-using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Media;
-using System.Windows.Threading;
+using System.Runtime.InteropServices;
 using GitAlert.Core;
 
 namespace GitAlert.Platform;
 
-public enum TrayState
-{
-    Idle,
-    Unread,
-    Warning,
-    Error,
-}
-
-public enum BalloonIcon
-{
-    None,
-    Info,
-    Warning,
-    Error,
-}
-
 /// <summary>
 /// A notification-area icon built directly on <c>Shell_NotifyIcon</c>. Going native rather than
-/// borrowing WinForms' <c>NotifyIcon</c> keeps the app WPF-only and makes room for the details that
-/// matter in practice: per-monitor-crisp icons, a state badge, and recovery when Explorer restarts.
+/// borrowing WinForms' <c>NotifyIcon</c> makes room for the details that matter in practice:
+/// per-monitor-crisp icons, a state badge, and recovery when Explorer restarts. It knows no UI
+/// framework: the caller supplies the pixels, and the thread's own message loop delivers the clicks.
 /// </summary>
-public sealed class TrayIcon : IDisposable
+public sealed class TrayIcon : ITrayHost
 {
     private const int CallbackMessage = NativeMethods.WM_APP + 1;
     private const int IconId = 1;
+    private const int MaxRetries = 15;
 
     /// <summary>
     /// One click on the icon does not always reach us as one message. Depending on the Windows
@@ -41,9 +24,14 @@ public sealed class TrayIcon : IDisposable
     /// </summary>
     private static readonly TimeSpan ActivationEcho = TimeSpan.FromMilliseconds(250);
 
-    private readonly HwndSource _window;
+    /// <summary>At logon the shell is often not listening yet; this is how long to wait between tries.</summary>
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
+
+    private readonly Func<int, Rgb, Rgb?, byte[]> _render;
+    private readonly UiThread _ui;
+    private readonly MessageWindow _window;
     private readonly uint _taskbarCreatedMessage;
-    private readonly DispatcherTimer _retryTimer;
+    private readonly Timer _retryTimer;
 
     private NativeMethods.NOTIFYICONDATA _data;
     private IntPtr _iconHandle;
@@ -55,27 +43,25 @@ public sealed class TrayIcon : IDisposable
     private int _retries;
     private DateTime _lastActivation = DateTime.MinValue;
 
-    public TrayIcon()
+    /// <param name="render">
+    /// Draws the icon: the size in pixels, the taskbar's contrast colour, and the badge colour when
+    /// there is one. Returns premultiplied BGRA pixels, top-down.
+    /// </param>
+    public TrayIcon(Func<int, Rgb, Rgb?, byte[]> render)
     {
-        var parameters = new HwndSourceParameters("GitAlert.TrayIcon")
-        {
-            ParentWindow = NativeMethods.HWND_MESSAGE,
-            Width = 0,
-            Height = 0,
-        };
-
-        _window = new HwndSource(parameters);
-        _window.AddHook(WndProc);
+        _render = render;
+        _ui = UiThread.Capture();
+        _window = new MessageWindow("GitAlert.TrayIcon", WndProc);
 
         // Explorer broadcasts this after a crash or restart; the icon must be re-added.
         _taskbarCreatedMessage = NativeMethods.RegisterWindowMessage("TaskbarCreated");
 
-        _retryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _retryTimer.Tick += (_, _) => TryAdd();
+        // The timer fires on the pool; the shell call goes back to the thread that owns the window.
+        _retryTimer = new Timer(_ => _ui.Post(TryAdd), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
         _data = new NativeMethods.NOTIFYICONDATA
         {
-            cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.NOTIFYICONDATA>(),
+            cbSize = Marshal.SizeOf<NativeMethods.NOTIFYICONDATA>(),
             hWnd = _window.Handle,
             uID = IconId,
             uCallbackMessage = CallbackMessage,
@@ -88,14 +74,11 @@ public sealed class TrayIcon : IDisposable
         TryAdd();
     }
 
-    /// <summary>Left click or keyboard activation; carries the screen point of the icon.</summary>
-    public event EventHandler<Point>? Activated;
+    public event EventHandler<ScreenPoint>? Activated;
 
-    /// <summary>Right click; carries the screen point to anchor a menu at.</summary>
-    public event EventHandler<Point>? ContextMenuRequested;
+    public event EventHandler<ScreenPoint>? ContextMenuRequested;
 
-    /// <summary>The user clicked the toast itself.</summary>
-    public event EventHandler? BalloonClicked;
+    public event EventHandler? NotificationClicked;
 
     public string Tooltip
     {
@@ -142,7 +125,7 @@ public sealed class TrayIcon : IDisposable
     /// <summary>
     /// Shows a balloon, which Windows 10 and 11 render as a toast and keep in the Action Centre.
     /// </summary>
-    public void ShowBalloon(string title, string message, BalloonIcon icon, bool playSound)
+    public void ShowNotification(string title, string message, NotificationKind kind, bool playSound)
     {
         if (!_added)
         {
@@ -151,11 +134,11 @@ public sealed class TrayIcon : IDisposable
 
         _data.szInfoTitle = Truncate(title, 63);
         _data.szInfo = Truncate(message, 255);
-        _data.dwInfoFlags = icon switch
+        _data.dwInfoFlags = kind switch
         {
-            BalloonIcon.Info => NativeMethods.NIIF_INFO,
-            BalloonIcon.Warning => NativeMethods.NIIF_WARNING,
-            BalloonIcon.Error => NativeMethods.NIIF_ERROR,
+            NotificationKind.Info => NativeMethods.NIIF_INFO,
+            NotificationKind.Warning => NativeMethods.NIIF_WARNING,
+            NotificationKind.Error => NativeMethods.NIIF_ERROR,
             _ => NativeMethods.NIIF_NONE,
         };
 
@@ -184,19 +167,21 @@ public sealed class TrayIcon : IDisposable
         if (NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, ref _data))
         {
             _added = true;
-            _retryTimer.Stop();
+            _retryTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
             // Opt into the version 4 callback contract: richer messages and screen coordinates.
             _data.uVersion = NativeMethods.NOTIFYICON_VERSION_4;
             NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_SETVERSION, ref _data);
+
+            TraceLog.Write($"tray icon added after {_retries} retries");
             return;
         }
 
-        // At logon the shell is often not listening yet, so back off and try again rather than
-        // leaving the user without an icon.
-        if (++_retries <= 15)
+        // Back off and try again rather than leaving the user without an icon.
+        if (++_retries <= MaxRetries)
         {
-            _retryTimer.Start();
+            TraceLog.Write($"tray icon not added (error {Marshal.GetLastWin32Error()}); retry {_retries}");
+            _retryTimer.Change(RetryDelay, Timeout.InfiniteTimeSpan);
         }
     }
 
@@ -217,19 +202,20 @@ public sealed class TrayIcon : IDisposable
 
         var badge = (_state, _hasUnread) switch
         {
-            (TrayState.Error, _) => Color.FromRgb(0xF8, 0x51, 0x49),
-            (TrayState.Warning, _) => Color.FromRgb(0xD2, 0x99, 0x22),
-            (_, true) => Color.FromRgb(0x3F, 0xB9, 0x50),
-            _ => (Color?)null,
+            (TrayState.Error, _) => new Rgb(0xF8, 0x51, 0x49),
+            (TrayState.Warning, _) => new Rgb(0xD2, 0x99, 0x22),
+            (_, true) => new Rgb(0x3F, 0xB9, 0x50),
+            _ => (Rgb?)null,
         };
 
-        _iconHandle = IconFactory.CreateTrayIcon(IconFactory.TraySize, SystemTheme.TrayForeground, badge);
+        var size = IconFactory.TraySize;
+        _iconHandle = IconFactory.CreateHIcon(_render(size, SystemTheme.TrayForeground, badge), size, size);
         _data.hIcon = _iconHandle;
 
         IconFactory.DestroyIcon(previous);
     }
 
-    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr? WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam)
     {
         if (msg == _taskbarCreatedMessage && _taskbarCreatedMessage != 0)
         {
@@ -237,18 +223,17 @@ public sealed class TrayIcon : IDisposable
             _retries = 0;
             RefreshIcon();
             TryAdd();
-            handled = true;
             return IntPtr.Zero;
         }
 
         if (msg != CallbackMessage)
         {
-            return IntPtr.Zero;
+            return null;
         }
 
         // Version 4 packs the event into lParam's low word and the cursor into wParam.
         var notification = LowWord(lParam);
-        var point = new Point(SignedLowWord(wParam), SignedHighWord(wParam));
+        var point = new ScreenPoint(SignedLowWord(wParam), SignedHighWord(wParam));
 
         TraceLog.Write($"tray callback 0x{notification:X4} at {point.X},{point.Y}");
 
@@ -257,33 +242,30 @@ public sealed class TrayIcon : IDisposable
             case NativeMethods.NIN_SELECT:
             case NativeMethods.NIN_KEYSELECT:
             case NativeMethods.WM_LBUTTONUP:
-                handled = true;
-
                 var now = DateTime.UtcNow;
 
                 if (now - _lastActivation < ActivationEcho)
                 {
                     TraceLog.Write("  ignored: echo of the previous activation");
-                    break;
+                    return IntPtr.Zero;
                 }
 
                 _lastActivation = now;
                 Activated?.Invoke(this, point);
-                break;
+                return IntPtr.Zero;
 
             case NativeMethods.WM_CONTEXTMENU:
             case NativeMethods.WM_RBUTTONUP:
                 ContextMenuRequested?.Invoke(this, point);
-                handled = true;
-                break;
+                return IntPtr.Zero;
 
             case NativeMethods.NIN_BALLOONUSERCLICK:
-                BalloonClicked?.Invoke(this, EventArgs.Empty);
-                handled = true;
-                break;
-        }
+                NotificationClicked?.Invoke(this, EventArgs.Empty);
+                return IntPtr.Zero;
 
-        return IntPtr.Zero;
+            default:
+                return null;
+        }
     }
 
     private static int LowWord(IntPtr value) => (int)((long)value & 0xFFFF);
@@ -303,7 +285,7 @@ public sealed class TrayIcon : IDisposable
         }
 
         _disposed = true;
-        _retryTimer.Stop();
+        _retryTimer.Dispose();
 
         if (_added)
         {
@@ -315,7 +297,6 @@ public sealed class TrayIcon : IDisposable
         IconFactory.DestroyIcon(_iconHandle);
         _iconHandle = IntPtr.Zero;
 
-        _window.RemoveHook(WndProc);
         _window.Dispose();
     }
 }

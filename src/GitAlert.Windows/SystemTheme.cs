@@ -1,4 +1,4 @@
-using System.Windows.Media;
+using GitAlert.Core;
 using Microsoft.Win32;
 
 namespace GitAlert.Platform;
@@ -22,14 +22,14 @@ public static class SystemTheme
     /// The colour a tray icon should be drawn in: near-white on a dark taskbar, near-black on a
     /// light one.
     /// </summary>
-    public static Color TrayForeground =>
+    public static Rgb TrayForeground =>
         IsSystemDark
-            ? Color.FromRgb(0xF2, 0xF4, 0xF8)
-            : Color.FromRgb(0x1B, 0x1F, 0x26);
+            ? new Rgb(0xF2, 0xF4, 0xF8)
+            : new Rgb(0x1B, 0x1F, 0x26);
 
     /// <summary>
     /// Raised when the user changes their Windows theme. Registry change notifications are more
-    /// trouble than they are worth here; the app subscribes to WPF's system-preference event and
+    /// trouble than they are worth here; the front end learns of the change its own way and
     /// calls <see cref="Raise"/>.
     /// </summary>
     public static event EventHandler? Changed;

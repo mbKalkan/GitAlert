@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>GitAlert.Windows</AssemblyName>
+    <RootNamespace>GitAlert</RootNamespace>
+    <Description>GitAlert's Windows layer: the notification-area icon, DPAPI, the Run key, the taskbar theme and the interop behind them. No UI framework, so more than one front end can share it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../GitAlert.Core/GitAlert.Core.csproj" />
+  </ItemGroup>
+
+</Project>

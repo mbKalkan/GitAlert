@@ -150,7 +150,7 @@ public partial class App : Application
             return false;
         }
 
-        IconFactory.WriteApplicationIcon(args[index + 1]);
+        IconFactory.WriteApplicationIcon(args[index + 1], IconArtwork.RenderAppIcon);
         return true;
     }
 

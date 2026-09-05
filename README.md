@@ -225,9 +225,10 @@ src/GitAlert.Core/   Everything that is not a window; no UI framework, builds on
   Services/        Polling engine, alert history, sync state
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
   Platform/        The seams the app fills in: token encryption, run at sign-in
-src/GitAlert/        The Windows app
+src/GitAlert.Windows/ The Windows layer, no UI framework: Shell_NotifyIcon, DPAPI, the Run key, interop
+src/GitAlert/        The WPF app
   Services/        Theming and the tray shell
-  Platform/        Shell_NotifyIcon, vector icon rendering, DPAPI, startup registration, interop
+  Platform/        The vector artwork, rendered for the tray and the application icon
   Views/           The main window with its diff pane, and the settings window
   Themes/          The light palette, two dark ones (VS Code Dark Modern, GitHub) and the shared control styles
 tests/             xUnit tests for parsing, translation, history and settings
@@ -243,7 +244,7 @@ A few decisions worth calling out:
   from it at whatever size the shell asks for, and `app.ico` is generated from the very same
   geometry by the app itself (`GitAlert.exe --export-icon path.ico`), so the two can never drift.
 - **One dependency.** Only `CommunityToolkit.Mvvm`. DPAPI, the notification area and window theming
-  are reached through a small, auditable interop layer in `Platform/NativeMethods.cs`.
+  are reached through a small, auditable interop layer in `src/GitAlert.Windows/NativeMethods.cs`.
 
 ## Building and testing
 

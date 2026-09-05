@@ -1,15 +1,12 @@
-using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace GitAlert.Platform;
 
 /// <summary>
-/// Rasterises <see cref="IconArtwork"/> into the two shapes Windows wants: a live <c>HICON</c>
-/// for the notification area, and a multi-resolution <c>.ico</c> file for the executable.
+/// Turns rendered pixels into the two shapes Windows wants: a live <c>HICON</c> for the
+/// notification area, and a multi-resolution <c>.ico</c> file for the executable. Drawing the
+/// artwork is the front end's job; this only knows about DIBs.
 /// </summary>
-/// <remarks>Must be called from an STA thread - WPF rendering requires one.</remarks>
 public static class IconFactory
 {
     /// <summary>Sizes written into <c>app.ico</c>, covering every shell surface up to 4K.</summary>
@@ -25,22 +22,6 @@ public static class IconFactory
         }
     }
 
-    /// <summary>
-    /// Creates a tray icon handle. The caller owns the handle and must free it with
-    /// <see cref="DestroyIcon"/>.
-    /// </summary>
-    public static IntPtr CreateTrayIcon(int size, Color foreground, Color? badge)
-    {
-        var pixels = Render(size, context => IconArtwork.DrawTrayIcon(context, size, foreground, badge));
-        return CreateHIcon(pixels, size, size);
-    }
-
-    public static IntPtr CreateAppIcon(int size)
-    {
-        var pixels = Render(size, context => IconArtwork.DrawAppIcon(context, size));
-        return CreateHIcon(pixels, size, size);
-    }
-
     public static void DestroyIcon(IntPtr handle)
     {
         if (handle != IntPtr.Zero)
@@ -53,7 +34,8 @@ public static class IconFactory
     /// Writes a multi-resolution <c>.ico</c>. Frames are stored as 32-bit BGRA DIBs, which every
     /// Windows shell surface and installer understands without relying on PNG-in-ICO support.
     /// </summary>
-    public static void WriteApplicationIcon(string path)
+    /// <param name="render">Draws the artwork at a size, as premultiplied BGRA pixels, top-down.</param>
+    public static void WriteApplicationIcon(string path, Func<int, byte[]> render)
     {
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
@@ -62,7 +44,7 @@ public static class IconFactory
         }
 
         var frames = AppIconSizes
-            .Select(size => (Size: size, Data: BuildDibFrame(size)))
+            .Select(size => (Size: size, Data: BuildDibFrame(size, render(size))))
             .ToList();
 
         using var stream = File.Create(path);
@@ -95,32 +77,9 @@ public static class IconFactory
         }
     }
 
-    /// <summary>Renders the artwork to premultiplied BGRA pixels, top-down.</summary>
-    private static byte[] Render(int size, Action<DrawingContext> draw)
-    {
-        var visual = new DrawingVisual();
-
-        using (var context = visual.RenderOpen())
-        {
-            draw(context);
-        }
-
-        // 96 DPI keeps one design unit equal to one device pixel, so `size` is exact.
-        var target = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
-        target.Render(visual);
-
-        var stride = size * 4;
-        var pixels = new byte[stride * size];
-        target.CopyPixels(pixels, stride, 0);
-
-        return pixels;
-    }
-
     /// <summary>Builds one BITMAPINFOHEADER + XOR image + AND mask block for an ICO frame.</summary>
-    private static byte[] BuildDibFrame(int size)
+    private static byte[] BuildDibFrame(int size, byte[] pixels)
     {
-        var pixels = Render(size, context => IconArtwork.DrawAppIcon(context, size));
-
         var xorStride = size * 4;
         var maskStride = ((size + 31) / 32) * 4;
         var maskLength = maskStride * size;
@@ -154,7 +113,11 @@ public static class IconFactory
         return buffer.ToArray();
     }
 
-    private static IntPtr CreateHIcon(byte[] bgraPixels, int width, int height)
+    /// <summary>
+    /// Wraps premultiplied BGRA pixels, top-down, in an icon handle. The caller owns the handle
+    /// and frees it with <see cref="DestroyIcon"/>.
+    /// </summary>
+    public static IntPtr CreateHIcon(byte[] bgraPixels, int width, int height)
     {
         var info = new NativeMethods.BITMAPINFO
         {
@@ -162,7 +125,7 @@ public static class IconFactory
             {
                 biSize = Marshal.SizeOf<NativeMethods.BITMAPINFOHEADER>(),
                 biWidth = width,
-                biHeight = -height,          // negative: top-down, matching WPF's pixel order
+                biHeight = -height,          // negative: top-down, matching the renderers' pixel order
                 biPlanes = 1,
                 biBitCount = 32,
                 biCompression = NativeMethods.BI_RGB,

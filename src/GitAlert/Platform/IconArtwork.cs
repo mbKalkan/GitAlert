@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using GitAlert.Core;
 
 namespace GitAlert.Platform;
 
@@ -116,5 +118,37 @@ public static class IconArtwork
         context.Pop();
         context.Pop();
         context.Pop();
+    }
+
+    // ---- Pixels for the shell ------------------------------------------------
+
+    /// <summary>The tray icon as premultiplied BGRA pixels, the shape <see cref="IconFactory"/> takes.</summary>
+    public static byte[] RenderTrayIcon(int size, Rgb foreground, Rgb? badge) =>
+        Render(size, context => DrawTrayIcon(context, size, ToColor(foreground), badge is { } b ? ToColor(b) : null));
+
+    /// <summary>The application icon at one size, for the frames of <c>app.ico</c>.</summary>
+    public static byte[] RenderAppIcon(int size) => Render(size, context => DrawAppIcon(context, size));
+
+    private static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
+
+    /// <summary>Renders the artwork to premultiplied BGRA pixels, top-down. Needs an STA thread.</summary>
+    private static byte[] Render(int size, Action<DrawingContext> draw)
+    {
+        var visual = new DrawingVisual();
+
+        using (var context = visual.RenderOpen())
+        {
+            draw(context);
+        }
+
+        // 96 DPI keeps one design unit equal to one device pixel, so `size` is exact.
+        var target = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+        target.Render(visual);
+
+        var stride = size * 4;
+        var pixels = new byte[stride * size];
+        target.CopyPixels(pixels, stride, 0);
+
+        return pixels;
     }
 }
