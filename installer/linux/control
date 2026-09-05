@@ -1,0 +1,15 @@
+Package: gitalert
+Version: __VERSION__
+Section: devel
+Priority: optional
+Architecture: amd64
+Installed-Size: __SIZE__
+Maintainer: Mert Berkan Kalkan <mertberkankalkan@gmail.com>
+Depends: libx11-6, libice6, libsm6, libfontconfig1
+Recommends: libsecret-tools, libnotify-bin
+Homepage: https://github.com/mbKalkan/GitAlert
+Description: GitHub alerts in the tray
+ GitAlert watches the repositories and the inbox you point it at and says what
+ changed - pushes, pull requests, issues, CI runs, releases, mentions - from an
+ icon in the panel, with a window that groups the alerts by project and shows
+ the diff behind each one.

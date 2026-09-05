@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GitAlert
+Comment=GitHub alerts in the tray
+Exec=gitalert
+Icon=gitalert
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=false
+Keywords=GitHub;notifications;pull requests;CI;
