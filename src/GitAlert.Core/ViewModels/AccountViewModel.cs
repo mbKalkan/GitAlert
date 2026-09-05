@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Net.Http;
-using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Configuration;
@@ -75,10 +74,10 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     /// refilled a collection of up to five hundred rows each time. That is felt as the box
     /// lagging a letter behind the typing rather than as a slow search.
     /// </remarks>
-    private readonly DispatcherTimer _filterDelay = new(DispatcherPriority.Background)
-    {
-        Interval = TimeSpan.FromMilliseconds(140),
-    };
+    private static readonly TimeSpan FilterDelay = TimeSpan.FromMilliseconds(140);
+
+    private readonly UiThread _ui = UiThread.Capture();
+    private readonly Timer _filterTimer;
 
     /// <summary>
     /// Guards the two lists against fighting each other: ticking a box edits the watched list,
@@ -104,11 +103,8 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
         HasStoredToken = !string.IsNullOrEmpty(token);
         _selectedSort = SortOptions[0];
 
-        _filterDelay.Tick += (_, _) =>
-        {
-            _filterDelay.Stop();
-            ApplyRepositoryView();
-        };
+        // The timer fires on the pool; the rebuild is handed back to the UI thread.
+        _filterTimer = new Timer(_ => _ui.Post(ApplyRepositoryView), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     public string Id { get; }
@@ -158,8 +154,7 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
     partial void OnRepositoryFilterChanged(string value)
     {
-        _filterDelay.Stop();
-        _filterDelay.Start();
+        _filterTimer.Change(FilterDelay, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>
@@ -402,7 +397,7 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        _filterDelay.Stop();
+        _filterTimer.Dispose();
         _client.Dispose();
     }
 }

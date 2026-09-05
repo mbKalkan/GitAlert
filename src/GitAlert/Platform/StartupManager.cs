@@ -8,19 +8,16 @@ namespace GitAlert.Platform;
 /// Registers GitAlert under the per-user <c>Run</c> key. Per-user means no elevation prompt and no
 /// impact on anyone else signing in to the machine.
 /// </summary>
-public static class StartupManager
+public sealed class StartupManager : IStartupRegistrar
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "GitAlert";
-
-    /// <summary>Passed on a startup launch so the app knows to stay in the tray, silently.</summary>
-    public const string StartupArgument = "--startup";
 
     public static string ExecutablePath =>
         Process.GetCurrentProcess().MainModule?.FileName
         ?? Path.ChangeExtension(typeof(StartupManager).Assembly.Location, ".exe");
 
-    public static bool IsEnabled
+    public bool IsEnabled
     {
         get
         {
@@ -37,7 +34,7 @@ public static class StartupManager
     }
 
     /// <summary>Returns true when the change was applied.</summary>
-    public static bool SetEnabled(bool enabled)
+    public bool SetEnabled(bool enabled)
     {
         try
         {
@@ -51,7 +48,7 @@ public static class StartupManager
 
             if (enabled)
             {
-                key.SetValue(ValueName, $"\"{ExecutablePath}\" {StartupArgument}");
+                key.SetValue(ValueName, $"\"{ExecutablePath}\" {IStartupRegistrar.LaunchArgument}");
             }
             else
             {

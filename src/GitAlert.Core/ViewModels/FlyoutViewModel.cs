@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Windows.Media;
-using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Configuration;
@@ -41,11 +39,8 @@ public interface IShellCommands
 /// </summary>
 public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 {
-    private static readonly SolidColorBrush ConnectedBrush = Frozen(0x34, 0xA8, 0x53);
-    private static readonly SolidColorBrush WorkingBrush = Frozen(0x58, 0x9C, 0xF0);
-    private static readonly SolidColorBrush WarningBrush = Frozen(0xC7, 0x93, 0x1F);
-    private static readonly SolidColorBrush ErrorBrush = Frozen(0xE5, 0x53, 0x4B);
-    private static readonly SolidColorBrush IdleBrush = Frozen(0x89, 0x93, 0xA1);
+    /// <summary>How often the relative timestamps are redrawn while the flyout is open.</summary>
+    private static readonly TimeSpan AgeRefreshInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>Commits per request. One screenful and a bit, so "load more" is rarely needed.</summary>
     private const int HistoryPageSize = 30;
@@ -53,15 +48,15 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private readonly AlertStore _store;
     private readonly MonitorService _monitor;
     private readonly IShellCommands _shell;
-    private readonly Dispatcher _dispatcher;
-    private readonly DispatcherTimer _ageTimer;
+    private readonly UiThread _ui;
+    private readonly Timer _ageTimer;
     private readonly List<AlertViewModel> _all = [];
 
     [ObservableProperty]
     private string _statusText = "Starting…";
 
     [ObservableProperty]
-    private Brush _statusBrush = IdleBrush;
+    private ConnectionState _status = ConnectionState.NotConfigured;
 
     [ObservableProperty]
     private string _lastUpdatedText = string.Empty;
@@ -116,7 +111,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _store = store;
         _monitor = monitor;
         _shell = shell;
-        _dispatcher = Dispatcher.CurrentDispatcher;
+        _ui = UiThread.Capture();
 
         _order = [.. settings.ProjectOrder];
         _unreadOnly = settings.UnreadOnly;
@@ -141,12 +136,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _monitor.StatusChanged += OnStatusChanged;
         ApplyStatus(_monitor.Status);
 
-        // Relative timestamps drift; refresh them while the flyout is on screen.
-        _ageTimer = new DispatcherTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromSeconds(30),
-        };
-        _ageTimer.Tick += (_, _) => RefreshAges();
+        // Relative timestamps drift; refresh them while the flyout is on screen. The timer fires on
+        // the pool, so the refresh is handed back to the UI thread.
+        _ageTimer = new Timer(_ => _ui.Post(RefreshAges), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>The filtered alerts, flat. The list on screen renders <see cref="Groups"/>.</summary>
@@ -178,16 +170,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         RefreshAges();
         UpdateLastUpdated();
-        _ageTimer.Start();
+        _ageTimer.Change(AgeRefreshInterval, AgeRefreshInterval);
     }
 
-    public void OnHidden() => _ageTimer.Stop();
+    public void OnHidden() => _ageTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
     [RelayCommand]
     private void Refresh()
     {
         StatusText = "Checking GitHub…";
-        StatusBrush = WorkingBrush;
+        Status = ConnectionState.Connecting;
         _monitor.RequestRefresh();
     }
 
@@ -412,7 +404,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     private void OnAlertsReceived(object? sender, IReadOnlyList<Alert> alerts) =>
-        _dispatcher.InvokeAsync(() =>
+        _ui.Post(() =>
         {
             foreach (var alert in alerts)
             {
@@ -424,20 +416,13 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         });
 
     private void OnStatusChanged(object? sender, MonitorStatus status) =>
-        _dispatcher.InvokeAsync(() => ApplyStatus(status));
+        _ui.Post(() => ApplyStatus(status));
 
     private void ApplyStatus(MonitorStatus status)
     {
         StatusText = status.Message;
 
-        StatusBrush = status.State switch
-        {
-            ConnectionState.Connected => ConnectedBrush,
-            ConnectionState.Connecting => WorkingBrush,
-            ConnectionState.Warning => WarningBrush,
-            ConnectionState.Error => ErrorBrush,
-            _ => IdleBrush,
-        };
+        Status = status.State;
 
         if (_showAccounts != status.AccountCount > 1)
         {
@@ -787,18 +772,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
     }
 
-    private static SolidColorBrush Frozen(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
-
     public void Dispose()
     {
         _monitor.AlertsReceived -= OnAlertsReceived;
         _monitor.StatusChanged -= OnStatusChanged;
-        _ageTimer.Stop();
+        _ageTimer.Dispose();
         Detail.Dispose();
     }
 }

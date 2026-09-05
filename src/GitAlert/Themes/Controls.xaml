@@ -17,6 +17,8 @@
   <conv:AppThemeConverter x:Key="ThemeToText" />
   <conv:DarkPaletteConverter x:Key="DarkPaletteToText" />
   <conv:HistorySizeConverter x:Key="HistoryToText" />
+  <conv:KindToGlyphConverter x:Key="KindToGlyph" />
+  <conv:ThemeBrushConverter x:Key="ThemeBrush" />
 
   <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
   <FontFamily x:Key="CodeFont">Cascadia Mono, Consolas, Courier New</FontFamily>

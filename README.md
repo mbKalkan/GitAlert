@@ -218,13 +218,16 @@ that folder to remove every trace.
 ## Project layout
 
 ```
-src/GitAlert/
+src/GitAlert.Core/   Everything that is not a window; no UI framework, builds on any platform
   Core/            Domain model: Alert, AlertKind, RepoRef parsing, relative time
-  Configuration/   Settings persistence and the DPAPI-backed token store
+  Configuration/   Settings persistence and the per-account token store
   GitHub/          REST client, response models, event translation
-  Services/        Polling engine, alert history, sync state, theming, the tray shell
-  Platform/        Shell_NotifyIcon, vector icon rendering, startup registration, interop
+  Services/        Polling engine, alert history, sync state
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
+  Platform/        The seams the app fills in: token encryption, run at sign-in
+src/GitAlert/        The Windows app
+  Services/        Theming and the tray shell
+  Platform/        Shell_NotifyIcon, vector icon rendering, DPAPI, startup registration, interop
   Views/           The main window with its diff pane, and the settings window
   Themes/          The light palette, two dark ones (VS Code Dark Modern, GitHub) and the shared control styles
 tests/             xUnit tests for parsing, translation, history and settings

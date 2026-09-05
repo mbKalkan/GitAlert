@@ -20,7 +20,7 @@ namespace GitAlert.Services;
 public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 {
     private readonly SettingsStore _settingsStore;
-    private readonly SecureTokenStore _tokenStore;
+    private readonly ISecretStore _tokenStore;
     private readonly AlertStore _alerts;
     private readonly MonitorService _monitor;
     private readonly Dispatcher _dispatcher;
@@ -41,7 +41,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
 
     public TrayApplication(
         SettingsStore settingsStore,
-        SecureTokenStore tokenStore,
+        ISecretStore tokenStore,
         AlertStore alerts,
         MonitorService monitor,
         AppSettings settings)
@@ -102,7 +102,7 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
             return;
         }
 
-        var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this);
+        var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this, new StartupManager());
 
         _settingsViewModel = viewModel;
         _settingsWindow = new SettingsWindow(viewModel);

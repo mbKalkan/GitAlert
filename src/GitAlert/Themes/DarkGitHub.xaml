@@ -57,6 +57,13 @@
   <SolidColorBrush x:Key="SeverityWarning" Color="#D29922" />
   <SolidColorBrush x:Key="SeverityError" Color="#F85149" />
 
+  <!-- The dot beside the status line in the header. -->
+  <SolidColorBrush x:Key="StatusConnected" Color="#34A853" />
+  <SolidColorBrush x:Key="StatusWorking" Color="#589CF0" />
+  <SolidColorBrush x:Key="StatusWarning" Color="#C7931F" />
+  <SolidColorBrush x:Key="StatusError" Color="#E5534B" />
+  <SolidColorBrush x:Key="StatusIdle" Color="#8993A1" />
+
   <Color x:Key="ShadowColor">#000000</Color>
   <system:Double xmlns:system="clr-namespace:System;assembly=System.Runtime" x:Key="ShadowOpacity">0.55</system:Double>
 

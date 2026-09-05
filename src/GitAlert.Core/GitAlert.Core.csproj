@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>GitAlert.Core</AssemblyName>
+    <RootNamespace>GitAlert</RootNamespace>
+    <Description>Everything in GitAlert that is not a window: the GitHub client, the polling engine, alert history, settings and the view models. No UI framework, so it builds and runs on any platform.</Description>
+    <!-- Registry, DPAPI and friends belong to the app's platform layer. A call here would compile
+         against a plain net10.0 target only to fail at run time on macOS or Linux, so the platform
+         analyzer's warning is an error in this project. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CA1416</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+</Project>

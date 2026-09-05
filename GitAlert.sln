@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitAlert", "src\GitAlert\Gi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitAlert.Tests", "tests\GitAlert.Tests\GitAlert.Tests.csproj", "{DFE603CF-5F89-40C7-B99D-5AF56BDCCA5B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GitAlert.Core", "src\GitAlert.Core\GitAlert.Core.csproj", "{B2756096-FC31-493B-900F-42AB79099DCF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,6 +45,18 @@ Global
 		{DFE603CF-5F89-40C7-B99D-5AF56BDCCA5B}.Release|x64.Build.0 = Release|Any CPU
 		{DFE603CF-5F89-40C7-B99D-5AF56BDCCA5B}.Release|x86.ActiveCfg = Release|Any CPU
 		{DFE603CF-5F89-40C7-B99D-5AF56BDCCA5B}.Release|x86.Build.0 = Release|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Debug|x64.Build.0 = Debug|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Debug|x86.Build.0 = Debug|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Release|x64.ActiveCfg = Release|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Release|x64.Build.0 = Release|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Release|x86.ActiveCfg = Release|Any CPU
+		{B2756096-FC31-493B-900F-42AB79099DCF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,5 +64,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{A72DE214-1F6A-43CB-A4CE-728060B046C1} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{DFE603CF-5F89-40C7-B99D-5AF56BDCCA5B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{B2756096-FC31-493B-900F-42AB79099DCF} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

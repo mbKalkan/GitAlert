@@ -1,31 +1,25 @@
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using GitAlert.Core;
+using GitAlert.Platform;
 
 namespace GitAlert.Configuration;
 
 /// <summary>
-/// Stores each account's GitHub token encrypted with DPAPI under the current user account, so a
-/// blob on disk is useless to any other user or machine. One file per account, named by the
-/// account id, which keeps a work token and a personal token completely separate.
+/// Keeps each account's token in its own file, named by the account id, which keeps a work token and
+/// a personal token completely separate. What goes into the file is the <see cref="ITokenProtector"/>'s
+/// business: on Windows a DPAPI blob bound to the signed-in user, so a copy is useless anywhere else.
 /// </summary>
-/// <remarks>
-/// DPAPI is reached through <c>crypt32.dll</c> directly rather than through the
-/// <c>System.Security.Cryptography.ProtectedData</c> package - it keeps GitAlert free of an
-/// extra dependency for roughly forty lines of interop.
-/// </remarks>
-public sealed class SecureTokenStore
+public sealed class SecureTokenStore : ISecretStore
 {
-    private const string EntropyLabel = "GitAlert.Token.v1";
-
+    private readonly ITokenProtector _protector;
     private readonly string _directory;
     private readonly string _legacyFile;
 
-    public SecureTokenStore(string? dataDirectory = null)
+    public SecureTokenStore(ITokenProtector protector, string? dataDirectory = null)
     {
         var root = dataDirectory ?? AppPaths.DataDirectory;
 
+        _protector = protector;
         _directory = Path.Combine(root, "tokens");
         _legacyFile = Path.Combine(root, "token.bin");
     }
@@ -54,8 +48,8 @@ public sealed class SecureTokenStore
 
         Directory.CreateDirectory(_directory);
 
-        var protectedBytes = Protect(Encoding.UTF8.GetBytes(token))
-            ?? throw new InvalidOperationException("Windows refused to encrypt the access token.");
+        var protectedBytes = _protector.Protect(Encoding.UTF8.GetBytes(token))
+            ?? throw new InvalidOperationException("The access token could not be encrypted.");
 
         File.WriteAllBytes(path, protectedBytes);
     }
@@ -138,7 +132,7 @@ public sealed class SecureTokenStore
     private string? PathFor(string accountId) =>
         IsValidAccountId(accountId) ? Path.Combine(_directory, accountId + ".bin") : null;
 
-    private static string? ReadFile(string path)
+    private string? ReadFile(string path)
     {
         if (!File.Exists(path))
         {
@@ -147,7 +141,7 @@ public sealed class SecureTokenStore
 
         try
         {
-            var plain = Unprotect(File.ReadAllBytes(path));
+            var plain = _protector.Unprotect(File.ReadAllBytes(path));
             return plain is null ? null : Encoding.UTF8.GetString(plain);
         }
         catch (Exception)
@@ -157,111 +151,4 @@ public sealed class SecureTokenStore
             return null;
         }
     }
-
-    private static byte[]? Protect(byte[] plain) =>
-        Transform(plain, Encoding.UTF8.GetBytes(EntropyLabel), encrypt: true);
-
-    private static byte[]? Unprotect(byte[] cipher) =>
-        Transform(cipher, Encoding.UTF8.GetBytes(EntropyLabel), encrypt: false);
-
-    private static byte[]? Transform(byte[] input, byte[] entropy, bool encrypt)
-    {
-        var inputBlob = default(DataBlob);
-        var entropyBlob = default(DataBlob);
-        var outputBlob = default(DataBlob);
-
-        try
-        {
-            inputBlob = DataBlob.Allocate(input);
-            entropyBlob = DataBlob.Allocate(entropy);
-
-            var ok = encrypt
-                ? CryptProtectData(ref inputBlob, EntropyLabel, ref entropyBlob, IntPtr.Zero, IntPtr.Zero, CryptProtectUiForbidden, ref outputBlob)
-                : CryptUnprotectData(ref inputBlob, IntPtr.Zero, ref entropyBlob, IntPtr.Zero, IntPtr.Zero, CryptProtectUiForbidden, ref outputBlob);
-
-            if (!ok)
-            {
-                return null;
-            }
-
-            var result = new byte[outputBlob.cbData];
-            Marshal.Copy(outputBlob.pbData, result, 0, outputBlob.cbData);
-            return result;
-        }
-        finally
-        {
-            inputBlob.Free();
-            entropyBlob.Free();
-            outputBlob.FreeLocal();
-        }
-    }
-
-    private const int CryptProtectUiForbidden = 0x1;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DataBlob
-    {
-        public int cbData;
-        public IntPtr pbData;
-
-        public static DataBlob Allocate(byte[] data)
-        {
-            var blob = new DataBlob
-            {
-                cbData = data.Length,
-                pbData = Marshal.AllocHGlobal(Math.Max(1, data.Length)),
-            };
-
-            if (data.Length > 0)
-            {
-                Marshal.Copy(data, 0, blob.pbData, data.Length);
-            }
-
-            return blob;
-        }
-
-        public void Free()
-        {
-            if (pbData != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(pbData);
-                pbData = IntPtr.Zero;
-            }
-        }
-
-        /// <summary>Buffers returned by DPAPI are owned by the caller and freed with LocalFree.</summary>
-        public void FreeLocal()
-        {
-            if (pbData != IntPtr.Zero)
-            {
-                LocalFree(pbData);
-                pbData = IntPtr.Zero;
-            }
-        }
-    }
-
-    [DllImport("crypt32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CryptProtectData(
-        ref DataBlob input,
-        string? description,
-        ref DataBlob entropy,
-        IntPtr reserved,
-        IntPtr prompt,
-        int flags,
-        ref DataBlob output);
-
-    [DllImport("crypt32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CryptUnprotectData(
-        ref DataBlob input,
-        IntPtr description,
-        ref DataBlob entropy,
-        IntPtr reserved,
-        IntPtr prompt,
-        int flags,
-        ref DataBlob output);
-
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr LocalFree(IntPtr handle);
 }

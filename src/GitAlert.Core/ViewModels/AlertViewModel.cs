@@ -1,4 +1,3 @@
-using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using GitAlert.Core;
 
@@ -64,12 +63,14 @@ public sealed partial class AlertViewModel : ObservableObject
 
     public AlertKind Kind => Model.Kind;
 
-    public Geometry Glyph => AlertGlyphs.GlyphFor(Model.Kind);
+    /// <summary>The 16 x 16 glyph for the kind, as path data for the view to draw.</summary>
+    public string GlyphData => AlertGlyphs.PathFor(Model.Kind);
 
-    public Brush Accent => AlertGlyphs.BrushFor(Model.Kind, Model.Severity);
+    /// <summary>The palette key the card is coloured from: the severity when it carries one, the kind otherwise.</summary>
+    public string AccentKey => AlertGlyphs.AccentKeyFor(Model.Kind, Model.Severity);
 
-    /// <summary>The palette changed under the row: read the brush again.</summary>
-    public void RefreshAccent() => OnPropertyChanged(nameof(Accent));
+    /// <summary>The palette changed under the row: the view reads the brush again.</summary>
+    public void RefreshAccent() => OnPropertyChanged(nameof(AccentKey));
 
     /// <summary>The dimmed line under the title: repository, who caused it, and which account saw it.</summary>
     public string Meta => Describe(withRepository: true);

@@ -1,5 +1,6 @@
 using System.IO;
 using GitAlert.Configuration;
+using GitAlert.Platform;
 using Xunit;
 
 namespace GitAlert.Tests;
@@ -18,7 +19,7 @@ public class SettingsMigrationTests : IDisposable
     public SettingsMigrationTests()
     {
         Directory.CreateDirectory(_directory);
-        _tokens = new SecureTokenStore(_directory);
+        _tokens = new SecureTokenStore(new DpapiTokenProtector(), _directory);
     }
 
     /// <summary>

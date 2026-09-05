@@ -8,7 +8,7 @@ namespace GitAlert.Configuration;
 public static class SettingsMigration
 {
     /// <summary>Returns true when something was changed and the settings should be saved.</summary>
-    public static bool Apply(AppSettings settings, SecureTokenStore tokens)
+    public static bool Apply(AppSettings settings, ISecretStore tokens)
     {
         var changed = false;
 

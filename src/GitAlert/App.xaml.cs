@@ -76,7 +76,7 @@ public partial class App : Application
         AppPaths.EnsureCreated();
 
         var settingsStore = new SettingsStore();
-        var tokenStore = new SecureTokenStore();
+        var tokenStore = new SecureTokenStore(new DpapiTokenProtector());
         var settings = settingsStore.Load();
 
         // An install that predates multi-account support keeps working: its single token becomes
@@ -110,7 +110,7 @@ public partial class App : Application
 
         // A first run has nothing to show, so take the user straight to setup - unless Windows
         // started us at sign-in, where popping a window would be rude.
-        var launchedAtLogon = args.Contains(StartupManager.StartupArgument, StringComparer.OrdinalIgnoreCase);
+        var launchedAtLogon = args.Contains(IStartupRegistrar.LaunchArgument, StringComparer.OrdinalIgnoreCase);
 
         if (!launchedAtLogon && (settings.Accounts.Count == 0 || settings.Repositories.Count == 0))
         {

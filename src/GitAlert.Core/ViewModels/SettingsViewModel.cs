@@ -34,7 +34,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         "https://github.com/settings/tokens/new?scopes=repo,notifications&description=GitAlert";
 
     private readonly SettingsStore _settingsStore;
-    private readonly SecureTokenStore _tokenStore;
+    private readonly ISecretStore _tokenStore;
+    private readonly IStartupRegistrar _startup;
     private readonly ISettingsHost _host;
     private readonly AppSettings _settings;
 
@@ -102,11 +103,16 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isMessageError;
 
-    public SettingsViewModel(SettingsStore settingsStore, SecureTokenStore tokenStore, ISettingsHost host)
+    public SettingsViewModel(
+        SettingsStore settingsStore,
+        ISecretStore tokenStore,
+        ISettingsHost host,
+        IStartupRegistrar startup)
     {
         _settingsStore = settingsStore;
         _tokenStore = tokenStore;
         _host = host;
+        _startup = startup;
 
         _settings = settingsStore.Load();
         SettingsMigration.Apply(_settings, tokenStore);
@@ -119,7 +125,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _ignoreOwnActivity = _settings.IgnoreOwnActivity;
         _showToasts = _settings.ShowToasts;
         _playSound = _settings.PlaySound;
-        _startWithWindows = StartupManager.IsEnabled;
+        _startWithWindows = startup.IsEnabled;
         _theme = _settings.Theme;
         _darkPalette = _settings.DarkPalette;
         _maxHistory = _settings.MaxHistory;
@@ -344,7 +350,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _tokenStore.Prune(_settings.Accounts.Select(a => a.Id));
 
-        if (StartWithWindows != StartupManager.IsEnabled && !StartupManager.SetEnabled(StartWithWindows))
+        if (StartWithWindows != _startup.IsEnabled && !_startup.SetEnabled(StartWithWindows))
         {
             Report("Could not change the Windows startup entry.", isError: true);
         }
