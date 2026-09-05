@@ -62,9 +62,22 @@ public class SingleInstanceTests
         SingleInstance.SignalRunning(names);
     }
 
+    /// <summary>
+    /// macOS turns a pipe name into a Unix socket under $TMPDIR, which is already about sixty
+    /// characters long there, and a socket path stops at 104. The names GitAlert ships must leave
+    /// that room; the test names below are cut short for the same reason.
+    /// </summary>
+    [Fact]
+    public void The_pipe_name_leaves_room_for_a_macOS_socket_path()
+    {
+        Assert.InRange(InstanceNames.Default.Pipe.Length, 1, MaxPipeName);
+    }
+
+    private const int MaxPipeName = 40;
+
     private static InstanceNames Fresh()
     {
-        var id = Guid.NewGuid().ToString("N");
+        var id = Guid.NewGuid().ToString("N")[..12];
 
         // Mutexes and events share one kernel namespace on Windows, so the event needs a name of
         // its own; pipes live in a namespace of their own.
