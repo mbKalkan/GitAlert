@@ -104,7 +104,13 @@ style, so anything a class may change has to start life in a style; `$parent[Typ
 ancestors of that type and `$parent[StackPanel]` from inside a StackPanel is the panel itself;
 `Avalonia.Headless.XUnit` pins the xunit.v3 line it was built against (3.2.x for 12.1); the new
 `dotnet test` forwards unknown flags such as `--nologo` to the test app, which then prints its
-help and reports zero tests.
+help and reports zero tests. From the first hands-on pass: a `Button` handles its own press and
+release before any handler attached to it runs, so a drag that starts on a button is watched from
+an ancestor with a tunnelling handler; a nested button's `Click` bubbles through the outer
+button's `Click`, so the outer handler checks `e.Source`; and controls inside an element marked
+`WindowDecorationProperties.ElementRole="TitleBar"` need `ElementRole="User"` or the platform
+takes every press on them as a window move. The headless mouse (`MouseDown`, `MouseMove` with
+`RawInputModifiers.LeftMouseButton`, `MouseUp`) drives all of this in tests.
 
 - Add the Avalonia app project next to the WPF one, both on Core.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become
