@@ -85,15 +85,26 @@ jobs:
           Write-Host "Icon rendered: $((Get-Item $icon).Length) bytes"
 
       # The same check for the Avalonia binary on the other two: it publishes for the machine it is
-      # on, starts without a display and draws the icon files the packages are built from.
-      - name: Smoke test the icon pipeline (macOS and Linux)
+      # on, starts without a display and draws the icon files the packages are built from. Then the
+      # release's packaging scripts run on the result, so a broken script fails a push, not a tag.
+      - name: Smoke test the icon pipeline and the packaging (macOS and Linux)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           dotnet publish src/GitAlert.Desktop/GitAlert.Desktop.csproj -c Release --self-contained true -p:DebugType=none -o artifacts/smoke
-          ./artifacts/smoke/GitAlert --export-png artifacts/smoke/pngs
-          test -s artifacts/smoke/pngs/gitalert-1024.png
-          ls -l artifacts/smoke/pngs
+          ./artifacts/smoke/GitAlert --export-png artifacts/smoke-pngs
+          test -s artifacts/smoke-pngs/gitalert-1024.png
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            rid="osx-$(uname -m | sed 's/x86_64/x64/')"
+            installer/macos/build-app.sh 0.0.0 "$rid" artifacts/smoke artifacts/smoke-pngs artifacts/smoke-packages
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends desktop-file-utils
+            installer/linux/fetch-appimagetool.sh artifacts/appimagetool
+            installer/linux/build-packages.sh 0.0.0 artifacts/smoke artifacts/smoke-pngs artifacts/smoke-packages artifacts/appimagetool
+          fi
+          ls -l artifacts/smoke-packages
 
   # The branch rule on main waits for one check called "Build and test". The matrix legs each carry
   # their own name, so this job wears the required one and turns green only when every leg did.
