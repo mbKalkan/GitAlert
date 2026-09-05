@@ -37,6 +37,12 @@ public interface IPlatform
     /// <summary>Asks the system to paint the window's own title bar, where it draws one, to match the theme.</summary>
     void ApplyTitleBarTheme(Window window, bool dark);
 
+    /// <summary>
+    /// Gives a borderless window the small rounded corners the system draws on its own menus,
+    /// where the system does that at all.
+    /// </summary>
+    void RoundCorners(Window window);
+
     /// <summary>What to tell the user when <see cref="Startup"/> refuses.</summary>
     string StartupProblem { get; }
 }

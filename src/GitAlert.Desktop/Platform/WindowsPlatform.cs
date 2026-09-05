@@ -38,6 +38,14 @@ public sealed class WindowsPlatform : IPlatform
         }
     }
 
+    public void RoundCorners(Window window)
+    {
+        if (HandleOf(window) is { } handle)
+        {
+            NativeMethods.RoundCornersSmall(handle);
+        }
+    }
+
     public string StartupProblem => "Could not change the Windows startup entry.";
 
     private static IntPtr? HandleOf(Window window) => window.TryGetPlatformHandle()?.Handle;

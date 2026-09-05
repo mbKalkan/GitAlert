@@ -331,18 +331,27 @@
 
       <!-- ==================== Tray context menu ==================== -->
 
-      <ControlTheme x:Key="TrayMenuItem" TargetType="MenuItem">
+      <!-- One line of the tray menu. The menu is a window of buttons rather than a popup of menu
+           items, so the highlight follows the pointer and the keyboard focus alike. -->
+      <ControlTheme x:Key="TrayMenuButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Background" Value="Transparent" />
         <Setter Property="Padding" Value="12,7" />
+        <Setter Property="Margin" Value="4,1" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="Cursor" Value="Hand" />
+        <!-- The highlighted background is the focus mark; the system's rectangle on top of it is noise. -->
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
         <Setter Property="Template">
           <ControlTemplate>
-            <Border Name="Bg" Background="Transparent" CornerRadius="6" Margin="4,1" Padding="{TemplateBinding Padding}">
-              <ContentPresenter Name="PART_HeaderPresenter"
-                                Content="{TemplateBinding Header}"
-                                ContentTemplate="{TemplateBinding HeaderTemplate}"
+            <Border Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                 VerticalAlignment="Center" />
             </Border>
           </ControlTemplate>
@@ -350,20 +359,15 @@
         <Style Selector="^:pointerover /template/ Border#Bg">
           <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
         </Style>
-        <Style Selector="^:selected /template/ Border#Bg">
+        <Style Selector="^:pressed /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
           <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
         </Style>
         <Style Selector="^:disabled">
           <Setter Property="Opacity" Value="0.45" />
         </Style>
-      </ControlTheme>
-
-      <ControlTheme x:Key="TrayMenuSeparator" TargetType="Separator">
-        <Setter Property="Template">
-          <ControlTemplate>
-            <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="10,4" />
-          </ControlTemplate>
-        </Setter>
       </ControlTheme>
 
     </ResourceDictionary>
@@ -417,21 +421,24 @@
 
   <!-- ==================== Menus ==================== -->
 
-  <Style Selector="MenuFlyoutPresenter.tray">
+  <!-- The tray menu's frame. The corners come from the system where it rounds its own menus, so
+       the border stays square here and the window shows through nowhere. -->
+  <Style Selector="Border.trayMenu">
     <Setter Property="Background" Value="{DynamicResource SurfaceElevated}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="9" />
     <Setter Property="Padding" Value="0,5" />
     <Setter Property="MinWidth" Value="188" />
   </Style>
 
-  <Style Selector="MenuFlyoutPresenter.tray MenuItem">
-    <Setter Property="Theme" Value="{StaticResource TrayMenuItem}" />
+  <Style Selector="Border.trayMenu Button">
+    <Setter Property="Theme" Value="{StaticResource TrayMenuButton}" />
   </Style>
 
-  <Style Selector="MenuFlyoutPresenter.tray Separator">
-    <Setter Property="Theme" Value="{StaticResource TrayMenuSeparator}" />
+  <Style Selector="Border.trayMenu Border.trayRule">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource BorderSubtle}" />
+    <Setter Property="Margin" Value="10,4" />
   </Style>
 
 </Styles>

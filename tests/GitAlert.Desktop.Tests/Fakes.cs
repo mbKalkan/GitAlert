@@ -35,6 +35,10 @@ internal sealed class HeadlessPlatform : IPlatform
     {
     }
 
+    public void RoundCorners(Window window)
+    {
+    }
+
     public string StartupProblem => "Could not change the startup entry.";
 }
 

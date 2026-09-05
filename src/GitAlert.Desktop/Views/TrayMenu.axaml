@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="GitAlert.Views.TrayMenu"
+        Title="GitAlert menu"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        WindowDecorations="None"
+        Background="{DynamicResource SurfaceElevated}"
+        UseLayoutRounding="True">
+
+  <!-- A window rather than a popup: it can be handed the foreground and told when it loses it,
+       which is what dismissing a menu next to the tray comes down to. Entries are added in code. -->
+  <Border Name="Frame" Classes="trayMenu">
+    <StackPanel Name="Items" />
+  </Border>
+</Window>

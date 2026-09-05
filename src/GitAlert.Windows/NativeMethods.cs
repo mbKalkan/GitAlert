@@ -339,6 +339,28 @@ public static class NativeMethods
 
     // ---- Desktop Window Manager -------------------------------------------
 
+    /// <summary>DWMWA_WINDOW_CORNER_PREFERENCE, Windows 11 and later; older systems reject it, harmlessly.</summary>
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+
+    /// <summary>DWMWCP_ROUNDSMALL: the tighter radius Windows 11 gives its own menus.</summary>
+    private const int DWMWCP_ROUNDSMALL = 3;
+
+    /// <summary>
+    /// Asks the compositor for the small rounded corners the system draws on its own menus. A
+    /// borderless window gets none by itself, and Windows 10 does not know the attribute at all;
+    /// square corners are the answer there.
+    /// </summary>
+    public static void RoundCornersSmall(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var preference = DWMWCP_ROUNDSMALL;
+        _ = DwmSetWindowAttribute(hWnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+    }
+
     /// <summary>DWMWA_USE_IMMERSIVE_DARK_MODE on Windows 10 2004 and later.</summary>
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 
