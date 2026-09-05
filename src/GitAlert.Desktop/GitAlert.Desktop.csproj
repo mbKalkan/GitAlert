@@ -13,7 +13,13 @@
     <!-- The windows take their view model in the constructor, so the runtime XAML loader could not
          create them anyway; the previewer is not used here. -->
     <NoWarn>$(NoWarn);AVLN3001</NoWarn>
+    <!-- The same artwork the WPF build exports; regenerated there until the cutover. -->
+    <ApplicationIcon>../GitAlert/Resources/app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="../GitAlert/Resources/app.ico" Link="Assets/app.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.2" />

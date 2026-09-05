@@ -14,7 +14,8 @@
         Background="{DynamicResource Surface}"
         Foreground="{DynamicResource TextPrimary}"
         ShowInTaskbar="True"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        Icon="avares://GitAlert.Desktop/Assets/app.ico">
 
   <!-- A real resizable window rather than a popup: the caption is drawn by the header below, but
        the frame and the resize borders are the system's. -->
@@ -130,7 +131,7 @@
             <ItemsControl.ItemsSource>
               <MultiBinding Converter="{StaticResource WhenTrue}">
                 <Binding Path="Files" />
-                <Binding Path="$parent[StackPanel].((vm:AlertViewModel)DataContext).IsSelected" />
+                <Binding Path="$parent[StackPanel;1].((vm:AlertViewModel)DataContext).IsSelected" />
               </MultiBinding>
             </ItemsControl.ItemsSource>
           </ItemsControl>

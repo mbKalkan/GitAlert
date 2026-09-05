@@ -14,7 +14,8 @@
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource Surface}"
         Foreground="{DynamicResource TextPrimary}"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        Icon="avares://GitAlert.Desktop/Assets/app.ico">
 
   <Window.Resources>
 
