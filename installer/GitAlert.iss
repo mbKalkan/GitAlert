@@ -70,6 +70,13 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "startup"; Description: "Start {#AppName} when I sign in to Windows"; GroupDescription: "Additional options:"; Check: IsFirstInstall
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional options:"; Flags: unchecked
 
+[InstallDelete]
+; The Avalonia build replaced the WPF one and ships a different runtime payload; an upgrade would
+; otherwise leave the previous build's libraries behind. Everything needed is laid down again below.
+; The uninstaller and its log (unins000.exe, unins000.dat) are left alone on purpose.
+Type: files; Name: "{app}\*.dll"
+Type: files; Name: "{app}\*.json"
+
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

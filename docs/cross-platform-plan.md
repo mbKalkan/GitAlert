@@ -87,9 +87,11 @@ brings their first non-Windows consumer. The renders matched the README screensh
 Acceptance: no visible change; the whole test suite green (333 cases today); `build.ps1 -Installer` upgrades the current
 install in place with settings, history and tokens intact.
 
-### Phase 2: Avalonia UI, Windows first (merges to `main`; releases still ship WPF)
+### Phase 2: Avalonia UI, Windows first (merges to `main`; the Windows release ships it from 1.21.0)
 
-In progress since 2026-09-05. `src/GitAlert.Desktop` builds on Avalonia 12.1 with the flyout and the
+In progress since 2026-09-05. From 1.21.0 the installer and the portable archive carry the Avalonia
+build as `GitAlert.exe`, so the daily-use trial runs on the installed app rather than a side
+build; the WPF project stays in the solution, unshipped, until phase 4 deletes it. `src/GitAlert.Desktop` builds on Avalonia 12.1 with the flyout and the
 settings window ported, the three palettes swapped at runtime, the Win32 tray and DPAPI reused from
 `GitAlert.Windows` behind `IPlatform`, and a named pipe for the second-launch signal. Headless
 renders of both windows match the WPF screenshots to the eye in all three palettes; a live run on

@@ -15,7 +15,7 @@
         Foreground="{DynamicResource TextPrimary}"
         ShowInTaskbar="True"
         UseLayoutRounding="True"
-        Icon="avares://GitAlert.Desktop/Assets/app.ico">
+        Icon="avares://GitAlert/Assets/app.ico">
 
   <!-- A real resizable window rather than a popup: the caption is drawn by the header below, but
        the frame and the resize borders are the system's. -->

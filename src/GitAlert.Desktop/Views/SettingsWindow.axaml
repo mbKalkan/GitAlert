@@ -15,7 +15,7 @@
         Background="{DynamicResource Surface}"
         Foreground="{DynamicResource TextPrimary}"
         UseLayoutRounding="True"
-        Icon="avares://GitAlert.Desktop/Assets/app.ico">
+        Icon="avares://GitAlert/Assets/app.ico">
 
   <Window.Resources>
 

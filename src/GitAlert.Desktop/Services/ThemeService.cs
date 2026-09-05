@@ -14,10 +14,10 @@ namespace GitAlert.Services;
 /// </summary>
 public sealed class ThemeService
 {
-    private static readonly Uri Base = new("avares://GitAlert.Desktop/");
-    private static readonly Uri VsCodeDark = new("avares://GitAlert.Desktop/Themes/Dark.axaml");
-    private static readonly Uri GitHubDark = new("avares://GitAlert.Desktop/Themes/DarkGitHub.axaml");
-    private static readonly Uri Light = new("avares://GitAlert.Desktop/Themes/Light.axaml");
+    private static readonly Uri Base = new("avares://GitAlert/");
+    private static readonly Uri VsCodeDark = new("avares://GitAlert/Themes/Dark.axaml");
+    private static readonly Uri GitHubDark = new("avares://GitAlert/Themes/DarkGitHub.axaml");
+    private static readonly Uri Light = new("avares://GitAlert/Themes/Light.axaml");
 
     private readonly Application _app;
     private readonly IPlatformSettings? _system;

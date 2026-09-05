@@ -226,12 +226,12 @@ src/GitAlert.Core/   Everything that is not a window; no UI framework, builds on
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
   Platform/        The seams the app fills in: token encryption, run at sign-in
 src/GitAlert.Windows/ The Windows layer, no UI framework: Shell_NotifyIcon, DPAPI, the Run key, interop
-src/GitAlert/        The WPF app, which the releases still ship
-  Services/        Theming and the tray shell
-  Platform/        The vector artwork, rendered for the tray and the application icon
+src/GitAlert.Desktop/ The app on Avalonia, which the releases ship as GitAlert.exe; on its way to macOS and Linux (see docs/cross-platform-plan.md)
+  Services/        Theming, the tray shell and its menu
+  Graphics/        The vector artwork, rendered for the tray and the application icon
   Views/           The main window with its diff pane, and the settings window
   Themes/          The light palette, two dark ones (VS Code Dark Modern, GitHub) and the shared control styles
-src/GitAlert.Desktop/ The same app on Avalonia, on its way to Windows, macOS and Linux (see docs/cross-platform-plan.md)
+src/GitAlert/        The WPF app it replaced, kept until the 2.0 cutover
 tests/GitAlert.Tests/         xUnit tests for parsing, translation, history, settings and the view models
 tests/GitAlert.Desktop.Tests/ Headless UI tests that drive the Avalonia windows
 installer/         Inno Setup script
