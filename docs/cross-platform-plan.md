@@ -1,7 +1,8 @@
 # Cross-platform plan: GitAlert 2.0 on Avalonia
 
-Status: approved on 2026-09-05. This file records the shape of the work, the order, the acceptance
-bar for each phase and the decisions already taken. Small details are settled while implementing.
+Status: approved on 2026-09-05; all four phases landed the same day and 2.0.0 is the first release
+without the WPF project. This file records the shape of the work, the order, the acceptance
+bar for each phase and the decisions taken. Small details are settled while implementing.
 Each phase lands on `main` on its own with green tests; there is no big-bang branch.
 
 ## Decisions
@@ -43,8 +44,8 @@ src/GitAlert/             net10.0 Avalonia app for Windows, macOS and Linux
   Views/  Themes/  Converters/
   Platform/MacOS/         Keychain, LaunchAgent, notifications
   Platform/Linux/         Secret Service, XDG autostart, DBus notifications
-tests/GitAlert.Tests/     xUnit + Avalonia.Headless.XUnit; runs on every OS
-tools/Render/             headless PNG renderer for the screenshot check
+tests/GitAlert.Tests/     xUnit; the core and the view models, runs on every OS
+tests/GitAlert.UI.Tests/  Avalonia.Headless.XUnit; drives the real windows, runs on every OS
 installer/                GitAlert.iss (Windows), macos/ (Info.plist, DMG script),
                           linux/ (AppImage recipe, .deb metadata, .desktop, icons)
 ```
@@ -91,12 +92,12 @@ install in place with settings, history and tokens intact.
 
 In progress since 2026-09-05. From 1.21.0 the installer and the portable archive carry the Avalonia
 build as `GitAlert.exe`, so the daily-use trial runs on the installed app rather than a side
-build; the WPF project stays in the solution, unshipped, until phase 4 deletes it. `src/GitAlert.Desktop` builds on Avalonia 12.1 with the flyout and the
+build; the WPF project stayed in the solution, unshipped, until phase 4 deleted it. `src/GitAlert.Desktop` (now `src/GitAlert`) builds on Avalonia 12.1 with the flyout and the
 settings window ported, the three palettes swapped at runtime, the Win32 tray and DPAPI reused from
 `GitAlert.Windows` behind `IPlatform`, and a named pipe for the second-launch signal. Headless
 renders of both windows match the WPF screenshots to the eye in all three palettes; a live run on
 this PC put the icon in the tray and brought the flyout up in front. Both test projects run on
-xunit v3 through Microsoft.Testing.Platform, and `tests/GitAlert.Desktop.Tests` drives the real
+xunit v3 through Microsoft.Testing.Platform, and `tests/GitAlert.Desktop.Tests` (now `tests/GitAlert.UI.Tests`) drives the real
 windows headlessly, including a check that no binding misses its target. Still open: a keyboard
 and pointer pass on the real app (tray menu, drag to reorder, splitter), scrollbar styling, and
 the daily-use trial.
@@ -195,6 +196,17 @@ What the first three-platform runs taught:
 - Tag `v2.0.0`; the release carries all seven assets.
 
 Acceptance: a Windows 1.x install upgrades in place; a fresh install works on each platform.
+
+Done on 2026-09-05 (user: "WPF'i kaldır, 2.0'a geç"). The WPF project is gone; the Avalonia app
+moved from `src/GitAlert.Desktop` to `src/GitAlert`, keeping `Resources/app.ico`, which the app
+itself regenerates; the UI tests moved to `tests/GitAlert.UI.Tests`; `tests/GitAlert.Tests`
+targets `net10.0` everywhere and the WPF-only `PasswordBoxBinder` test went with the binder. CI
+builds the whole solution on all three systems. The RenderTargetBitmap tool was never in the
+repository; the Avalonia headless renderer that replaced it lives outside the repository too.
+Screenshots from macOS and Linux are not possible without the machines, so the README says
+plainly that those builds have not been tested by people; the release notes say the same. The
+Windows upgrade in place is checked on this PC with every release; fresh installs on macOS and
+Linux remain unverified.
 
 ## Release assets
 

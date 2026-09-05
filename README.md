@@ -4,7 +4,7 @@
 
 # GitAlert
 
-**A Windows tray app — now also building for macOS and Linux — that watches the GitHub repositories you care about and tells you the moment something happens.**
+**A tray app for Windows — with early, untested builds for macOS and Linux — that watches the GitHub repositories you care about and tells you the moment something happens.**
 
 Pushes, pull requests, reviews, issues, comments, releases, branches and CI runs,
 in one quiet panel that drops out of the notification area — and the diff, right there beside it.
@@ -137,9 +137,11 @@ and run `GitAlert.exe`.
 
 ### macOS and Linux (early builds)
 
-Since 1.25.2 every release also carries packages built from the same source on GitHub's macOS and
-Linux runners. They pass the headless test suite there, but nobody has used them on a real desk
-yet: treat them as previews and [say what you find](https://github.com/mbKalkan/GitAlert/issues).
+> **Not yet tested by people.** Every release since 1.25.2 carries macOS and Linux packages built
+> from the same source on GitHub's runners, and the headless test suite passes there. Nobody has
+> run them on a real Mac or Linux desktop yet, so expect rough edges and
+> [say what you find](https://github.com/mbKalkan/GitAlert/issues). Windows is the platform GitAlert
+> is used and checked on every day.
 
 **macOS.** Open `GitAlert-x.y.z-osx-arm64.dmg` on Apple silicon or `-osx-x64.dmg` on Intel and drag
 GitAlert to Applications. The app is signed ad hoc, not notarised, so the first launch is refused:
@@ -167,9 +169,9 @@ too, install Inno Setup 6 (`winget install JRSoftware.InnoSetup`) and run `.\bui
 On macOS or Linux the SDK alone builds and tests the Avalonia app:
 
 ```bash
-dotnet build src/GitAlert.Desktop/GitAlert.Desktop.csproj
+dotnet build src/GitAlert/GitAlert.csproj
 dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj
-dotnet test tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj
+dotnet test tests/GitAlert.UI.Tests/GitAlert.UI.Tests.csproj
 ```
 
 ## Setting it up
@@ -259,28 +261,30 @@ src/GitAlert.Core/   Everything that is not a window; no UI framework, builds on
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
   Platform/        The seams the app fills in: token encryption, run at sign-in
 src/GitAlert.Windows/ The Windows layer, no UI framework: Shell_NotifyIcon, DPAPI, the Run key, interop
-src/GitAlert.Desktop/ The app on Avalonia: GitAlert.exe on Windows and the macOS and Linux builds (see docs/cross-platform-plan.md)
+src/GitAlert/        The app on Avalonia: GitAlert.exe on Windows, GitAlert.app on macOS, gitalert on Linux
   Platform/        What differs per system: the Windows tray and DPAPI, MacOS/ (keychain, launch agent), Linux/ (secret service, autostart)
   Services/        Theming, the tray shell and its menu
   Graphics/        The vector artwork, rendered for the tray and the application icon
   Views/           The main window with its diff pane, and the settings window
   Themes/          The light palette, two dark ones (VS Code Dark Modern, GitHub) and the shared control styles
-src/GitAlert/        The WPF app it replaced, kept until the 2.0 cutover
-tests/GitAlert.Tests/         xUnit tests for parsing, translation, history, settings and the view models
-tests/GitAlert.Desktop.Tests/ Headless UI tests that drive the Avalonia windows
+tests/GitAlert.Tests/    xUnit tests for parsing, translation, history, settings and the view models; runs on every OS
+tests/GitAlert.UI.Tests/ Headless UI tests that drive the real Avalonia windows
 installer/         Inno Setup script (Windows), macos/ (app bundle and DMG), linux/ (.deb, AppImage, tar.gz)
 ```
 
 A few decisions worth calling out:
 
-- **The tray icon is native.** `Shell_NotifyIcon` is called directly rather than borrowing WinForms'
-  `NotifyIcon`, which keeps the app WPF-only and leaves room for version-4 callbacks, a state badge
-  and recovery when Explorer restarts.
+- **The Windows tray icon is native.** `Shell_NotifyIcon` is called directly rather than borrowing
+  WinForms' `NotifyIcon`, which keeps WinForms out of the app and leaves room for version-4
+  callbacks, a state badge and recovery when Explorer restarts. macOS and Linux use Avalonia's
+  own tray icon.
 - **One source of truth for the artwork.** The bell is vector geometry. The tray icon is rasterised
   from it at whatever size the shell asks for, and `app.ico` is generated from the very same
   geometry by the app itself (`GitAlert.exe --export-icon path.ico`), so the two can never drift.
-- **One dependency.** Only `CommunityToolkit.Mvvm`. DPAPI, the notification area and window theming
-  are reached through a small, auditable interop layer in `src/GitAlert.Windows/NativeMethods.cs`.
+- **Few dependencies.** Avalonia for the UI and `CommunityToolkit.Mvvm` for the view models, nothing
+  else. On Windows, DPAPI, the notification area and window theming are reached through a small,
+  auditable interop layer in `src/GitAlert.Windows/NativeMethods.cs`; on macOS and Linux the
+  keychain, the secret service and notifications are reached through the system's own tools.
 
 ## Building and testing
 
@@ -298,8 +302,8 @@ for all three and publishes them as one release.
 
 ## Known limitations
 
-- Windows 10 and 11 on x64. The macOS (11 and later, Apple silicon and Intel) and Linux (x64)
-  builds are early and have not been used on real hardware yet; see Install.
+- Windows 10 and 11 on x64 is where GitAlert is used and checked. The macOS (11 and later, Apple
+  silicon and Intel) and Linux (x64) builds have not been tested by people yet; see Install.
 - Polling, not webhooks — a desktop app has nowhere for GitHub to call back to. Expect alerts within
   your chosen interval rather than instantly.
 - GitHub's events timeline is served from a cache. On public repositories it is near real time; on
