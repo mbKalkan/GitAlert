@@ -75,6 +75,12 @@ public partial class FlyoutWindow : Window
         // where it wants to be; only the keyboard needs the help.
         AddHandler(PointerPressedEvent, (_, _) => _lastPointerPress = DateTime.UtcNow, RoutingStrategies.Tunnel);
         GroupList.AddHandler(RequestBringIntoViewEvent, OnListRequestBringIntoView);
+
+        // A Button handles its own press and release before any handler attached to it runs, so
+        // the drag is watched from the list on the way down instead.
+        GroupList.AddHandler(PointerPressedEvent, OnGroupListPointerPressed, RoutingStrategies.Tunnel);
+        GroupList.AddHandler(PointerMovedEvent, OnGroupListPointerMoved, RoutingStrategies.Tunnel);
+        GroupList.AddHandler(PointerReleasedEvent, OnGroupListPointerReleased, RoutingStrategies.Tunnel);
     }
 
     /// <summary>Raised when the window's size, position or pinned state is worth persisting.</summary>
@@ -340,14 +346,21 @@ public partial class FlyoutWindow : Window
 
     // ---- Dragging a project to a new place in the list ----------------------
 
+    /// <summary>How far a pressed pointer travels before the press counts as a drag, not a click.</summary>
+    private const double DragThreshold = 4;
+
     private Point _dragOrigin;
+    private Button? _dragHeader;
     private ProjectGroupViewModel? _dragCandidate;
     private ProjectGroupViewModel? _dragged;
 
-    /// <summary>A click folds the section, unless the press turned into a drag on the way.</summary>
+    /// <summary>
+    /// A click folds the section, unless the press turned into a drag on the way. The tools on the
+    /// header are buttons too, and their clicks bubble up through this one: those are theirs.
+    /// </summary>
     private void OnGroupHeaderClick(object? sender, RoutedEventArgs e)
     {
-        if (_dragged is not null)
+        if (_dragged is not null || !ReferenceEquals(e.Source, sender))
         {
             return;
         }
@@ -362,30 +375,24 @@ public partial class FlyoutWindow : Window
     /// A press on a project header may be the start of a drag. Nothing happens until the pointer
     /// has moved far enough to mean it, so a plain click still folds the section.
     /// </summary>
-    private void OnGroupHeaderPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnGroupListPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         _dragCandidate = null;
+        _dragHeader = null;
         _dragged = null;
 
         // The arrows live inside the header. A press on one of them is a click on it, not a drag.
-        if (sender is Button header
-            && header.DataContext is ProjectGroupViewModel group
-            && e.GetCurrentPoint(header).Properties.IsLeftButtonPressed
-            && e.Source is Visual source
-            && ReferenceEquals(source.FindAncestorOfType<Button>(includeSelf: true), header))
+        if (e.GetCurrentPoint(GroupList).Properties.IsLeftButtonPressed
+            && HeaderUnder(e.Source) is { DataContext: ProjectGroupViewModel group } header)
         {
             _dragOrigin = e.GetPosition(this);
+            _dragHeader = header;
             _dragCandidate = group;
         }
     }
 
-    private void OnGroupHeaderPointerMoved(object? sender, PointerEventArgs e)
+    private void OnGroupListPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (sender is not Button header)
-        {
-            return;
-        }
-
         if (_dragged is { } dragged)
         {
             UpdateDropMarkers(dragged, e.GetPosition(GroupList));
@@ -393,14 +400,16 @@ public partial class FlyoutWindow : Window
             return;
         }
 
-        if (_dragCandidate is not { } group || !e.GetCurrentPoint(header).Properties.IsLeftButtonPressed)
+        if (_dragCandidate is not { } group
+            || _dragHeader is not { } header
+            || !e.GetCurrentPoint(GroupList).Properties.IsLeftButtonPressed)
         {
             return;
         }
 
         var moved = e.GetPosition(this) - _dragOrigin;
 
-        if (Math.Abs(moved.X) < 4 && Math.Abs(moved.Y) < 4)
+        if (Math.Abs(moved.X) < DragThreshold && Math.Abs(moved.Y) < DragThreshold)
         {
             return;
         }
@@ -408,12 +417,15 @@ public partial class FlyoutWindow : Window
         _dragCandidate = null;
         _dragged = group;
         group.IsBeingDragged = true;
+
+        // From here on every move and the release come to the header, wherever the pointer goes.
         e.Pointer.Capture(header);
     }
 
-    private void OnGroupHeaderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    private void OnGroupListPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         _dragCandidate = null;
+        _dragHeader = null;
 
         if (_dragged is not { } dragged)
         {
@@ -423,19 +435,25 @@ public partial class FlyoutWindow : Window
         var (target, above) = TargetUnder(e.GetPosition(GroupList));
         _viewModel.ClearDragMarkers();
 
-        if (target is not null && !ReferenceEquals(target, dragged))
+        // The list is rebuilt once the release has finished its round: the header that holds the
+        // capture is still on the event's route, and rebuilding now would pull it out from under it.
+        Dispatcher.UIThread.Post(() =>
         {
-            _viewModel.PlaceProject(dragged, target, above);
-        }
+            if (target is not null && !ReferenceEquals(target, dragged))
+            {
+                _viewModel.PlaceProject(dragged, target, above);
+            }
 
-        // Cleared after the click that follows the release has had its chance to see it.
-        Dispatcher.UIThread.Post(() => _dragged = null);
+            // Cleared after the click that follows the release has had its chance to see it.
+            _dragged = null;
+        });
     }
 
     private void OnGroupHeaderCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
         // Dropped here, dropped somewhere else or let go: nothing is in the air any more.
         _dragCandidate = null;
+        _dragHeader = null;
 
         if (_dragged is not null)
         {
@@ -443,6 +461,16 @@ public partial class FlyoutWindow : Window
             Dispatcher.UIThread.Post(() => _dragged = null);
         }
     }
+
+    /// <summary>
+    /// The project header a press landed on, or null when it landed on one of the tool buttons
+    /// inside the header, on an alert card, or outside any header at all.
+    /// </summary>
+    private static Button? HeaderUnder(object? source) =>
+        source is Visual visual
+        && visual.FindAncestorOfType<Button>(includeSelf: true) is { Name: "Header" } header
+            ? header
+            : null;
 
     private void UpdateDropMarkers(ProjectGroupViewModel dragged, Point point)
     {

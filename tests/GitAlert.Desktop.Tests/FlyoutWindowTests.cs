@@ -1,7 +1,10 @@
 using System.Net.Http;
+using System.Reflection;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using GitAlert.Configuration;
 using GitAlert.Core;
@@ -124,6 +127,127 @@ public class FlyoutWindowTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_click_on_a_project_header_folds_it()
+    {
+        var (window, vm, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var project = vm.Groups[0];
+            var wasExpanded = project.IsExpanded;
+            var at = Centre(HeaderOf(window, project), window);
+
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Frames.Settle();
+
+            Assert.Equal(!wasExpanded, project.IsExpanded);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_arrows_on_a_header_move_the_project_without_folding_it()
+    {
+        var (window, vm, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var first = vm.Groups[0];
+            var second = vm.Groups[1];
+            var (firstOpen, secondOpen) = (first.IsExpanded, second.IsExpanded);
+
+            // The tools only show while the pointer is over the header, as they do for the user.
+            window.MouseMove(Centre(HeaderOf(window, second), window));
+            Frames.Settle();
+
+            var at = Centre(ToolOf(window, second, "Move this project up"), window);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Frames.Settle();
+
+            Assert.Equal([second.Repository, first.Repository], vm.Groups.Select(g => g.Repository));
+            Assert.Equal(firstOpen, first.IsExpanded);
+            Assert.Equal(secondOpen, second.IsExpanded);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Dragging_a_project_header_above_another_puts_it_there()
+    {
+        var (window, vm, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var first = vm.Groups[0];
+            var second = vm.Groups[1];
+            var secondOpen = second.IsExpanded;
+
+            var grip = Centre(HeaderOf(window, second), window);
+            var target = HeaderOf(window, first);
+            var drop = target.TranslatePoint(new Point(target.Bounds.Width / 2, 2), window)!.Value;
+
+            window.MouseDown(grip, MouseButton.Left);
+            window.MouseMove(grip + new Vector(0, -8), RawInputModifiers.LeftMouseButton);
+            window.MouseMove(drop, RawInputModifiers.LeftMouseButton);
+            Frames.Settle();
+
+            Assert.True(second.IsBeingDragged, "the header past the threshold is in the air");
+            Assert.Equal(DropMarker.Above, first.DropMarker);
+
+            window.MouseUp(drop, MouseButton.Left);
+            Frames.Settle();
+
+            Assert.Equal([second.Repository, first.Repository], vm.Groups.Select(g => g.Repository));
+            Assert.False(second.IsBeingDragged);
+            Assert.All(vm.Groups, g => Assert.Equal(DropMarker.None, g.DropMarker));
+            Assert.Equal(secondOpen, second.IsExpanded);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_header_drags_the_window_but_its_buttons_keep_their_clicks()
+    {
+        var (window, _, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var title = window.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == "GitAlert");
+            var close = window.FindControl<Button>("CloseButton")!;
+
+            Assert.Equal(WindowDecorationsElementRole.TitleBar, ChromeRoleAt(window, Centre(title, window)));
+            Assert.Equal(WindowDecorationsElementRole.User, ChromeRoleAt(window, Centre(close, window)));
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
     private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build()
     {
         var work = SampleData.NewWorkDir();
@@ -165,4 +289,42 @@ public class FlyoutWindowTests
 
     private static Avalonia.Controls.Shapes.Ellipse DotOf(FlyoutWindow window, AlertViewModel alert) =>
         window.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Ellipse>().First(e => e.Name == "UnreadDot" && ReferenceEquals(e.DataContext, alert));
+
+    private static Button HeaderOf(FlyoutWindow window, ProjectGroupViewModel project) =>
+        window.GetVisualDescendants().OfType<Button>().First(b => b.Name == "Header" && ReferenceEquals(b.DataContext, project));
+
+    /// <summary>One of the small buttons on a project header, found by what its tooltip promises.</summary>
+    private static Button ToolOf(FlyoutWindow window, ProjectGroupViewModel project, string tooltip) =>
+        window.GetVisualDescendants()
+            .OfType<Button>()
+            .First(b => ReferenceEquals(b.DataContext, project) && ToolTip.GetTip(b) as string == tooltip);
+
+    /// <summary>The middle of a control in window coordinates, where the headless mouse is aimed.</summary>
+    private static Point Centre(Visual control, FlyoutWindow window) =>
+        control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+
+    /// <summary>
+    /// The decoration role the platform acts on at a point: window move, or a click for the control
+    /// there. Avalonia keeps this hit test internal, so it is asked through reflection; should a
+    /// later version move it, this is the test that says so.
+    /// </summary>
+    private static WindowDecorationsElementRole? ChromeRoleAt(FlyoutWindow window, Point point)
+    {
+        // The window's input root is a separate object, and an internal interface method cannot
+        // be invoked through the interface - only through that object's own implementation.
+        var root = typeof(TopLevel)
+            .GetProperty("InputRoot", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?.GetValue(window)
+            ?? throw new InvalidOperationException("TopLevel.InputRoot is gone; find where the chrome hit test moved.");
+
+        var map = root.GetType().GetInterfaceMap(typeof(IInputRoot));
+        var index = Array.FindIndex(map.InterfaceMethods, m => m.Name == "HitTestChromeElement");
+
+        if (index < 0)
+        {
+            throw new InvalidOperationException("IInputRoot.HitTestChromeElement is gone; find where the chrome hit test moved.");
+        }
+
+        return (WindowDecorationsElementRole?)map.TargetMethods[index].Invoke(root, [point]);
+    }
 }

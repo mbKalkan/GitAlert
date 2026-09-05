@@ -156,14 +156,13 @@
                   Classes.dropBelow="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Below}">
         <Border Name="DropAbove" Classes="dropLine" />
 
-        <!-- Pressing and moving the header drags the project; a plain click still folds it. -->
+        <!-- Pressing and moving the header drags the project; a plain click still folds it. The
+             press and release are watched from the list, because a Button marks both as handled
+             before any handler on the button itself would see them. -->
         <Button Name="Header"
                 Theme="{StaticResource GroupHeaderButton}"
                 ToolTip.Tip="{Binding Repository}"
                 Click="OnGroupHeaderClick"
-                PointerPressed="OnGroupHeaderPointerPressed"
-                PointerMoved="OnGroupHeaderPointerMoved"
-                PointerReleased="OnGroupHeaderPointerReleased"
                 PointerCaptureLost="OnGroupHeaderCaptureLost">
           <Grid ColumnDefinitions="Auto,*,Auto,Auto">
 
@@ -570,7 +569,13 @@
           </StackPanel>
         </StackPanel>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- The header is the caption, so the buttons on it have to be carved out of the drag area
+             or the platform takes every press as the start of a window move. -->
+        <StackPanel Name="HeaderButtons"
+                    Grid.Column="2"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center"
+                    WindowDecorationProperties.ElementRole="User">
 
           <Button Theme="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip.Tip="Check now">
             <Canvas Width="16" Height="16">
