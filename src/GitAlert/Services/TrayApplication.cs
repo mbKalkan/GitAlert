@@ -134,13 +134,14 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
     public void ShowFlyout() => OpenFlyoutAtTray();
 
     /// <summary>
-    /// The order of the projects and whether read alerts are hidden are set in the list itself,
-    /// so they are written back from there rather than through the settings window.
+    /// The order of the projects, their sections and whether read alerts are hidden are set in the
+    /// list itself, so they are written back from there rather than through the settings window.
     /// </summary>
-    public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly)
+    public void SaveListPreferences(ListPreferences preferences)
     {
-        _settings.ProjectOrder = [.. projectOrder];
-        _settings.UnreadOnly = unreadOnly;
+        _settings.ProjectOrder = [.. preferences.ProjectOrder];
+        _settings.Sections = preferences.Sections.Select(s => s.Clone()).ToList();
+        _settings.UnreadOnly = preferences.UnreadOnly;
         _settingsStore.Save(_settings);
     }
 

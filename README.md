@@ -78,12 +78,15 @@ when you ask for them, ordered by when they happened. A push alert and its commi
 event and share an identity, so the merge collapses the duplicate instead of showing it twice.
 Nothing is fetched until you ask, so the list itself costs nothing.
 
-**A section per project, in your order**
-Each project is a collapsible section with its own count. Drag its header to wherever it belongs,
+**A group per project, in your order, under your sections**
+Each project is a collapsible group with its own count. Drag its header to wherever it belongs,
 or nudge it with the arrows — so the most important repository sits at the top and stays there
-across restarts. One tick on the header reads the whole project. One
+across restarts. One tick on the header reads the whole project. Once the list grows, add
+sections — "Work", "Open source", whatever the day is made of — and drop projects onto their
+headers; a section folds and unfolds as one, has its own count and tick, and remembers its fold.
+"Expand all" and "Collapse all" above the list do every fold at once. One
 switch turns the list back into just what needs attention: unread alerts only, and only the
-projects that have some.
+projects and sections that have some.
 
 **Quiet by design**
 Mute any category you do not care about. Optionally ignore activity you caused yourself. Choose how often it

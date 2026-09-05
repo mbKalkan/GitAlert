@@ -70,6 +70,13 @@ public sealed class AppSettings
     /// </summary>
     public List<string> ProjectOrder { get; set; } = [];
 
+    /// <summary>
+    /// The sections the user grouped projects under, in the order they are shown. A project in
+    /// none of them sits above the sections, loose. Sections hold membership and their fold; the
+    /// order of the projects inside one is still <see cref="ProjectOrder"/>.
+    /// </summary>
+    public List<ProjectSection> Sections { get; set; } = [];
+
     /// <summary>Hide alerts that have already been read.</summary>
     public bool UnreadOnly { get; set; }
 
@@ -143,6 +150,7 @@ public sealed class AppSettings
         DarkPalette = DarkPalette,
         MaxHistory = MaxHistory,
         ProjectOrder = [.. ProjectOrder],
+        Sections = Sections.Select(s => s.Clone()).ToList(),
         UnreadOnly = UnreadOnly,
         AutoHideWindow = AutoHideWindow,
         AlwaysOnTop = AlwaysOnTop,
@@ -162,6 +170,7 @@ public sealed class AppSettings
         MutedKinds ??= [];
         ProjectOrder ??= [];
         ProjectOrder.RemoveAll(string.IsNullOrWhiteSpace);
+        NormaliseSections();
 
         PollIntervalMinutes = Math.Clamp(PollIntervalMinutes, MinimumPollMinutes, MaximumPollMinutes);
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
@@ -211,6 +220,53 @@ public sealed class AppSettings
             repository.AccountId ??= string.Empty;
         }
     }
+
+    /// <summary>
+    /// A section is a name and a membership list, both of which a hand-edited file can break: a
+    /// blank name gets a placeholder, and a project listed under two sections stays in the first.
+    /// </summary>
+    private void NormaliseSections()
+    {
+        Sections ??= [];
+        Sections = Sections.Where(s => s is not null).ToList();
+
+        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var section in Sections)
+        {
+            section.Name = string.IsNullOrWhiteSpace(section.Name) ? ProjectSection.DefaultName : section.Name.Trim();
+            section.Repositories ??= [];
+            section.Repositories = section.Repositories
+                .Where(r => !string.IsNullOrWhiteSpace(r))
+                .Where(claimed.Add)
+                .ToList();
+        }
+    }
+}
+
+/// <summary>A named group of projects in the flyout list, folded and unfolded as one.</summary>
+public sealed class ProjectSection
+{
+    /// <summary>What a section is called until the user types a name.</summary>
+    public const string DefaultName = "New section";
+
+    public string Name { get; set; } = DefaultName;
+
+    /// <summary>Folded: the header shows, the projects under it do not.</summary>
+    public bool IsCollapsed { get; set; }
+
+    /// <summary>The projects grouped here, by full name. Their order comes from the project order.</summary>
+    public List<string> Repositories { get; set; } = [];
+
+    public bool Contains(string repository) =>
+        Repositories.Contains(repository, StringComparer.OrdinalIgnoreCase);
+
+    public ProjectSection Clone() => new()
+    {
+        Name = Name,
+        IsCollapsed = IsCollapsed,
+        Repositories = [.. Repositories],
+    };
 }
 
 /// <summary>A GitHub account GitAlert holds a token for.</summary>

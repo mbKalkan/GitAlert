@@ -191,7 +191,7 @@ public class SwitchedOffRepositoryTests : IDisposable
         {
         }
 
-        public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly) => SavedOrder = [.. projectOrder];
+        public void SaveListPreferences(ListPreferences preferences) => SavedOrder = [.. preferences.ProjectOrder];
 
         public void UnreadChanged()
         {
@@ -213,7 +213,7 @@ public class SwitchedOffRepositoryTests : IDisposable
         {
         }
 
-        public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly)
+        public void SaveListPreferences(ListPreferences preferences)
         {
         }
 

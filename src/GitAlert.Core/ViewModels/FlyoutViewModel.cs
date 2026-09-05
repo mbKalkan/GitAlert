@@ -19,10 +19,10 @@ public interface IShellCommands
     void Quit();
 
     /// <summary>
-    /// Persists the choices made in the list itself - the order of the projects, how rows are
-    /// sorted inside them, whether read alerts are hidden - so they survive a restart.
+    /// Persists the choices made in the list itself - the order of the projects, the sections they
+    /// are grouped under, whether read alerts are hidden - so they survive a restart.
     /// </summary>
-    void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly);
+    void SaveListPreferences(ListPreferences preferences);
 
     /// <summary>
     /// Something in the list was read or cleared. The tray icon carries the same number and has
@@ -31,6 +31,12 @@ public interface IShellCommands
     /// </summary>
     void UnreadChanged();
 }
+
+/// <summary>The choices made in the list itself, handed to the shell to save.</summary>
+public sealed record ListPreferences(
+    IReadOnlyList<string> ProjectOrder,
+    IReadOnlyList<ProjectSection> Sections,
+    bool UnreadOnly);
 
 /// <summary>
 /// Drives the tray flyout: the alert list, the filter chips and the connection status line.
@@ -92,19 +98,25 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// <summary>The order the user put the projects in. Anything absent follows alphabetically.</summary>
     private readonly List<string> _order;
 
+    /// <summary>
+    /// The user's sections, in the order they are shown. Kept for the life of the window like the
+    /// project groups, so a fold or a half-typed name survives the poll that lands during it.
+    /// </summary>
+    private readonly List<ProjectSectionViewModel> _sections;
+
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
 
     /// <summary>
-    /// One section per project, kept for the life of the window rather than rebuilt.
+    /// One group per project, kept for the life of the window rather than rebuilt.
     /// </summary>
     /// <remarks>
     /// These used to be created afresh on every filter change and every arriving alert, which
     /// meant a poll landing while you read a project silently discarded the commits you had
-    /// asked it to load and folded the section shut again. Keeping the instance keeps what the
+    /// asked it to load and folded the group shut again. Keeping the instance keeps what the
     /// user did to it.
     /// </remarks>
-    private readonly Dictionary<string, ProjectGroupViewModel> _sections = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ProjectGroupViewModel> _projects = new(StringComparer.OrdinalIgnoreCase);
 
     public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell, AppSettings settings)
     {
@@ -114,6 +126,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _ui = UiThread.Capture();
 
         _order = [.. settings.ProjectOrder];
+        _sections = settings.Sections.Select(section => Wrap(section.Clone())).ToList();
         _unreadOnly = settings.UnreadOnly;
 
         Filters =
@@ -145,11 +158,19 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     public ObservableCollection<AlertViewModel> Alerts { get; } = [];
 
     /// <summary>
-    /// One section per watched project, in both modes. Every project appears whether or not it
-    /// has anything to show, so the list is the shape of what is being watched rather than one
-    /// that rearranges itself as alerts arrive.
+    /// One group per watched project, in the order the list shows them: the loose projects, then
+    /// section by section. Every project appears whether or not it has anything to show, so the
+    /// list is the shape of what is being watched rather than one that rearranges itself as alerts
+    /// arrive. A project under a folded section is here too; only <see cref="Rows"/> leaves it out.
     /// </summary>
     public ObservableCollection<ProjectGroupViewModel> Groups { get; } = [];
+
+    /// <summary>
+    /// What the list renders, top to bottom: the loose projects, then each section's header
+    /// followed by its projects while it is unfolded. A project row is a
+    /// <see cref="ProjectGroupViewModel"/>, a section header a <see cref="ProjectSectionViewModel"/>.
+    /// </summary>
+    public ObservableCollection<object> Rows { get; } = [];
 
     public ObservableCollection<FilterChipViewModel> Filters { get; }
 
@@ -349,7 +370,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _store.Clear();
         _store.Save();
         _all.Clear();
-        _sections.Clear();
+        _projects.Clear();
         ApplyFilter();
 
         SelectedAlert = null;
@@ -382,9 +403,15 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// ever had: with a kind picked in the chips, the badge counts that kind alone, and the tick
     /// beside it clears the number it sits next to and nothing more.
     /// </summary>
-    private void MarkProjectRead(ProjectGroupViewModel group)
+    private void MarkProjectRead(ProjectGroupViewModel group) => MarkRead([group]);
+
+    /// <summary>The tick on a section header: every project under it, in one go.</summary>
+    private void MarkSectionRead(ProjectSectionViewModel section) =>
+        MarkRead(Groups.Where(g => section.Contains(g.Repository)));
+
+    private void MarkRead(IEnumerable<ProjectGroupViewModel> groups)
     {
-        var unread = group.Items.Where(a => !a.IsRead).ToList();
+        var unread = groups.SelectMany(g => g.Items).Where(a => !a.IsRead).Distinct().ToList();
 
         if (unread.Count == 0)
         {
@@ -510,9 +537,15 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             chip.Count = _all.Count(a => !a.IsRead && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
         }
 
-        foreach (var section in Groups)
+        foreach (var group in Groups)
         {
-            section.Recount();
+            group.Recount();
+        }
+
+        // A section's number is its projects' put together.
+        foreach (var section in _sections)
+        {
+            section.UnreadCount = Groups.Where(g => section.Contains(g.Repository)).Sum(g => g.UnreadCount);
         }
 
         _shell.UnreadChanged();
@@ -531,24 +564,54 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Moves a project one place up or down. The step is taken against what is on screen, so it
-    /// always looks like one move even when projects between them are hidden, and the result is
-    /// written back as a total order so every later move has a definite starting point.
+    /// Moves a project one place up or down. The places are what is on screen - so a step always
+    /// looks like one move even when projects between them are hidden - plus one empty place for
+    /// each area with nothing in it. Within an area the two projects swap; at its edge the project
+    /// crosses into the next area instead, keeping its place in the order, so the arrows alone can
+    /// walk it into a section and out again. The result is written back as a total order laid out
+    /// area by area, so every later move has a definite starting point.
     /// </summary>
     private void MoveProject(ProjectGroupViewModel group, int delta)
     {
-        var visible = Groups.Select(g => g.Repository).ToList();
-        var from = visible.IndexOf(group.Repository);
+        var slots = Slots();
+        var from = slots.FindIndex(s => ReferenceEquals(s.Project, group));
         var to = from + delta;
 
-        if (from < 0 || to < 0 || to >= visible.Count)
+        if (from < 0 || to < 0 || to >= slots.Count)
         {
             return;
         }
 
+        var neighbour = slots[to];
+
+        if (ReferenceEquals(neighbour.Section, slots[from].Section) && neighbour.Project is { } other)
+        {
+            Swap(group.Repository, other.Repository);
+        }
+        else
+        {
+            // With the order laid out area by area, the project already stands at the edge it is
+            // crossing: joining the neighbouring area is the whole move.
+            NormaliseOrder();
+            Assign(group.Repository, neighbour.Section);
+
+            // Walked into a folded section: unfold it, or the move would look like a disappearance.
+            if (neighbour.Section is { IsExpanded: false } section)
+            {
+                section.IsExpanded = true;
+            }
+        }
+
+        NormaliseOrder();
+        Persist();
+        ApplyFilter();
+    }
+
+    private void Swap(string first, string second)
+    {
         var order = OrderForEditing();
-        var a = order.FindIndex(r => string.Equals(r, visible[from], StringComparison.OrdinalIgnoreCase));
-        var b = order.FindIndex(r => string.Equals(r, visible[to], StringComparison.OrdinalIgnoreCase));
+        var a = order.FindIndex(r => string.Equals(r, first, StringComparison.OrdinalIgnoreCase));
+        var b = order.FindIndex(r => string.Equals(r, second, StringComparison.OrdinalIgnoreCase));
 
         if (a < 0 || b < 0)
         {
@@ -559,14 +622,12 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         _order.Clear();
         _order.AddRange(order);
-
-        Persist();
-        ApplyFilter();
     }
 
     /// <summary>
-    /// Puts one project directly above or below another, wherever the two currently sit. This is
-    /// what dropping a dragged header does; the arrows still move a project one step at a time.
+    /// Puts one project directly above or below another, wherever the two currently sit, and in
+    /// that project's section. This is what dropping a dragged header on a project does; the
+    /// arrows still move a project one step at a time.
     /// </summary>
     public void PlaceProject(ProjectGroupViewModel moved, ProjectGroupViewModel target, bool above)
     {
@@ -596,7 +657,51 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         _order.Clear();
         _order.AddRange(order);
+        Assign(moved.Repository, SectionOf(target.Repository));
 
+        NormaliseOrder();
+        Persist();
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// Drops a project on a section header: into the section, at its top, unfolding it if it was
+    /// folded so the drop can be seen landing. Dropped just above the header instead, the project
+    /// goes to the end of whatever is above the section - the previous one, or the loose projects.
+    /// </summary>
+    public void PlaceProject(ProjectGroupViewModel moved, ProjectSectionViewModel section, bool above)
+    {
+        var index = _sections.IndexOf(section);
+
+        if (index < 0)
+        {
+            return;
+        }
+
+        // Every known project gets a rank first, so "first" and "last" below mean what they say.
+        NormaliseOrder();
+
+        var area = above
+            ? index > 0 ? _sections[index - 1] : null
+            : section;
+
+        Assign(moved.Repository, area);
+
+        // A rank only matters within an area: first of all makes it first in its new area, last of
+        // all makes it last.
+        _order.RemoveAll(r => string.Equals(r, moved.Repository, StringComparison.OrdinalIgnoreCase));
+
+        if (above)
+        {
+            _order.Add(moved.Repository);
+        }
+        else
+        {
+            _order.Insert(0, moved.Repository);
+            section.IsExpanded = true;
+        }
+
+        NormaliseOrder();
         Persist();
         ApplyFilter();
     }
@@ -604,14 +709,195 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// <summary>Takes down every insertion line and the fade on whatever was being dragged.</summary>
     public void ClearDragMarkers()
     {
-        foreach (var group in _sections.Values)
+        foreach (var group in _projects.Values)
         {
             group.DropMarker = DropMarker.None;
             group.IsBeingDragged = false;
         }
+
+        foreach (var section in _sections)
+        {
+            section.DropMarker = DropMarker.None;
+        }
     }
 
-    private void Persist() => _shell.SaveListPreferences(_order, UnreadOnly);
+    // ---- Sections ------------------------------------------------------------
+
+    /// <summary>
+    /// Adds a section at the end of the list and opens its name for typing. Projects get into it
+    /// by being dragged onto its header, or walked in with the arrows.
+    /// </summary>
+    [RelayCommand]
+    private void AddSection()
+    {
+        var section = Wrap(new ProjectSection());
+        _sections.Add(section);
+
+        Persist();
+        ApplyFilter();
+
+        section.Rename();
+    }
+
+    /// <summary>
+    /// Unfolds every section and every project. Nothing is fetched for it: a project with no
+    /// alerts opens onto its "load earlier commits" button, as it does when opened by hand.
+    /// </summary>
+    [RelayCommand]
+    private void ExpandAll() => SetEverythingExpanded(true);
+
+    /// <summary>Folds every project and every section, down to a list of headers.</summary>
+    [RelayCommand]
+    private void CollapseAll() => SetEverythingExpanded(false);
+
+    private void SetEverythingExpanded(bool expanded)
+    {
+        foreach (var project in _projects.Values)
+        {
+            project.IsExpanded = expanded;
+        }
+
+        var foldsChanged = false;
+
+        foreach (var section in _sections.Where(s => s.IsExpanded != expanded))
+        {
+            section.IsExpanded = expanded;
+            foldsChanged = true;
+        }
+
+        // The sections' folds are saved; the projects' are not, as before.
+        if (foldsChanged)
+        {
+            Persist();
+        }
+
+        ApplyFilter();
+    }
+
+    private ProjectSectionViewModel Wrap(ProjectSection model) =>
+        new(model, OnSectionChanged, MoveSection, RemoveSection, MarkSectionRead);
+
+    /// <summary>A fold or a new name: worth saving, and a fold changes which rows show.</summary>
+    private void OnSectionChanged(ProjectSectionViewModel section)
+    {
+        Persist();
+        ApplyFilter();
+    }
+
+    private void MoveSection(ProjectSectionViewModel section, int delta)
+    {
+        var from = _sections.IndexOf(section);
+        var to = from + delta;
+
+        if (from < 0 || to < 0 || to >= _sections.Count)
+        {
+            return;
+        }
+
+        (_sections[from], _sections[to]) = (_sections[to], _sections[from]);
+
+        NormaliseOrder();
+        Persist();
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// Dissolves a section. Its projects stay, loose, after the other loose ones - which is where
+    /// the loose area ends - and in the order they had.
+    /// </summary>
+    private void RemoveSection(ProjectSectionViewModel section)
+    {
+        if (!_sections.Remove(section))
+        {
+            return;
+        }
+
+        NormaliseOrder();
+        Persist();
+        ApplyFilter();
+    }
+
+    /// <summary>The section a project is in, or null for a loose one.</summary>
+    private ProjectSectionViewModel? SectionOf(string repository) =>
+        _sections.FirstOrDefault(s => s.Contains(repository));
+
+    /// <summary>Puts a project in a section, or out of every section when given none.</summary>
+    private void Assign(string repository, ProjectSectionViewModel? section)
+    {
+        foreach (var other in _sections)
+        {
+            other.Remove(repository);
+        }
+
+        section?.Add(repository);
+    }
+
+    /// <summary>
+    /// Lays the total order out the way the list shows it: the loose projects, then each section's
+    /// in turn, nothing moving within an area. Done after every edit, so a project crossing into a
+    /// neighbouring area needs no new place in the order - it is already at the edge.
+    /// </summary>
+    private void NormaliseOrder()
+    {
+        var ranked = OrderForEditing();
+
+        List<string> order =
+        [
+            .. ranked.Where(r => SectionOf(r) is null),
+            .. _sections.SelectMany(s => ranked.Where(r => ReferenceEquals(SectionOf(r), s))),
+        ];
+
+        _order.Clear();
+        _order.AddRange(order);
+    }
+
+    /// <summary>
+    /// One place a project can stand: an area - a section, or null for the loose projects - and
+    /// the project standing there, or none for an empty area.
+    /// </summary>
+    private readonly record struct Slot(ProjectSectionViewModel? Section, ProjectGroupViewModel? Project);
+
+    /// <summary>
+    /// The places the arrows walk a project through, top to bottom: every project on screen, plus
+    /// one empty place for each area with nothing in it, so a project can be walked into an empty
+    /// section, or out of the first section when nothing is loose above it.
+    /// </summary>
+    private List<Slot> Slots()
+    {
+        var slots = new List<Slot>();
+        var loose = Groups.Where(g => !g.IsInSection).ToList();
+
+        // An empty loose area is only a place to go once there are sections to leave.
+        if (loose.Count == 0 && _sections.Count > 0)
+        {
+            slots.Add(new Slot(null, null));
+        }
+
+        slots.AddRange(loose.Select(g => new Slot(null, g)));
+
+        foreach (var section in _sections)
+        {
+            var projects = Groups.Where(g => section.Contains(g.Repository)).ToList();
+
+            if (projects.Count == 0)
+            {
+                // Out of sight while showing unread only, so not a place to walk a project into.
+                if (!UnreadOnly)
+                {
+                    slots.Add(new Slot(section, null));
+                }
+
+                continue;
+            }
+
+            slots.AddRange(projects.Select(g => new Slot(section, g)));
+        }
+
+        return slots;
+    }
+
+    private void Persist() =>
+        _shell.SaveListPreferences(new ListPreferences(_order, _sections.Select(s => s.Model).ToList(), UnreadOnly));
 
     private void RebuildGroups()
     {
@@ -619,61 +905,150 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             .GroupBy(a => a.Repository, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
-        Groups.Clear();
+        // Every project in view, laid out the way the list shows them: loose first, then section
+        // by section.
+        var inView = ProjectsInView();
+        var groups = new List<ProjectGroupViewModel>();
 
-        foreach (var repository in ProjectsInView())
+        foreach (var section in (ProjectSectionViewModel?[])[null, .. _sections])
         {
-            var accountId = AccountIdFor(repository);
-
-            // A project whose account changed has to start over: its history would be fetched
-            // with a token that no longer reaches it.
-            if (_sections.TryGetValue(repository, out var group)
-                && !string.Equals(group.AccountId, accountId, StringComparison.Ordinal))
+            foreach (var repository in inView.Where(r => ReferenceEquals(SectionOf(r), section)))
             {
-                _sections.Remove(repository);
-                group = null;
+                var group = GroupFor(repository, byRepository.GetValueOrDefault(repository, []));
+                group.IsInSection = section is not null;
+                groups.Add(group);
             }
-
-            if (group is null)
-            {
-                group = new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject, MarkProjectRead);
-                _sections[repository] = group;
-
-                group.SetAlerts(byRepository.GetValueOrDefault(repository, []));
-
-                // First sight of a project: open when it has something to say, folded otherwise.
-                // After that it is the user's own choice, held on the section itself.
-                group.IsExpanded = group.Items.Count > 0;
-            }
-            else
-            {
-                group.SetAlerts(byRepository.GetValueOrDefault(repository, []));
-            }
-
-            Groups.Add(group);
         }
 
-        PruneSections();
+        Sync(Groups, groups);
+        PruneProjects();
 
-        for (var i = 0; i < Groups.Count; i++)
+        // What is on screen. A folded section keeps its projects out of the rows, and while
+        // showing unread only a section with nothing to show stays out of the way, like its projects.
+        var rows = new List<object>();
+        rows.AddRange(groups.Where(g => !g.IsInSection));
+
+        foreach (var section in _sections)
         {
-            Groups[i].CanMoveUp = i > 0;
-            Groups[i].CanMoveDown = i < Groups.Count - 1;
+            var projects = groups.Where(g => section.Contains(g.Repository)).ToList();
+            section.ProjectCount = projects.Count;
+
+            if (UnreadOnly && projects.Count == 0)
+            {
+                continue;
+            }
+
+            rows.Add(section);
+
+            if (section.IsExpanded)
+            {
+                rows.AddRange(projects);
+            }
+        }
+
+        Sync(Rows, rows);
+
+        // The arrows: a project may walk anywhere along the places, a section anywhere among the sections.
+        var slots = Slots();
+
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if (slots[i].Project is { } project)
+            {
+                project.CanMoveUp = i > 0;
+                project.CanMoveDown = i < slots.Count - 1;
+            }
+        }
+
+        for (var i = 0; i < _sections.Count; i++)
+        {
+            _sections[i].CanMoveUp = i > 0;
+            _sections[i].CanMoveDown = i < _sections.Count - 1;
         }
     }
 
-    /// <summary>Forgets sections for projects GitAlert no longer knows about.</summary>
-    private void PruneSections()
+    /// <summary>
+    /// The group for a project - the one from last time where there is one, with its alerts
+    /// brought up to date.
+    /// </summary>
+    private ProjectGroupViewModel GroupFor(string repository, List<AlertViewModel> alerts)
+    {
+        var accountId = AccountIdFor(repository);
+
+        // A project whose account changed has to start over: its history would be fetched
+        // with a token that no longer reaches it.
+        if (_projects.TryGetValue(repository, out var group)
+            && !string.Equals(group.AccountId, accountId, StringComparison.Ordinal))
+        {
+            _projects.Remove(repository);
+            group = null;
+        }
+
+        if (group is null)
+        {
+            group = new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject, MarkProjectRead);
+            _projects[repository] = group;
+
+            group.SetAlerts(alerts);
+
+            // First sight of a project: open when it has something to say, folded otherwise.
+            // After that it is the user's own choice, held on the group itself.
+            group.IsExpanded = group.Items.Count > 0;
+        }
+        else
+        {
+            group.SetAlerts(alerts);
+        }
+
+        return group;
+    }
+
+    /// <summary>
+    /// Brings a collection to new contents with the fewest changes. What stays keeps its row
+    /// container, and with it the focus, the hover, and the header still finishing the click that
+    /// asked for this; clearing and refilling on every poll threw all of that away to arrive at
+    /// what was already on screen.
+    /// </summary>
+    private static void Sync<T>(ObservableCollection<T> target, IReadOnlyList<T> desired)
+        where T : class
+    {
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(target[i]))
+            {
+                target.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            if (i < target.Count && ReferenceEquals(target[i], desired[i]))
+            {
+                continue;
+            }
+
+            var current = target.IndexOf(desired[i]);
+
+            if (current >= 0)
+            {
+                target.RemoveAt(current);
+            }
+
+            target.Insert(i, desired[i]);
+        }
+    }
+
+    /// <summary>Forgets groups for projects GitAlert no longer knows about.</summary>
+    private void PruneProjects()
     {
         var known = AllProjects().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var stale in _sections.Keys.Where(r => !known.Contains(r)).ToList())
+        foreach (var stale in _projects.Keys.Where(r => !known.Contains(r)).ToList())
         {
-            _sections.Remove(stale);
+            _projects.Remove(stale);
         }
     }
 
-    /// <summary>Every project GitAlert knows about, in the user's order.</summary>
     /// <summary>
     /// The total order a move or a drop edits: every project in view plus the ones switched off in
     /// settings, which are out of sight but keep their place for when the tick comes back. Without
@@ -693,6 +1068,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ];
     }
 
+    /// <summary>Every project GitAlert knows about, in the user's order.</summary>
     private List<string> AllProjects()
     {
         var known = _monitor.Watched
@@ -778,8 +1154,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _all.Clear();
         _all.AddRange(_store.Snapshot.Select(Create));
 
-        // The rows the sections hold are wrappers around models that have just been replaced.
-        _sections.Clear();
+        // The rows the groups hold are wrappers around models that have just been replaced.
+        _projects.Clear();
         ApplyFilter();
 
         // The selected alert is a wrapper around a model that has just been replaced, so the

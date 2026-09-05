@@ -349,6 +349,53 @@ public class SettingsTests : IDisposable
         Assert.Equal(DarkPalette.VsCode, new AppSettings().DarkPalette);
     }
 
+    [Fact]
+    public void Sections_round_trip_with_their_fold_and_their_projects()
+    {
+        var store = new SettingsStore(_path);
+        var settings = new AppSettings
+        {
+            Sections =
+            [
+                new ProjectSection { Name = "Work", IsCollapsed = true, Repositories = ["acme/api", "acme/web"] },
+                new ProjectSection { Name = "Personal" },
+            ],
+        };
+
+        Assert.True(store.Save(settings));
+
+        var loaded = store.Load();
+
+        Assert.Equal(["Work", "Personal"], loaded.Sections.Select(s => s.Name));
+        Assert.True(loaded.Sections[0].IsCollapsed);
+        Assert.Equal(["acme/api", "acme/web"], loaded.Sections[0].Repositories);
+        Assert.Empty(loaded.Sections[1].Repositories);
+
+        var clone = settings.Clone();
+        clone.Sections[0].Repositories.Add("acme/other");
+        Assert.Equal(2, settings.Sections[0].Repositories.Count);
+    }
+
+    /// <summary>
+    /// A hand-edited section list: a null entry, a blank name, a project listed twice and one
+    /// listed under two sections. Each is repaired rather than costing the file.
+    /// </summary>
+    [Fact]
+    public void A_hand_edited_section_list_is_repaired_rather_than_refused()
+    {
+        File.WriteAllText(
+            _path,
+            """{"sections":[null,{"name":"  ","repositories":["acme/api",null,"acme/api","acme/web"]},{"name":"Second","repositories":null},{"name":"Third","repositories":["acme/web","acme/cli"]}]}""");
+
+        var settings = new SettingsStore(_path).Load();
+
+        Assert.Equal([ProjectSection.DefaultName, "Second", "Third"], settings.Sections.Select(s => s.Name));
+        Assert.Equal(["acme/api", "acme/web"], settings.Sections[0].Repositories);
+        Assert.Empty(settings.Sections[1].Repositories);
+        Assert.Equal(["acme/cli"], settings.Sections[2].Repositories);
+        Assert.False(File.Exists(_path + ".corrupt"));
+    }
+
     public void Dispose()
     {
         foreach (var file in new[] { _path, _path + ".corrupt", _path + ".tmp" })

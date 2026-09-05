@@ -8,7 +8,8 @@ internal static class SampleData
 {
     public const string PushSha = "9f3c2a1d7b6e5f4a3c2b1a0f9e8d7c6b5a4f3e2d";
 
-    public static AppSettings Settings(GitHubAccount account) => new()
+    /// <summary>With <paramref name="sectioned"/>, api-gateway sits under a section called Work.</summary>
+    public static AppSettings Settings(GitHubAccount account, bool sectioned = false) => new()
     {
         Accounts = [account],
         Repositories =
@@ -16,6 +17,7 @@ internal static class SampleData
             RepoSubscription.From(account.Id, new RepoRef("mbKalkan", "GitAlert")),
             RepoSubscription.From(account.Id, new RepoRef("acme", "api-gateway")),
         ],
+        Sections = sectioned ? [new ProjectSection { Name = "Work", Repositories = ["acme/api-gateway"] }] : [],
         PollIntervalMinutes = 2,
     };
 

@@ -7,12 +7,16 @@ namespace GitAlert.ViewModels;
 /// <summary>A page of rows for a project, and whether asking again would return more.</summary>
 public sealed record GroupPage(IReadOnlyList<AlertViewModel> Items, bool HasMore);
 
-/// <summary>The insertion line shown on a project while another is dragged over it.</summary>
+/// <summary>
+/// Where a dragged project would land, shown on the row it hovers over: a line above or below a
+/// project, a line above a section, or the section itself lit up for a drop into it.
+/// </summary>
 public enum DropMarker
 {
     None,
     Above,
     Below,
+    Into,
 }
 
 /// <summary>
@@ -50,6 +54,10 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     /// <summary>True for the project in the air, so its header can fade until it lands.</summary>
     [ObservableProperty]
     private bool _isBeingDragged;
+
+    /// <summary>True for a project grouped under a section, so its rows can sit a step in.</summary>
+    [ObservableProperty]
+    private bool _isInSection;
 
     /// <summary>False at the top and bottom of the list, so the arrows can grey out there.</summary>
     [ObservableProperty]

@@ -463,16 +463,21 @@ public partial class FlyoutWindow : Window
 
         // Let go somewhere else - the diff pane, the desktop, another window - and nothing moves,
         // which is what the WPF build did and what a drag that missed should do.
-        var (target, above) = IsOverList(e) ? TargetUnder(e.GetPosition(GroupList)) : (null, false);
+        var (target, marker) = IsOverList(e) ? TargetUnder(e.GetPosition(GroupList)) : (null, DropMarker.None);
         _viewModel.ClearDragMarkers();
 
         // The list is rebuilt once the release has finished its round: the header that holds the
         // capture is still on the event's route, and rebuilding now would pull it out from under it.
         Dispatcher.UIThread.Post(() =>
         {
-            if (target is not null && !ReferenceEquals(target, dragged))
+            switch (target)
             {
-                _viewModel.PlaceProject(dragged, target, above);
+                case ProjectGroupViewModel project when !ReferenceEquals(project, dragged):
+                    _viewModel.PlaceProject(dragged, project, marker == DropMarker.Above);
+                    break;
+                case ProjectSectionViewModel section:
+                    _viewModel.PlaceProject(dragged, section, marker == DropMarker.Above);
+                    break;
             }
 
             // Cleared after the click that follows the release has had its chance to see it.
@@ -505,40 +510,50 @@ public partial class FlyoutWindow : Window
 
     private void UpdateDropMarkers(ProjectGroupViewModel dragged, Point point)
     {
-        var (target, above) = TargetUnder(point);
+        var (target, marker) = TargetUnder(point);
 
-        foreach (var group in _viewModel.Groups)
+        foreach (var row in _viewModel.Rows)
         {
-            group.DropMarker = ReferenceEquals(group, target) && !ReferenceEquals(group, dragged)
-                ? above ? DropMarker.Above : DropMarker.Below
-                : DropMarker.None;
+            var mark = ReferenceEquals(row, target) && !ReferenceEquals(row, dragged) ? marker : DropMarker.None;
+
+            switch (row)
+            {
+                case ProjectGroupViewModel group:
+                    group.DropMarker = mark;
+                    break;
+                case ProjectSectionViewModel section:
+                    section.DropMarker = mark;
+                    break;
+            }
         }
     }
 
     /// <summary>
-    /// The project under a point in the list, and whether the point is in the top half of its
-    /// header. Anywhere lower in the section - the alerts inside an open one - means "after it".
+    /// The row under a point in the list and where a drop there would land: above or below a
+    /// project, above a section or into it. On a project header the top half means "above";
+    /// anywhere lower in the group - the alerts inside an open one - means "after it". On a
+    /// section header only the top third means "above"; the rest is "into".
     /// </summary>
-    private (ProjectGroupViewModel? Group, bool Above) TargetUnder(Point point)
+    private (object? Row, DropMarker Marker) TargetUnder(Point point)
     {
-        ProjectGroupViewModel? last = null;
+        object? last = null;
 
         for (var i = 0; i < GroupList.ItemCount; i++)
         {
-            if (GroupList.Items[i] is not ProjectGroupViewModel group
+            if (GroupList.Items[i] is not { } row
                 || GroupList.ContainerFromIndex(i) is not { } container
                 || container.TranslatePoint(new Point(0, 0), GroupList) is not { } origin)
             {
                 continue;
             }
 
-            last = group;
+            last = row;
 
             var top = origin.Y;
 
             if (point.Y < top)
             {
-                return (group, true);
+                return (row, DropMarker.Above);
             }
 
             if (point.Y <= top + container.Bounds.Height)
@@ -547,12 +562,14 @@ public partial class FlyoutWindow : Window
                 var headerTop = header?.TranslatePoint(new Point(0, 0), GroupList)?.Y ?? top;
                 var headerHeight = header?.Bounds.Height ?? container.Bounds.Height;
 
-                return (group, point.Y < headerTop + headerHeight / 2);
+                return row is ProjectSectionViewModel
+                    ? (row, point.Y < headerTop + headerHeight / 3 ? DropMarker.Above : DropMarker.Into)
+                    : (row, point.Y < headerTop + headerHeight / 2 ? DropMarker.Above : DropMarker.Below);
             }
         }
 
-        // Below everything: after the last project.
-        return (last, false);
+        // Below everything: after the last project, or into the last section.
+        return (last, last is ProjectSectionViewModel ? DropMarker.Into : DropMarker.Below);
     }
 
     /// <summary>
@@ -577,6 +594,80 @@ public partial class FlyoutWindow : Window
         else if (pointInScroller.Y > ListScroller.Bounds.Height - Edge)
         {
             ListScroller.Offset = offset.WithY(offset.Y + Step);
+        }
+    }
+
+    // ---- Sections ------------------------------------------------------------
+
+    /// <summary>
+    /// The new section lands at the bottom of the list, which may be off the screen. The row is
+    /// added by the command, which runs after this click handler, so the scroll waits a beat.
+    /// </summary>
+    private void OnNewSectionClicked(object? sender, RoutedEventArgs e) =>
+        Dispatcher.UIThread.Post(ListScroller.ScrollToEnd, DispatcherPriority.Background);
+
+    /// <summary>
+    /// The box appears when a rename starts on a section already on screen; the name is selected
+    /// so typing replaces it.
+    /// </summary>
+    private void OnSectionNamePropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == IsVisibleProperty && sender is TextBox { IsVisible: true } box)
+        {
+            TakeTheName(box);
+        }
+    }
+
+    /// <summary>
+    /// A new section arrives with its name already open, so its box is born visible and never sees
+    /// the visibility change the handler above waits for; being attached is its cue instead.
+    /// </summary>
+    private void OnSectionNameAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is TextBox { IsVisible: true } box)
+        {
+            TakeTheName(box);
+        }
+    }
+
+    private static void TakeTheName(TextBox box)
+    {
+        // Once it has been laid out: a box focused before that does not take the focus.
+        Dispatcher.UIThread.Post(() =>
+        {
+            box.Focus();
+            box.SelectAll();
+        });
+    }
+
+    private void OnSectionNameKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: ProjectSectionViewModel section })
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Enter:
+                section.CommitRenameCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                // Handled here, or the window takes the same key as "close".
+                section.CancelRenameCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>Clicking elsewhere keeps what was typed, the way a rename in the file explorer does.</summary>
+    private void OnSectionNameLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: ProjectSectionViewModel section })
+        {
+            section.CommitRenameCommand.Execute(null);
         }
     }
 

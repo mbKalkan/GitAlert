@@ -165,8 +165,8 @@ public class ProjectOrderTests : IDisposable
         {
         }
 
-        public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly) =>
-            SavedOrder = [.. projectOrder];
+        public void SaveListPreferences(ListPreferences preferences) =>
+            SavedOrder = [.. preferences.ProjectOrder];
 
         public void UnreadChanged()
         {

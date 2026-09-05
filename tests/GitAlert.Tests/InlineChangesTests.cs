@@ -178,7 +178,7 @@ public class InlineChangesTests : IDisposable
         {
         }
 
-        public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly)
+        public void SaveListPreferences(ListPreferences preferences)
         {
         }
 

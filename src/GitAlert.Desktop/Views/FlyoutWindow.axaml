@@ -148,8 +148,96 @@
       </StackPanel>
     </DataTemplate>
 
-    <DataTemplate x:Key="ProjectGroupTemplate" x:DataType="vm:ProjectGroupViewModel">
+    <DataTemplate x:Key="FileRowTemplate" x:DataType="vm:FileDiffViewModel">
+      <Button Theme="{StaticResource FileRowButton}"
+              Classes.selected="{Binding IsSelected}"
+              Command="{Binding $parent[ItemsControl].((vm:AlertDetailViewModel)DataContext).SelectFileCommand}"
+              CommandParameter="{Binding}"
+              ToolTip.Tip="{Binding Tooltip}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Path Grid.Column="0"
+                Data="M2,1 L8,1 L11,4 L11,14 L2,14 Z M8,1 L8,4 L11,4"
+                Stroke="{DynamicResource TextMuted}"
+                StrokeThickness="1.3"
+                StrokeJoin="Round"
+                Width="10"
+                Height="13"
+                Stretch="Uniform"
+                VerticalAlignment="Center" />
+
+          <!-- The name first, the folder dimmed after it; the counts wait in the tooltip and on
+               the bar above the diff, where there is room for them. -->
+          <TextBlock Grid.Column="1"
+                     Margin="9,0,8,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"><Run Text="{Binding FileName}" Foreground="{DynamicResource TextPrimary}" /><Run Text="  " /><Run Text="{Binding Folder}" Foreground="{DynamicResource TextMuted}" FontSize="11" /></TextBlock>
+
+          <TextBlock Name="Letter"
+                     Grid.Column="2"
+                     Classes.added="{Binding IsAdded}"
+                     Classes.deleted="{Binding IsDeleted}"
+                     Text="{Binding StatusLetter}"
+                     VerticalAlignment="Center"
+                     Width="14"
+                     TextAlignment="Center"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     FontWeight="SemiBold"
+                     ToolTip.Tip="{Binding Status}" />
+        </Grid>
+      </Button>
+    </DataTemplate>
+
+    <!-- One row of a unified diff: the two line numbers, the +/- marker, then the code. -->
+    <DataTemplate x:Key="DiffLineTemplate" x:DataType="vm:DiffLineViewModel">
+      <Border Name="Row"
+              Classes.added="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Added}"
+              Classes.removed="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Removed}"
+              Classes.hunk="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Hunk}"
+              Classes.note="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Note}">
+        <Grid ColumnDefinitions="38,38,14,*">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding OldNumber}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11"
+                     Foreground="{DynamicResource DiffGutterText}"
+                     TextAlignment="Right"
+                     Padding="0,1,8,1" />
+
+          <TextBlock Grid.Column="1"
+                     Text="{Binding NewNumber}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11"
+                     Foreground="{DynamicResource DiffGutterText}"
+                     TextAlignment="Right"
+                     Padding="0,1,8,1" />
+
+          <TextBlock Name="Marker"
+                     Grid.Column="2"
+                     Text="{Binding Marker}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     Padding="0,1,0,1" />
+
+          <TextBlock Name="Code"
+                     Grid.Column="3"
+                     Text="{Binding Text}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     Padding="0,1,10,1"
+                     TextWrapping="NoWrap" />
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+  </Window.Resources>
+
+  <!-- The list's rows are of two kinds and pick their template by type from here. -->
+  <Window.DataTemplates>
+
+    <DataTemplate x:DataType="vm:ProjectGroupViewModel">
       <StackPanel Classes.expanded="{Binding IsExpanded}"
+                  Classes.nested="{Binding IsInSection}"
                   Classes.dragging="{Binding IsBeingDragged}"
                   Classes.unread="{Binding HasUnread}"
                   Classes.dropAbove="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Above}"
@@ -266,89 +354,134 @@
       </StackPanel>
     </DataTemplate>
 
-    <DataTemplate x:Key="FileRowTemplate" x:DataType="vm:FileDiffViewModel">
-      <Button Theme="{StaticResource FileRowButton}"
-              Classes.selected="{Binding IsSelected}"
-              Command="{Binding $parent[ItemsControl].((vm:AlertDetailViewModel)DataContext).SelectFileCommand}"
-              CommandParameter="{Binding}"
-              ToolTip.Tip="{Binding Tooltip}">
-        <Grid ColumnDefinitions="Auto,*,Auto">
-          <Path Grid.Column="0"
-                Data="M2,1 L8,1 L11,4 L11,14 L2,14 Z M8,1 L8,4 L11,4"
-                Stroke="{DynamicResource TextMuted}"
-                StrokeThickness="1.3"
-                StrokeJoin="Round"
-                Width="10"
-                Height="13"
-                Stretch="Uniform"
-                VerticalAlignment="Center" />
+    <!-- A section header. Clicking it folds the projects under it; the tools on it rename, read,
+         order and dissolve it. While the name is being typed the header gives way to the box, so
+         a click in the box is a click in the box and not on the header under it. -->
+    <DataTemplate x:DataType="vm:ProjectSectionViewModel">
+      <StackPanel Classes.expanded="{Binding IsExpanded}"
+                  Classes.unread="{Binding HasUnread}"
+                  Classes.dropAbove="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Above}"
+                  Classes.dropInto="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Into}">
+        <Border Name="DropAbove" Classes="dropLine" />
 
-          <!-- The name first, the folder dimmed after it; the counts wait in the tooltip and on
-               the bar above the diff, where there is room for them. -->
-          <TextBlock Grid.Column="1"
-                     Margin="9,0,8,0"
-                     VerticalAlignment="Center"
-                     TextTrimming="CharacterEllipsis"><Run Text="{Binding FileName}" Foreground="{DynamicResource TextPrimary}" /><Run Text="  " /><Run Text="{Binding Folder}" Foreground="{DynamicResource TextMuted}" FontSize="11" /></TextBlock>
+        <Panel Margin="0,6,0,0">
+          <Button Name="SectionHeader"
+                  Theme="{StaticResource GroupHeaderButton}"
+                  Command="{Binding ToggleCommand}"
+                  IsVisible="{Binding !IsEditing}"
+                  ToolTip.Tip="{Binding Name}">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
 
-          <TextBlock Name="Letter"
-                     Grid.Column="2"
-                     Classes.added="{Binding IsAdded}"
-                     Classes.deleted="{Binding IsDeleted}"
-                     Text="{Binding StatusLetter}"
-                     VerticalAlignment="Center"
-                     Width="14"
-                     TextAlignment="Center"
-                     FontFamily="{StaticResource CodeFont}"
-                     FontSize="11.5"
-                     FontWeight="SemiBold"
-                     ToolTip.Tip="{Binding Status}" />
-        </Grid>
-      </Button>
+              <Path Name="SectionChevron"
+                    Grid.Column="0"
+                    Data="M4,2.5 L8.5,7 L4,11.5"
+                    Stroke="{DynamicResource TextMuted}"
+                    StrokeThickness="1.5"
+                    StrokeLineCap="Round"
+                    Width="11"
+                    Height="12"
+                    Stretch="Uniform"
+                    VerticalAlignment="Center" />
+
+              <TextBlock Name="SectionName"
+                         Grid.Column="1"
+                         Text="{Binding Name}"
+                         Margin="7,0,8,0"
+                         VerticalAlignment="Center"
+                         FontSize="11.5"
+                         FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis" />
+
+              <StackPanel Name="SectionTools"
+                          Grid.Column="2"
+                          Orientation="Horizontal"
+                          Margin="0,0,6,0"
+                          VerticalAlignment="Center">
+                <Button Theme="{StaticResource HeaderToolButton}"
+                        Command="{Binding RenameCommand}"
+                        ToolTip.Tip="Rename this section">
+                  <Path Data="M2.5,9.5 L2.5,11.5 L4.5,11.5 L11,5 L9,3 Z M8,4 L10,6"
+                        Stroke="{Binding $parent[Button].Foreground}"
+                        StrokeThickness="1.4"
+                        StrokeLineCap="Round"
+                        StrokeJoin="Round" />
+                </Button>
+                <Button Theme="{StaticResource HeaderToolButton}"
+                        Command="{Binding MarkReadCommand}"
+                        IsEnabled="{Binding HasUnread}"
+                        ToolTip.Tip="Mark everything in this section read">
+                  <Path Data="M2,7.2 L5.6,10.6 L11.6,3.6"
+                        Stroke="{Binding $parent[Button].Foreground}"
+                        StrokeThickness="1.6"
+                        StrokeLineCap="Round"
+                        StrokeJoin="Round" />
+                </Button>
+                <Button Theme="{StaticResource HeaderToolButton}"
+                        Command="{Binding MoveUpCommand}"
+                        IsEnabled="{Binding CanMoveUp}"
+                        ToolTip.Tip="Move this section up">
+                  <Path Data="M2,7 L6.5,2.5 L11,7"
+                        Stroke="{Binding $parent[Button].Foreground}"
+                        StrokeThickness="1.6"
+                        StrokeLineCap="Round" />
+                </Button>
+                <Button Theme="{StaticResource HeaderToolButton}"
+                        Command="{Binding MoveDownCommand}"
+                        IsEnabled="{Binding CanMoveDown}"
+                        ToolTip.Tip="Move this section down">
+                  <Path Data="M2,2.5 L6.5,7 L11,2.5"
+                        Stroke="{Binding $parent[Button].Foreground}"
+                        StrokeThickness="1.6"
+                        StrokeLineCap="Round" />
+                </Button>
+                <Button Theme="{StaticResource HeaderToolButton}"
+                        Command="{Binding RemoveCommand}"
+                        ToolTip.Tip="Remove this section; its projects stay in the list">
+                  <Path Data="M3,3 L10,10 M10,3 L3,10"
+                        Stroke="{Binding $parent[Button].Foreground}"
+                        StrokeThickness="1.6"
+                        StrokeLineCap="Round" />
+                </Button>
+              </StackPanel>
+
+              <Border Name="SectionBadge"
+                      Grid.Column="3"
+                      MinWidth="16"
+                      Height="16"
+                      CornerRadius="8"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding ShowCount}">
+                <TextBlock Name="SectionCount"
+                           Text="{Binding CountText}"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           Margin="5,0"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center" />
+              </Border>
+            </Grid>
+          </Button>
+
+          <!-- Enter keeps the name, Escape drops it, and so does clicking away - as a rename in
+               the file explorer does. -->
+          <TextBox Name="SectionNameBox"
+                   Theme="{StaticResource ModernTextBox}"
+                   Text="{Binding EditedName}"
+                   IsVisible="{Binding IsEditing}"
+                   Margin="6,4,8,1"
+                   MinHeight="26"
+                   Padding="8,3"
+                   FontSize="12"
+                   PlaceholderText="Section name"
+                   KeyDown="OnSectionNameKeyDown"
+                   LostFocus="OnSectionNameLostFocus"
+                   AttachedToVisualTree="OnSectionNameAttached"
+                   PropertyChanged="OnSectionNamePropertyChanged" />
+        </Panel>
+      </StackPanel>
     </DataTemplate>
 
-    <!-- One row of a unified diff: the two line numbers, the +/- marker, then the code. -->
-    <DataTemplate x:Key="DiffLineTemplate" x:DataType="vm:DiffLineViewModel">
-      <Border Name="Row"
-              Classes.added="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Added}"
-              Classes.removed="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Removed}"
-              Classes.hunk="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Hunk}"
-              Classes.note="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Note}">
-        <Grid ColumnDefinitions="38,38,14,*">
-          <TextBlock Grid.Column="0"
-                     Text="{Binding OldNumber}"
-                     FontFamily="{StaticResource CodeFont}"
-                     FontSize="11"
-                     Foreground="{DynamicResource DiffGutterText}"
-                     TextAlignment="Right"
-                     Padding="0,1,8,1" />
-
-          <TextBlock Grid.Column="1"
-                     Text="{Binding NewNumber}"
-                     FontFamily="{StaticResource CodeFont}"
-                     FontSize="11"
-                     Foreground="{DynamicResource DiffGutterText}"
-                     TextAlignment="Right"
-                     Padding="0,1,8,1" />
-
-          <TextBlock Name="Marker"
-                     Grid.Column="2"
-                     Text="{Binding Marker}"
-                     FontFamily="{StaticResource CodeFont}"
-                     FontSize="11.5"
-                     Padding="0,1,0,1" />
-
-          <TextBlock Name="Code"
-                     Grid.Column="3"
-                     Text="{Binding Text}"
-                     FontFamily="{StaticResource CodeFont}"
-                     FontSize="11.5"
-                     Padding="0,1,10,1"
-                     TextWrapping="NoWrap" />
-        </Grid>
-      </Border>
-    </DataTemplate>
-
-  </Window.Resources>
+  </Window.DataTemplates>
 
   <Window.Styles>
 
@@ -430,8 +563,42 @@
     <Style Selector="StackPanel.expanded > StackPanel#Body">
       <Setter Property="IsVisible" Value="True" />
     </Style>
-    <Style Selector="StackPanel.expanded Path#Chevron">
+    <Style Selector="StackPanel.expanded Path#Chevron, StackPanel.expanded Path#SectionChevron">
       <Setter Property="RenderTransform" Value="rotate(90deg)" />
+    </Style>
+
+    <!-- Section headers: a quieter caption than a project's, with the same badge and tools. -->
+    <Style Selector="TextBlock#SectionName">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+    </Style>
+    <Style Selector="StackPanel#SectionTools">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Button#SectionHeader:pointerover StackPanel#SectionTools, StackPanel#SectionTools:focus-within">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border#SectionBadge">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+    </Style>
+    <Style Selector="TextBlock#SectionCount">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+    </Style>
+    <Style Selector="StackPanel.unread Border#SectionBadge">
+      <Setter Property="Background" Value="{DynamicResource Accent}" />
+    </Style>
+    <Style Selector="StackPanel.unread TextBlock#SectionCount">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+    </Style>
+
+    <!-- A project under a section sits a step in, so the list reads as a tree. -->
+    <Style Selector="StackPanel.nested">
+      <Setter Property="Margin" Value="14,0,0,0" />
+    </Style>
+
+    <!-- Dropped on a section header, a project goes into the section rather than beside it, so the
+         header lights up instead of a line appearing. -->
+    <Style Selector="StackPanel.dropInto Button#SectionHeader /template/ Border#Bg">
+      <Setter Property="Background" Value="{DynamicResource AccentSubtle}" />
     </Style>
 
     <!-- A project with unread alerts wears the accent, so a folded one still says so. -->
@@ -693,19 +860,48 @@
         </Grid.ColumnDefinitions>
 
         <!-- Alerts -->
-        <Grid Grid.Column="0">
-          <ScrollViewer Name="ListScroller"
+        <Grid Grid.Column="0" RowDefinitions="Auto,*">
+
+          <!-- Shaping the list as a whole: every fold at once, and a section to group projects under. -->
+          <Grid Grid.Row="0"
+                Name="ListTools"
+                Margin="10,0,8,3"
+                ColumnDefinitions="Auto,Auto,*,Auto"
+                IsVisible="{Binding !IsEmpty}">
+            <Button Grid.Column="0"
+                    Content="Expand all"
+                    Theme="{StaticResource LinkButton}"
+                    Command="{Binding ExpandAllCommand}"
+                    ToolTip.Tip="Unfold every section and project" />
+            <Button Grid.Column="1"
+                    Content="Collapse all"
+                    Theme="{StaticResource LinkButton}"
+                    Margin="2,0,0,0"
+                    Command="{Binding CollapseAllCommand}"
+                    ToolTip.Tip="Fold every section and project" />
+            <Button Grid.Column="3"
+                    Name="NewSectionButton"
+                    Content="New section"
+                    Theme="{StaticResource LinkButton}"
+                    Command="{Binding AddSectionCommand}"
+                    Click="OnNewSectionClicked"
+                    ToolTip.Tip="Add a section, then drag projects onto its header" />
+          </Grid>
+
+          <ScrollViewer Grid.Row="1"
+                        Name="ListScroller"
                         Margin="8,0,4,0"
                         HorizontalScrollBarVisibility="Disabled"
                         IsVisible="{Binding !IsEmpty}">
             <ItemsControl Name="GroupList"
-                          ItemsSource="{Binding Groups}"
-                          ItemTemplate="{StaticResource ProjectGroupTemplate}"
+                          ItemsSource="{Binding Rows}"
                           Margin="0,0,4,8"
                           Background="Transparent" />
           </ScrollViewer>
 
-          <StackPanel VerticalAlignment="Center"
+          <StackPanel Grid.Row="0"
+                      Grid.RowSpan="2"
+                      VerticalAlignment="Center"
                       HorizontalAlignment="Center"
                       Margin="28,24,28,32"
                       IsVisible="{Binding IsEmpty}">
