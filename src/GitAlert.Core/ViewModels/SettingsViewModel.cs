@@ -19,7 +19,11 @@ public interface ISettingsHost
 
     void ClearHistory();
 
-    void CloseSettings();
+    /// <summary>
+    /// Closes the settings window. After a save GitAlert comes back into view, so the change is
+    /// seen where it shows; after a cancel nothing else moves.
+    /// </summary>
+    void CloseSettings(bool saved);
 }
 
 /// <summary>
@@ -356,11 +360,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         }
 
         _host.ApplySettings(_settings, _tokenStore.ReadAll(_settings.Accounts.Select(a => a.Id)));
-        _host.CloseSettings();
+        _host.CloseSettings(saved: true);
     }
 
     [RelayCommand]
-    private void Cancel() => _host.CloseSettings();
+    private void Cancel() => _host.CloseSettings(saved: false);
 
     private void Report(string message, bool isError)
     {

@@ -81,7 +81,7 @@ internal sealed class NoShell : IShellCommands, ISettingsHost, IStartupRegistrar
     {
     }
 
-    public void CloseSettings()
+    public void CloseSettings(bool saved)
     {
     }
 

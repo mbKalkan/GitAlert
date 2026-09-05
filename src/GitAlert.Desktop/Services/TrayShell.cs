@@ -231,7 +231,19 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         UpdateTrayPresentation(_monitor.Status);
     }
 
-    public void CloseSettings() => _settingsWindow?.Close();
+    /// <summary>
+    /// Opening the settings tucked the window away; saving brings it back with the change in
+    /// view. Cancelling leaves things as the user found them.
+    /// </summary>
+    public void CloseSettings(bool saved)
+    {
+        _settingsWindow?.Close();
+
+        if (saved)
+        {
+            OpenFlyoutAtTray();
+        }
+    }
 
     // ---- Tray interaction --------------------------------------------------
 
