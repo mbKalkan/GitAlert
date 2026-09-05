@@ -11,6 +11,12 @@ public enum GitHubErrorKind
     /// <summary>The repository does not exist, or the token cannot see it.</summary>
     NotFound,
 
+    /// <summary>
+    /// The repository exists but has no commits: just created, or a wiki with no code behind it.
+    /// GitHub answers 409 to anything that reads its history.
+    /// </summary>
+    EmptyRepository,
+
     RateLimited,
 
     /// <summary>DNS, TLS, proxy or plain "the laptop is offline".</summary>
@@ -40,6 +46,7 @@ public sealed class GitHubException : Exception
         GitHubErrorKind.Unauthorized => "Access token is invalid or expired.",
         GitHubErrorKind.Forbidden => "Token lacks the required scope.",
         GitHubErrorKind.NotFound => Message,
+        GitHubErrorKind.EmptyRepository => Message,
         GitHubErrorKind.RateLimited => RetryAt is { } at
             ? $"Rate limited until {at.ToLocalTime():HH:mm}."
             : "GitHub rate limit reached.",

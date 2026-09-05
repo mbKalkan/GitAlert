@@ -610,7 +610,19 @@ public sealed class MonitorService : IAsyncDisposable
         List<Alert> collected,
         CancellationToken ct)
     {
-        var response = Noted(await client.GetCommitsAsync(reference, state.CommitsETag, ct).ConfigureAwait(false));
+        ConditionalResponse<List<GhCommit>> response;
+
+        try
+        {
+            response = Noted(await client.GetCommitsAsync(reference, state.CommitsETag, ct).ConfigureAwait(false));
+        }
+        catch (GitHubException ex) when (ex.Kind == GitHubErrorKind.EmptyRepository)
+        {
+            // A repository with no code - a wiki-only project, or one just created - has no
+            // history to read. Nothing is wrong with it, so nothing is reported; the events and
+            // the workflow runs are still read, and the first commit will show up here.
+            return;
+        }
 
         if (response.NotModified || response.Value is not { Count: > 0 } commits)
         {

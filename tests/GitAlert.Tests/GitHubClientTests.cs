@@ -30,6 +30,7 @@ public class GitHubClientTests
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, GitHubErrorKind.Unauthorized)]
     [InlineData(HttpStatusCode.NotFound, GitHubErrorKind.NotFound)]
+    [InlineData(HttpStatusCode.Conflict, GitHubErrorKind.EmptyRepository)]
     [InlineData(HttpStatusCode.TooManyRequests, GitHubErrorKind.RateLimited)]
     [InlineData(HttpStatusCode.InternalServerError, GitHubErrorKind.ServerError)]
     [InlineData(HttpStatusCode.BadGateway, GitHubErrorKind.ServerError)]
@@ -44,6 +45,21 @@ public class GitHubClientTests
         var error = await Assert.ThrowsAsync<GitHubException>(() => client.GetRepositoryAsync(Repo));
 
         Assert.Equal(expected, error.Kind);
+    }
+
+    /// <summary>
+    /// GitHub answers 409 when the history of a repository with no commits is read. That is a
+    /// wiki-only project or a brand new one, not a fault, and the message should say so plainly.
+    /// </summary>
+    [Fact]
+    public async Task An_empty_repository_is_named_as_such_rather_than_as_a_refusal()
+    {
+        var (client, _) = Build(_ => Responses.Json(HttpStatusCode.Conflict, """{"message":"Git Repository is empty."}"""));
+
+        var error = await Assert.ThrowsAsync<GitHubException>(() => client.GetCommitHistoryAsync(Repo, 1));
+
+        Assert.Equal(GitHubErrorKind.EmptyRepository, error.Kind);
+        Assert.Equal("acme/api-gateway has no commits yet.", error.UserMessage);
     }
 
     /// <summary>

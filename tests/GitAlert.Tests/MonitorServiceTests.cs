@@ -252,6 +252,31 @@ public class MonitorServiceTests : IDisposable
         Assert.Single(harness.Delivered);
     }
 
+    /// <summary>
+    /// Two of the user's projects are wikis with no code behind them. GitHub answers 409 to their
+    /// commit history on every poll, and for a day that read as "2 of the things being watched
+    /// could not be checked", with an amber dot to match. Nothing was wrong with them.
+    /// </summary>
+    [Fact]
+    public async Task A_repository_with_no_commits_yet_is_watched_quietly_rather_than_reported()
+    {
+        var github = new FakeGitHub { Events = Events(Push("1001", "abc1234")) };
+        github.Failures["/repos/acme/api-gateway/commits"] = HttpStatusCode.Conflict;
+
+        await using var harness = NewHarness(github);
+
+        var first = await harness.PollAsync();
+
+        Assert.Equal(ConnectionState.Connected, first.State);
+
+        // The rest of the repository is still watched: an event that arrives is announced.
+        github.Events = Events(Push("1002", "bbb2222"), Push("1001", "abc1234"));
+        var second = await harness.PollAsync();
+
+        Assert.Equal(ConnectionState.Connected, second.State);
+        Assert.Single(harness.Delivered);
+    }
+
     [Fact]
     public async Task A_rejected_token_is_an_error_rather_than_a_warning_because_nothing_will_work()
     {

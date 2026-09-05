@@ -382,6 +382,7 @@ public sealed class GitHubClient : IDisposable
         {
             HttpStatusCode.Unauthorized => GitHubErrorKind.Unauthorized,
             HttpStatusCode.NotFound => GitHubErrorKind.NotFound,
+            HttpStatusCode.Conflict => GitHubErrorKind.EmptyRepository,
             HttpStatusCode.TooManyRequests => GitHubErrorKind.RateLimited,
             HttpStatusCode.Forbidden when retryAfter is not null || IsRateLimited(response) => GitHubErrorKind.RateLimited,
             HttpStatusCode.Forbidden => GitHubErrorKind.Forbidden,
@@ -394,6 +395,7 @@ public sealed class GitHubClient : IDisposable
         var message = kind switch
         {
             GitHubErrorKind.NotFound => $"{Describe(what)} was not found, or the token cannot see it.",
+            GitHubErrorKind.EmptyRepository => $"{Describe(what)} has no commits yet.",
             GitHubErrorKind.Unauthorized => "GitHub rejected the access token.",
             GitHubErrorKind.Forbidden => await ReadApiMessageAsync(response, timeout.Token).ConfigureAwait(false)
                 ?? "GitHub refused the request.",
