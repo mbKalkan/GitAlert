@@ -89,6 +89,14 @@ install in place with settings, history and tokens intact.
 
 ### Phase 2: Avalonia UI, Windows first (merges to `main`; releases still ship WPF)
 
+In progress since 2026-09-05. `src/GitAlert.Desktop` builds on Avalonia 12.1 with the flyout and the
+settings window ported, the three palettes swapped at runtime, the Win32 tray and DPAPI reused from
+`GitAlert.Windows` behind `IPlatform`, and a named pipe for the second-launch signal. Headless
+renders of both windows match the WPF screenshots to the eye in all three palettes; a live run on
+this PC put the icon in the tray and brought the flyout up in front. Still open: the xunit v3 move
+and headless UI tests, a keyboard and pointer pass on the real app (tray menu, drag to reorder,
+splitter), and the daily-use trial.
+
 - Add the Avalonia app project next to the WPF one, both on Core.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become
   `ThemeVariant` resource dictionaries; `DataTemplate.Triggers` become style selectors and
