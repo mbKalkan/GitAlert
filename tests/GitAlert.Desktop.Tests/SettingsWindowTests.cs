@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.VisualTree;
 using GitAlert.Configuration;
@@ -65,12 +67,54 @@ public class SettingsWindowTests
         }
     }
 
+    [AvaloniaFact]
+    public void Unticking_a_repository_switches_it_off_and_save_keeps_it_off()
+    {
+        var (window, vm, store, dispose) = BuildWithStore();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var repo = vm.Accounts[0].Repositories.First(r => r.FullName == "acme/api-gateway");
+            var box = window.GetVisualDescendants().OfType<CheckBox>().First(c => ReferenceEquals(c.DataContext, repo));
+            var tick = box.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().First(p => p.Name == "Tick");
+
+            Assert.True(repo.IsEnabled);
+            Assert.True(tick.IsVisible);
+
+            var at = box.TranslatePoint(new Avalonia.Point(8, 8), window)!.Value;
+            window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+            Frames.Settle();
+
+            Assert.False(repo.IsEnabled);
+            Assert.False(tick.IsVisible);
+
+            vm.SaveCommand.Execute(null);
+
+            var saved = store.Load().Repositories.Single(r => r.FullName == "acme/api-gateway");
+            Assert.False(saved.Enabled);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
     private static bool IsShown(SettingsWindow window, string pageTitle) =>
         window.GetVisualDescendants()
             .OfType<TextBlock>()
             .Any(t => t.Text == pageTitle && t.Classes.Contains("pageTitle") && t.IsEffectivelyVisible);
 
     private static (SettingsWindow Window, SettingsViewModel ViewModel, Action Dispose) Build()
+    {
+        var (window, vm, _, dispose) = BuildWithStore();
+        return (window, vm, dispose);
+    }
+
+    private static (SettingsWindow Window, SettingsViewModel ViewModel, SettingsStore Store, Action Dispose) BuildWithStore()
     {
         var work = SampleData.NewWorkDir();
         var account = GitHubAccount.Create("mbKalkan");
@@ -83,7 +127,7 @@ public class SettingsWindowTests
         var vm = new SettingsViewModel(settingsStore, tokens, new NoShell(), new NoShell());
         var window = new SettingsWindow(vm, new HeadlessPlatform(), new ThemeService(Avalonia.Application.Current!));
 
-        return (window, vm, () =>
+        return (window, vm, settingsStore, () =>
         {
             window.Close();
             vm.Dispose();
