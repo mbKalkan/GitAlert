@@ -123,6 +123,15 @@ lifetime closes every window before `Exit`, and a closed window reports its `Pos
 origin, so the shell must save a placement remembered while the window was on screen; and
 `Show()` marks the window visible before its first layout pass, so a `SizeChanged` handler runs
 during `Show()` and must not be mistaken for the user resizing.
+The first feature built on the Avalonia side alone (1.23.0) was sections in the list, with
+"Expand all" and "Collapse all" above it: the list became a flat `Rows` collection of two row
+kinds picked by `Window.DataTemplates`, the total project order is laid out area by area after
+every edit so the arrows can walk a project across a section edge, and the collections are
+synchronised in place rather than cleared, so a poll no longer rebuilds every row container. Two
+Avalonia lessons from it: a `Button`'s `Command` fires only from the button's own click, so a
+header with tool buttons inside can bind its command directly, while a `Click` handler would also
+see the tools' clicks bubbling through; and a control born visible never raises an `IsVisible`
+change, so anything that waits for one must also listen for `AttachedToVisualTree`.
 
 - Add the Avalonia app project next to the WPF one, both on Core.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become
