@@ -21,7 +21,7 @@ public class ProjectOrderTests : IDisposable
     [Fact]
     public void Dropping_a_project_above_another_puts_it_directly_above()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Alert("1", "acme/alpha"), Alert("2", "acme/beta"), Alert("3", "acme/gamma"));
@@ -38,7 +38,7 @@ public class ProjectOrderTests : IDisposable
     [Fact]
     public void Dropping_a_project_below_the_last_one_puts_it_last()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Alert("1", "acme/alpha"), Alert("2", "acme/beta"), Alert("3", "acme/gamma"));
@@ -53,7 +53,7 @@ public class ProjectOrderTests : IDisposable
     [Fact]
     public void Dropping_a_project_on_itself_changes_nothing_and_saves_nothing()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Alert("1", "acme/alpha"), Alert("2", "acme/beta"));
@@ -73,7 +73,7 @@ public class ProjectOrderTests : IDisposable
     [Fact]
     public void A_hidden_project_keeps_its_place_while_others_are_dragged_around_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(
@@ -98,7 +98,7 @@ public class ProjectOrderTests : IDisposable
     [Fact]
     public void Clearing_the_drag_markers_takes_every_line_down()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Alert("1", "acme/alpha"), Alert("2", "acme/beta"));
 
@@ -170,32 +170,6 @@ public class ProjectOrderTests : IDisposable
 
         public void UnreadChanged()
         {
-        }
-    }
-
-    private static void OnStaThread(Action work)
-    {
-        Exception? failure = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new Xunit.Sdk.XunitException(failure.ToString());
         }
     }
 

@@ -29,7 +29,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void The_chip_counts_start_from_what_is_unread()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a", AlertKind.Issue), Alert("b", AlertKind.Issue), Alert("c", AlertKind.Push));
 
@@ -44,7 +44,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void Reading_an_alert_lowers_its_chip_and_leaves_the_others_alone()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a", AlertKind.Issue), Alert("b", AlertKind.Issue), Alert("c", AlertKind.Push));
 
@@ -63,7 +63,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void The_last_alert_in_a_category_takes_the_badge_with_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a", AlertKind.Issue), Alert("c", AlertKind.Push));
 
@@ -80,7 +80,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void Marking_everything_read_empties_every_chip()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a", AlertKind.Issue), Alert("b", AlertKind.Push), Alert("c", AlertKind.Workflow));
 
@@ -94,7 +94,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void Reading_the_same_alert_twice_does_not_count_it_twice()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a", AlertKind.Issue), Alert("b", AlertKind.Issue));
 
@@ -115,7 +115,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void One_read_moves_the_chip_the_project_badge_the_header_and_the_tray()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Alert("a", AlertKind.Issue), Alert("b", AlertKind.Issue));
@@ -139,7 +139,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void Marking_everything_read_moves_all_four_as_well()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Alert("a", AlertKind.Issue), Alert("b", AlertKind.Push));
@@ -165,7 +165,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void Reading_in_one_project_leaves_the_other_project_alone()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(
                 Alert("a", AlertKind.Issue, repository: "acme/api-gateway"),
@@ -188,7 +188,7 @@ public class FlyoutCountTests : IDisposable
     [Fact]
     public void Reading_an_alert_does_not_pull_the_row_out_from_under_the_pointer()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a", AlertKind.Issue), Alert("b", AlertKind.Issue));
 
@@ -280,31 +280,6 @@ public class FlyoutCountTests : IDisposable
     }
 
     /// <summary>The window's view models are WPF objects, so they get a thread WPF is happy on.</summary>
-    private static void OnStaThread(Action work)
-    {
-        Exception? failure = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new Xunit.Sdk.XunitException(failure.ToString());
-        }
-    }
 
     public void Dispose()
     {

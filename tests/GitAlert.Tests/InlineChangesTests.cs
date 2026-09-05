@@ -24,7 +24,7 @@ public class InlineChangesTests : IDisposable
     [Fact]
     public void Clicking_the_open_alert_again_folds_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a"), Alert("b"));
             var a = Find(flyout, "a");
@@ -58,7 +58,7 @@ public class InlineChangesTests : IDisposable
     [Fact]
     public void An_alert_without_a_diff_says_so_on_its_card()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(Alert("a"));
 
@@ -245,32 +245,6 @@ public class InlineChangesTests : IDisposable
         var path = Path.Combine(Path.GetTempPath(), $"gitalert-inline-{Guid.NewGuid():N}.json");
         _files.Add(path);
         return path;
-    }
-
-    private static void OnStaThread(Action work)
-    {
-        Exception? failure = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new Xunit.Sdk.XunitException($"failed on the STA thread: {failure}");
-        }
     }
 
     public void Dispose()

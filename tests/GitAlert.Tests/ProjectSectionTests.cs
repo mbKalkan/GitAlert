@@ -24,7 +24,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Loose_projects_come_first_then_each_section_with_its_projects_in_the_saved_order()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Settings(order: ["acme/alpha", "acme/gamma", "acme/beta", "acme/delta"],
                 Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -40,7 +40,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void A_folded_section_keeps_its_projects_out_of_the_rows_but_not_out_of_the_list()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var work = Section("Work", "acme/gamma", "acme/delta");
             work.IsCollapsed = true;
@@ -56,7 +56,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Folding_a_section_takes_its_projects_off_the_screen_and_is_saved()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -76,7 +76,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Collapse_all_folds_every_project_and_section_and_expand_all_undoes_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -103,7 +103,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Walking_a_project_down_across_a_section_edge_puts_it_first_in_that_section()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -125,7 +125,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Walking_a_project_up_out_of_a_section_leaves_it_loose_at_the_end_of_the_loose_ones()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -141,7 +141,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Walking_into_a_folded_section_unfolds_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var work = Section("Work", "acme/gamma", "acme/delta");
             work.IsCollapsed = true;
@@ -158,7 +158,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void The_first_project_of_the_first_section_can_still_walk_out_when_nothing_is_loose()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Settings(order: Ordered, Section("Work", "acme/alpha", "acme/beta")),
                 Alert("1", "acme/alpha"), Alert("2", "acme/beta"));
@@ -176,7 +176,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void An_empty_section_is_a_place_the_arrows_can_reach()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Settings(order: Ordered, Section("Work"), Section("Personal", "acme/gamma")),
                 Alert("1", "acme/alpha"), Alert("2", "acme/beta"), Alert("3", "acme/gamma"));
@@ -196,7 +196,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void The_arrows_grey_out_at_the_very_top_and_the_very_bottom_only()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
 
@@ -213,7 +213,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Dropping_a_project_on_a_section_header_puts_it_first_there_and_unfolds_the_section()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var work = Section("Work", "acme/gamma", "acme/delta");
             work.IsCollapsed = true;
@@ -232,7 +232,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Dropping_a_project_just_above_a_section_header_puts_it_last_before_the_section()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell,
@@ -254,7 +254,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Dropping_a_project_below_one_inside_a_section_moves_it_in_beside_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -271,7 +271,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void A_new_section_lands_at_the_end_with_its_name_open_for_typing()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma")), Alert("1", "acme/alpha"), Alert("2", "acme/gamma"));
@@ -291,7 +291,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Committing_a_typed_name_keeps_it_while_a_blank_or_a_cancel_keeps_the_old_one()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/alpha")), Alert("1", "acme/alpha"));
@@ -327,7 +327,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Moving_a_section_carries_its_projects_and_rewrites_the_order()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell,
@@ -348,7 +348,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Removing_a_section_leaves_its_projects_loose_after_the_other_loose_ones()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -364,7 +364,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Reading_a_section_reads_every_project_under_it_and_its_badge_follows()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
             var work = Section(flyout, "Work");
@@ -386,7 +386,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void While_showing_unread_only_a_section_with_nothing_unread_stays_out_of_the_rows()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var flyout = Build(new RecordingShell(), Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")),
                 Alert("1", "acme/alpha"), Alert("2", "acme/beta"), Alert("3", "acme/gamma", read: true), Alert("4", "acme/delta", read: true));
@@ -411,7 +411,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void A_switched_off_project_keeps_its_section_while_others_move_around_it()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var (flyout, store) = BuildWithStore(shell, Settings(order: Ordered, Section("Work", "acme/gamma", "acme/delta")), FourAlerts());
@@ -432,7 +432,7 @@ public class ProjectSectionTests : IDisposable
     [Fact]
     public void Dropping_a_section_on_another_puts_it_above_or_below_with_its_projects()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var shell = new RecordingShell();
             var flyout = Build(shell,
@@ -561,32 +561,6 @@ public class ProjectSectionTests : IDisposable
 
         public void UnreadChanged()
         {
-        }
-    }
-
-    private static void OnStaThread(Action work)
-    {
-        Exception? failure = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new Xunit.Sdk.XunitException(failure.ToString());
         }
     }
 

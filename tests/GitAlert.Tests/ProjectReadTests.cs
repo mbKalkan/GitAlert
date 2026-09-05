@@ -21,7 +21,7 @@ public class ProjectReadTests : IDisposable
     [Fact]
     public void Reading_a_project_reads_every_row_in_it_and_none_in_the_next()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var built = Build(
                 Alert("1", "acme/alpha"),
@@ -40,7 +40,7 @@ public class ProjectReadTests : IDisposable
     [Fact]
     public void Reading_a_project_is_written_to_disk()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var built = Build(Alert("1", "acme/alpha"), Alert("2", "acme/alpha"), Alert("3", "acme/beta"));
 
@@ -61,7 +61,7 @@ public class ProjectReadTests : IDisposable
     [Fact]
     public void Reading_a_project_moves_every_counter_and_tells_the_tray()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var built = Build(
                 Alert("1", "acme/alpha"),
@@ -88,7 +88,7 @@ public class ProjectReadTests : IDisposable
     [Fact]
     public void With_a_kind_picked_the_tick_reads_only_that_kind()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var built = Build(
                 Alert("1", "acme/alpha", AlertKind.PullRequest),
@@ -111,7 +111,7 @@ public class ProjectReadTests : IDisposable
     [Fact]
     public void A_project_with_nothing_unread_does_nothing_and_tells_nobody()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var built = Build(Alert("1", "acme/alpha", read: true), Alert("2", "acme/beta"));
             var toldBefore = built.Shell.UnreadChangedCalls;
@@ -130,7 +130,7 @@ public class ProjectReadTests : IDisposable
     [Fact]
     public void Reading_a_project_does_not_pull_it_out_from_under_the_pointer()
     {
-        OnStaThread(() =>
+        StaThread.Run(() =>
         {
             var built = Build(Alert("1", "acme/alpha"), Alert("2", "acme/alpha"), Alert("3", "acme/beta"));
 
@@ -208,32 +208,6 @@ public class ProjectReadTests : IDisposable
         }
 
         public void UnreadChanged() => UnreadChangedCalls++;
-    }
-
-    private static void OnStaThread(Action work)
-    {
-        Exception? failure = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new Xunit.Sdk.XunitException(failure.ToString());
-        }
     }
 
     public void Dispose()
