@@ -129,31 +129,34 @@ public class GitHubClientTests
     [Fact]
     public async Task A_refused_response_is_released_rather_than_left_to_the_finaliser()
     {
-        var (client, _) = Build(_ => Responses.Status(HttpStatusCode.NotFound));
+        HttpResponseMessage? sent = null;
+        var (client, _) = Build(_ => sent = Responses.Status(HttpStatusCode.NotFound));
 
         await Assert.ThrowsAsync<GitHubException>(() => client.GetRepositoryAsync(Repo));
 
-        Assert.True(Responses.LastBody!.Disposed, "the response body was never closed");
+        Assert.True(Responses.BodyOf(sent!).Disposed, "the response body was never closed");
     }
 
     [Fact]
     public async Task A_successful_response_is_released_too()
     {
-        var (client, _) = Build(_ => Responses.Ok("""{"login":"octocat"}"""));
+        HttpResponseMessage? sent = null;
+        var (client, _) = Build(_ => sent = Responses.Ok("""{"login":"octocat"}"""));
 
         await client.GetAuthenticatedUserAsync();
 
-        Assert.True(Responses.LastBody!.Disposed);
+        Assert.True(Responses.BodyOf(sent!).Disposed);
     }
 
     [Fact]
     public async Task A_body_that_is_not_json_is_released_as_well()
     {
-        var (client, _) = Build(_ => Responses.Ok("<html>a proxy sign-in page</html>"));
+        HttpResponseMessage? sent = null;
+        var (client, _) = Build(_ => sent = Responses.Ok("<html>a proxy sign-in page</html>"));
 
         await Assert.ThrowsAsync<GitHubException>(() => client.GetAuthenticatedUserAsync());
 
-        Assert.True(Responses.LastBody!.Disposed);
+        Assert.True(Responses.BodyOf(sent!).Disposed);
     }
 
     /// <summary>

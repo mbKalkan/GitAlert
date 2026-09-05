@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace GitAlert.Tests;
@@ -73,8 +74,15 @@ internal sealed class StubHandler(Func<RecordedRequest, HttpResponseMessage> res
 /// <summary>Response builders, so the tests read as the situation rather than as plumbing.</summary>
 internal static class Responses
 {
-    /// <summary>The stream behind the last response built here, for asking whether it was closed.</summary>
-    public static TrackingStream? LastBody { get; private set; }
+    /// <summary>
+    /// The stream behind each response built here, for asking whether it was closed. Keyed by the
+    /// response rather than kept as "the last one": test classes run side by side, and the last
+    /// body built was often another test's.
+    /// </summary>
+    private static readonly ConditionalWeakTable<HttpResponseMessage, TrackingStream> Bodies = [];
+
+    public static TrackingStream BodyOf(HttpResponseMessage response) =>
+        Bodies.TryGetValue(response, out var body) ? body : throw new ArgumentException("Not a response built by Responses.", nameof(response));
 
     public static HttpResponseMessage Json(
         HttpStatusCode status,
@@ -82,9 +90,9 @@ internal static class Responses
         params (string Name, string Value)[] headers)
     {
         var stream = new TrackingStream(Encoding.UTF8.GetBytes(body));
-        LastBody = stream;
-
         var response = new HttpResponseMessage(status) { Content = new StreamContent(stream) };
+        Bodies.Add(response, stream);
+
         response.Content.Headers.TryAddWithoutValidation("Content-Type", "application/json");
 
         foreach (var (name, value) in headers)
