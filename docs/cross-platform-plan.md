@@ -66,6 +66,13 @@ installer/                GitAlert.iss (Windows), macos/ (Info.plist, DMG script
 
 ### Phase 1: extract the core (ships as 1.18.0)
 
+Done on 2026-09-05. `GitAlert.Core` holds the model, the GitHub client, the stores, the monitor and
+every view model; the platform analyzer's CA1416 is an error there, so a Windows API cannot creep
+back in. The seams that exist so far are the ones the view models needed: `ISecretStore` over an
+`ITokenProtector` (DPAPI stays in the app), `IStartupRegistrar`, and `UiThread` in place of the
+WPF dispatcher. `ITrayHost`, `INotifier`, `IPlatformTheme` and `IAppPaths` wait for the phase that
+brings their first non-Windows consumer. The renders matched the README screenshots pixel for pixel.
+
 - Create `GitAlert.Core`. Move everything without a `System.Windows` dependency (about 5,800
   lines: Core, GitHub, Configuration, MonitorService, AlertStore, MonitorState, most view models).
 - Define the platform interfaces in Core. The WPF app implements them with its current code.
