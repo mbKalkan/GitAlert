@@ -429,6 +429,36 @@ public class ProjectSectionTests : IDisposable
         });
     }
 
+    [Fact]
+    public void Dropping_a_section_on_another_puts_it_above_or_below_with_its_projects()
+    {
+        OnStaThread(() =>
+        {
+            var shell = new RecordingShell();
+            var flyout = Build(shell,
+                Settings(order: Ordered, Section("Work", "acme/gamma"), Section("Personal", "acme/delta"), Section("Archive")),
+                FourAlerts());
+
+            flyout.PlaceSection(Section(flyout, "Archive"), Section(flyout, "Work"), above: true);
+
+            Assert.Equal(["acme/alpha", "acme/beta", "#Archive", "#Work", "acme/gamma", "#Personal", "acme/delta"], Rows(flyout));
+            Assert.Equal(["Archive", "Work", "Personal"], shell.SavedSections!.Select(s => s.Name));
+
+            flyout.PlaceSection(Section(flyout, "Work"), Section(flyout, "Personal"), above: false);
+
+            Assert.Equal(["acme/alpha", "acme/beta", "#Archive", "#Personal", "acme/delta", "#Work", "acme/gamma"], Rows(flyout));
+            Assert.Equal(["acme/alpha", "acme/beta", "acme/delta", "acme/gamma"], shell.SavedOrder);
+
+            // Dropped where it already is, or on itself: nothing changes and nothing is saved.
+            shell.Forget();
+            flyout.PlaceSection(Section(flyout, "Personal"), Section(flyout, "Archive"), above: false);
+            flyout.PlaceSection(Section(flyout, "Work"), Section(flyout, "Work"), above: true);
+
+            Assert.Null(shell.SavedSections);
+            Assert.Equal(["acme/alpha", "acme/beta", "#Archive", "#Personal", "acme/delta", "#Work", "acme/gamma"], Rows(flyout));
+        });
+    }
+
     // ---- Plumbing ----------------------------------------------------------
 
     private static List<string> Rows(FlyoutViewModel flyout) =>
@@ -520,6 +550,13 @@ public class ProjectSectionTests : IDisposable
         {
             SavedOrder = [.. preferences.ProjectOrder];
             SavedSections = preferences.Sections.Select(s => s.Clone()).ToList();
+        }
+
+        /// <summary>Drops what was saved so far, so the next assertion sees only what follows.</summary>
+        public void Forget()
+        {
+            SavedOrder = null;
+            SavedSections = null;
         }
 
         public void UnreadChanged()

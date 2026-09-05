@@ -49,9 +49,13 @@ public sealed partial class ProjectSectionViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasUnread))]
     private int _unreadCount;
 
-    /// <summary>Where a dragged project would land relative to this section, while one hovers over it.</summary>
+    /// <summary>Where a dragged row would land relative to this section, while one hovers over it.</summary>
     [ObservableProperty]
     private DropMarker _dropMarker;
+
+    /// <summary>True for the section in the air, so its header can fade until it lands.</summary>
+    [ObservableProperty]
+    private bool _isBeingDragged;
 
     public ProjectSectionViewModel(
         ProjectSection model,

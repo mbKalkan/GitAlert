@@ -194,11 +194,57 @@ public class SectionRowTests
         }
     }
 
-    private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build()
+    [AvaloniaFact]
+    public void Dragging_a_section_header_above_another_section_moves_it_there_with_its_projects()
+    {
+        var (window, vm, dispose) = Build(settings => settings.Sections =
+        [
+            new ProjectSection { Name = "Work", Repositories = ["acme/api-gateway"] },
+            new ProjectSection { Name = "Personal", Repositories = ["mbKalkan/GitAlert"] },
+        ]);
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var work = vm.Rows.OfType<ProjectSectionViewModel>().First(s => s.Name == "Work");
+            var personal = vm.Rows.OfType<ProjectSectionViewModel>().First(s => s.Name == "Personal");
+            var wasOpen = personal.IsExpanded;
+
+            var grip = Centre(SectionHeaderOf(window, personal), window);
+            var target = SectionHeaderOf(window, work);
+            var drop = target.TranslatePoint(new Point(target.Bounds.Width / 2, 2), window)!.Value;
+
+            window.MouseDown(grip, MouseButton.Left);
+            window.MouseMove(grip + new Vector(0, -8), RawInputModifiers.LeftMouseButton);
+            window.MouseMove(drop, RawInputModifiers.LeftMouseButton);
+            Frames.Settle();
+
+            Assert.True(personal.IsBeingDragged, "the header past the threshold is in the air");
+            Assert.Equal(DropMarker.Above, work.DropMarker);
+
+            window.MouseUp(drop, MouseButton.Left);
+            Frames.Settle();
+
+            Assert.Equal(["Personal", "Work"], vm.Rows.OfType<ProjectSectionViewModel>().Select(s => s.Name));
+            Assert.Equal(["mbKalkan/GitAlert", "acme/api-gateway"], vm.Groups.Select(g => g.Repository));
+            Assert.False(personal.IsBeingDragged);
+            Assert.Equal(DropMarker.None, work.DropMarker);
+            Assert.Equal(wasOpen, personal.IsExpanded);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build(Action<AppSettings>? shape = null)
     {
         var work = SampleData.NewWorkDir();
         var account = GitHubAccount.Create("mbKalkan");
         var settings = SampleData.Settings(account, sectioned: true);
+        shape?.Invoke(settings);
 
         var store = new AlertStore(Path.Combine(work, "history.json"));
         store.Add(SampleData.Alerts(account));

@@ -365,18 +365,22 @@ public partial class FlyoutWindow : Window
         base.OnKeyDown(e);
     }
 
-    // ---- Dragging a project to a new place in the list ----------------------
+    // ---- Dragging a project or a section to a new place in the list ----------
 
     /// <summary>How far a pressed pointer travels before the press counts as a drag, not a click.</summary>
     private const double DragThreshold = 4;
 
     private Point _dragOrigin;
     private Button? _dragHeader;
-    private ProjectGroupViewModel? _dragCandidate;
-    private ProjectGroupViewModel? _dragged;
+
+    /// <summary>The row whose header was pressed, until the pointer has moved far enough to mean a drag.</summary>
+    private object? _dragCandidate;
+
+    /// <summary>The row in the air: a <see cref="ProjectGroupViewModel"/> or a <see cref="ProjectSectionViewModel"/>.</summary>
+    private object? _dragged;
 
     /// <summary>
-    /// A click folds the section, unless the press turned into a drag on the way. The tools on the
+    /// A click folds the project, unless the press turned into a drag on the way. The tools on the
     /// header are buttons too, and their clicks bubble up through this one: those are theirs.
     /// </summary>
     private void OnGroupHeaderClick(object? sender, RoutedEventArgs e)
@@ -392,9 +396,23 @@ public partial class FlyoutWindow : Window
         }
     }
 
+    /// <summary>The same for a section header: a click folds it, a drag does not.</summary>
+    private void OnSectionHeaderClick(object? sender, RoutedEventArgs e)
+    {
+        if (_dragged is not null || !ReferenceEquals(e.Source, sender))
+        {
+            return;
+        }
+
+        if (sender is Button { DataContext: ProjectSectionViewModel section })
+        {
+            section.ToggleCommand.Execute(null);
+        }
+    }
+
     /// <summary>
-    /// A press on a project header may be the start of a drag. Nothing happens until the pointer
-    /// has moved far enough to mean it, so a plain click still folds the section.
+    /// A press on a header may be the start of a drag. Nothing happens until the pointer has moved
+    /// far enough to mean it, so a plain click still folds the row.
     /// </summary>
     private void OnGroupListPointerPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -402,13 +420,13 @@ public partial class FlyoutWindow : Window
         _dragHeader = null;
         _dragged = null;
 
-        // The arrows live inside the header. A press on one of them is a click on it, not a drag.
+        // The tools live inside the header. A press on one of them is a click on it, not a drag.
         if (e.GetCurrentPoint(GroupList).Properties.IsLeftButtonPressed
-            && HeaderUnder(e.Source) is { DataContext: ProjectGroupViewModel group } header)
+            && HeaderUnder(e.Source) is { DataContext: ProjectGroupViewModel or ProjectSectionViewModel } header)
         {
             _dragOrigin = e.GetPosition(this);
             _dragHeader = header;
-            _dragCandidate = group;
+            _dragCandidate = header.DataContext;
         }
     }
 
@@ -420,16 +438,25 @@ public partial class FlyoutWindow : Window
             if (!IsOverList(e))
             {
                 _viewModel.ClearDragMarkers();
-                dragged.IsBeingDragged = true;
+                Lift(dragged);
                 return;
             }
 
-            UpdateDropMarkers(dragged, e.GetPosition(GroupList));
+            switch (dragged)
+            {
+                case ProjectGroupViewModel project:
+                    UpdateDropMarkers(project, e.GetPosition(GroupList));
+                    break;
+                case ProjectSectionViewModel section:
+                    UpdateSectionDropMarkers(section, e.GetPosition(GroupList));
+                    break;
+            }
+
             ScrollTowardsEdge(e.GetPosition(ListScroller));
             return;
         }
 
-        if (_dragCandidate is not { } group
+        if (_dragCandidate is not { } candidate
             || _dragHeader is not { } header
             || !e.GetCurrentPoint(GroupList).Properties.IsLeftButtonPressed)
         {
@@ -444,11 +471,25 @@ public partial class FlyoutWindow : Window
         }
 
         _dragCandidate = null;
-        _dragged = group;
-        group.IsBeingDragged = true;
+        _dragged = candidate;
+        Lift(candidate);
 
         // From here on every move and the release come to the header, wherever the pointer goes.
         e.Pointer.Capture(header);
+    }
+
+    /// <summary>Fades the header of whatever is in the air, until it lands.</summary>
+    private static void Lift(object dragged)
+    {
+        switch (dragged)
+        {
+            case ProjectGroupViewModel project:
+                project.IsBeingDragged = true;
+                break;
+            case ProjectSectionViewModel section:
+                section.IsBeingDragged = true;
+                break;
+        }
     }
 
     private void OnGroupListPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -462,27 +503,45 @@ public partial class FlyoutWindow : Window
         }
 
         // Let go somewhere else - the diff pane, the desktop, another window - and nothing moves,
-        // which is what the WPF build did and what a drag that missed should do.
-        var (target, marker) = IsOverList(e) ? TargetUnder(e.GetPosition(GroupList)) : (null, DropMarker.None);
+        // which is what the WPF build did and what a drag that missed should do. The landing place
+        // is worked out now, while the rows still stand where the pointer saw them.
+        var drop = IsOverList(e) ? PlanDrop(dragged, e.GetPosition(GroupList)) : null;
         _viewModel.ClearDragMarkers();
 
         // The list is rebuilt once the release has finished its round: the header that holds the
         // capture is still on the event's route, and rebuilding now would pull it out from under it.
         Dispatcher.UIThread.Post(() =>
         {
-            switch (target)
-            {
-                case ProjectGroupViewModel project when !ReferenceEquals(project, dragged):
-                    _viewModel.PlaceProject(dragged, project, marker == DropMarker.Above);
-                    break;
-                case ProjectSectionViewModel section:
-                    _viewModel.PlaceProject(dragged, section, marker == DropMarker.Above);
-                    break;
-            }
+            drop?.Invoke();
 
             // Cleared after the click that follows the release has had its chance to see it.
             _dragged = null;
         });
+    }
+
+    /// <summary>What a drop at a point would do to what is in the air, or null for nothing.</summary>
+    private Action? PlanDrop(object dragged, Point point)
+    {
+        if (dragged is ProjectGroupViewModel project)
+        {
+            return TargetUnder(point) switch
+            {
+                (ProjectGroupViewModel target, var marker) when !ReferenceEquals(target, project)
+                    => () => _viewModel.PlaceProject(project, target, marker == DropMarker.Above),
+                (ProjectSectionViewModel into, var marker)
+                    => () => _viewModel.PlaceProject(project, into, marker == DropMarker.Above),
+                _ => null,
+            };
+        }
+
+        if (dragged is ProjectSectionViewModel section
+            && SectionTargetUnder(point) is (ProjectSectionViewModel beside, var above)
+            && !ReferenceEquals(beside, section))
+        {
+            return () => _viewModel.PlaceSection(section, beside, above);
+        }
+
+        return null;
     }
 
     private void OnGroupHeaderCaptureLost(object? sender, PointerCaptureLostEventArgs e)
@@ -499,14 +558,122 @@ public partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// The project header a press landed on, or null when it landed on one of the tool buttons
-    /// inside the header, on an alert card, or outside any header at all.
+    /// The project or section header a press landed on, or null when it landed on one of the tool
+    /// buttons inside a header, on an alert card, or outside any header at all.
     /// </summary>
     private static Button? HeaderUnder(object? source) =>
         source is Visual visual
-        && visual.FindAncestorOfType<Button>(includeSelf: true) is { Name: "Header" } header
+        && visual.FindAncestorOfType<Button>(includeSelf: true) is { Name: "Header" or "SectionHeader" } header
             ? header
             : null;
+
+    /// <summary>
+    /// Lights the place a dragged section would land: a line above the section it would go in
+    /// front of, or under the last row when it would go last. Nothing when that is where it is.
+    /// </summary>
+    private void UpdateSectionDropMarkers(ProjectSectionViewModel dragged, Point point)
+    {
+        var shown = _viewModel.Rows.OfType<ProjectSectionViewModel>().ToList();
+        var (target, above) = SectionTargetUnder(point);
+        var from = shown.IndexOf(dragged);
+        var to = target is null ? -1 : shown.IndexOf(target) + (above ? 0 : 1);
+
+        foreach (var row in _viewModel.Rows)
+        {
+            switch (row)
+            {
+                case ProjectGroupViewModel group:
+                    group.DropMarker = DropMarker.None;
+                    break;
+                case ProjectSectionViewModel section:
+                    section.DropMarker = DropMarker.None;
+                    break;
+            }
+        }
+
+        // Its own place, or the slot right after itself: the same place.
+        if (target is null || to == from || to == from + 1)
+        {
+            return;
+        }
+
+        if (to < shown.Count)
+        {
+            shown[to].DropMarker = DropMarker.Above;
+            return;
+        }
+
+        // After the last section: under whatever the last row is.
+        switch (_viewModel.Rows[^1])
+        {
+            case ProjectGroupViewModel group:
+                group.DropMarker = DropMarker.Below;
+                break;
+            case ProjectSectionViewModel section:
+                section.DropMarker = DropMarker.Below;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The section a dragged section would be placed against at a point, and on which side. The
+    /// rows are read as blocks: a section header and the projects under it are one place, so a
+    /// point anywhere in a block below the top half of its header means "after this section". The
+    /// loose projects above the sections mean "before the first section".
+    /// </summary>
+    private (ProjectSectionViewModel? Section, bool Above) SectionTargetUnder(Point point)
+    {
+        var shown = _viewModel.Rows.OfType<ProjectSectionViewModel>().ToList();
+
+        if (shown.Count == 0)
+        {
+            return (null, false);
+        }
+
+        ProjectSectionViewModel? block = null;
+
+        for (var i = 0; i < GroupList.ItemCount; i++)
+        {
+            if (GroupList.Items[i] is not { } row
+                || GroupList.ContainerFromIndex(i) is not { } container
+                || container.TranslatePoint(new Point(0, 0), GroupList) is not { } origin)
+            {
+                continue;
+            }
+
+            var top = origin.Y;
+
+            // In the gap above this row: still in whatever block came before.
+            if (point.Y < top)
+            {
+                return block is null ? (shown[0], true) : (block, false);
+            }
+
+            block = row switch
+            {
+                ProjectSectionViewModel section => section,
+                ProjectGroupViewModel { IsInSection: false } => null,
+                _ => block,
+            };
+
+            if (point.Y <= top + container.Bounds.Height)
+            {
+                if (row is ProjectSectionViewModel section)
+                {
+                    var header = container.FindDescendantOfType<Button>();
+                    var headerTop = header?.TranslatePoint(new Point(0, 0), GroupList)?.Y ?? top;
+                    var headerHeight = header?.Bounds.Height ?? container.Bounds.Height;
+
+                    return (section, point.Y < headerTop + headerHeight / 2);
+                }
+
+                return block is null ? (shown[0], true) : (block, false);
+            }
+        }
+
+        // Below everything: after the last block.
+        return block is null ? (shown[0], true) : (block, false);
+    }
 
     private void UpdateDropMarkers(ProjectGroupViewModel dragged, Point point)
     {

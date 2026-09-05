@@ -354,20 +354,24 @@
       </StackPanel>
     </DataTemplate>
 
-    <!-- A section header. Clicking it folds the projects under it; the tools on it rename, read,
-         order and dissolve it. While the name is being typed the header gives way to the box, so
-         a click in the box is a click in the box and not on the header under it. -->
+    <!-- A section header. Clicking it folds the projects under it, dragging it moves the section
+         with them; the tools on it rename, read, order and dissolve it. While the name is being
+         typed the header gives way to the box, so a click in the box is a click in the box and not
+         on the header under it. -->
     <DataTemplate x:DataType="vm:ProjectSectionViewModel">
       <StackPanel Classes.expanded="{Binding IsExpanded}"
                   Classes.unread="{Binding HasUnread}"
+                  Classes.dragging="{Binding IsBeingDragged}"
                   Classes.dropAbove="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Above}"
+                  Classes.dropBelow="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Below}"
                   Classes.dropInto="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Into}">
         <Border Name="DropAbove" Classes="dropLine" />
 
         <Panel Margin="0,6,0,0">
           <Button Name="SectionHeader"
                   Theme="{StaticResource GroupHeaderButton}"
-                  Command="{Binding ToggleCommand}"
+                  Click="OnSectionHeaderClick"
+                  PointerCaptureLost="OnGroupHeaderCaptureLost"
                   IsVisible="{Binding !IsEditing}"
                   ToolTip.Tip="{Binding Name}">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -478,6 +482,8 @@
                    AttachedToVisualTree="OnSectionNameAttached"
                    PropertyChanged="OnSectionNamePropertyChanged" />
         </Panel>
+
+        <Border Name="DropBelow" Classes="dropLine" />
       </StackPanel>
     </DataTemplate>
 
@@ -549,7 +555,7 @@
     <Style Selector="StackPanel.dropBelow > Border#DropBelow">
       <Setter Property="IsVisible" Value="True" />
     </Style>
-    <Style Selector="StackPanel.dragging > Button#Header">
+    <Style Selector="StackPanel.dragging > Button#Header, StackPanel.dragging Button#SectionHeader">
       <Setter Property="Opacity" Value="0.45" />
     </Style>
 

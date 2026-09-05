@@ -718,6 +718,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         foreach (var section in _sections)
         {
             section.DropMarker = DropMarker.None;
+            section.IsBeingDragged = false;
         }
     }
 
@@ -795,6 +796,37 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
 
         (_sections[from], _sections[to]) = (_sections[to], _sections[from]);
+
+        NormaliseOrder();
+        Persist();
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// Puts one section directly above or below another, with its projects. This is what dropping
+    /// a dragged section header does; the arrows still move a section one step at a time.
+    /// </summary>
+    public void PlaceSection(ProjectSectionViewModel moved, ProjectSectionViewModel target, bool above)
+    {
+        var from = _sections.IndexOf(moved);
+
+        if (from < 0 || ReferenceEquals(moved, target) || !_sections.Contains(target))
+        {
+            return;
+        }
+
+        _sections.RemoveAt(from);
+
+        var to = _sections.IndexOf(target) + (above ? 0 : 1);
+
+        // Back where it came from: nothing to save and nothing to redraw.
+        if (to == from)
+        {
+            _sections.Insert(from, moved);
+            return;
+        }
+
+        _sections.Insert(to, moved);
 
         NormaliseOrder();
         Persist();
