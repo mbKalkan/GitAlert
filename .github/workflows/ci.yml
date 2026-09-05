@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and test
+    name: Build and test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -94,3 +94,20 @@ jobs:
           ./artifacts/smoke/GitAlert --export-png artifacts/smoke/pngs
           test -s artifacts/smoke/pngs/gitalert-1024.png
           ls -l artifacts/smoke/pngs
+
+  # The branch rule on main waits for one check called "Build and test". The matrix legs each carry
+  # their own name, so this job wears the required one and turns green only when every leg did.
+  verdict:
+    name: Build and test
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require every platform to pass
+        shell: bash
+        env:
+          RESULT: ${{ needs.build.result }}
+        run: |
+          echo "The platform matrix finished with '$RESULT'."
+          test "$RESULT" = "success"
