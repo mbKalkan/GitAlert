@@ -37,9 +37,10 @@ src/GitAlert.Core/        net10.0, no UI dependency
   Core/  GitHub/  Configuration/  Services/  ViewModels/
   Platform/               interfaces only: ITrayHost, INotifier, ISecretStore,
                           IStartupRegistrar, IPlatformTheme, IShell, IAppPaths
+src/GitAlert.Windows/     net10.0-windows, no UI framework: Win32 tray, DPAPI, Registry, DWM
+                          (moved, not rewritten; shared by the WPF and the Avalonia app meanwhile)
 src/GitAlert/             net10.0 Avalonia app for Windows, macOS and Linux
   Views/  Themes/  Converters/
-  Platform/Windows/       Win32 tray, DPAPI, Registry, DWM (moved, not rewritten)
   Platform/MacOS/         Keychain, LaunchAgent, notifications
   Platform/Linux/         Secret Service, XDG autostart, DBus notifications
 tests/GitAlert.Tests/     xUnit + Avalonia.Headless.XUnit; runs on every OS
@@ -92,7 +93,8 @@ install in place with settings, history and tokens intact.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become
   `ThemeVariant` resource dictionaries; `DataTemplate.Triggers` become style selectors and
   pseudoclasses; `PasswordBox` becomes a masked `TextBox` with the same clipboard rules.
-- `Platform/Windows` reuses the Win32 tray, DPAPI, Registry, DWM and positioning code.
+- `GitAlert.Windows` carries the Win32 tray, DPAPI, Registry, DWM and positioning code with no
+  UI framework attached, so the WPF app and the Avalonia app run the very same tray code.
 - Build the headless render tool and compare PNGs with `docs/screenshots` in both themes.
 - Replace `OnStaThread` tests with `Avalonia.Headless.XUnit` tests.
 
