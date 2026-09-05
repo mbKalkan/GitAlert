@@ -33,3 +33,6 @@ desktop.ini
 
 ## Claude Code (personal rules, never committed)
 CLAUDE.local.md
+
+## Test runner diagnostics
+TestResults/
