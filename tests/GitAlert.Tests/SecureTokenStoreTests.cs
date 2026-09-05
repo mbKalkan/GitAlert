@@ -39,7 +39,7 @@ public class SecureTokenStoreTests : IDisposable
     [Fact]
     public void Writing_under_a_traversing_id_writes_nothing_at_all()
     {
-        var store = new SecureTokenStore(new DpapiTokenProtector(), _root);
+        var store = new SecureTokenStore(new PlainProtector(), _root);
         var escapee = Path.Combine(_root, "escaped.bin");
 
         Assert.Throws<ArgumentException>(() => store.Write(@"..\escaped", "ghp_secret"));
@@ -52,7 +52,7 @@ public class SecureTokenStoreTests : IDisposable
     [Fact]
     public void Reading_a_traversing_id_reports_no_token_rather_than_reaching_for_one()
     {
-        var store = new SecureTokenStore(new DpapiTokenProtector(), _root);
+        var store = new SecureTokenStore(new PlainProtector(), _root);
 
         Assert.Null(store.Read(@"..\..\anything"));
         Assert.False(store.Has(@"..\..\anything"));
@@ -62,7 +62,7 @@ public class SecureTokenStoreTests : IDisposable
     [Fact]
     public void Deleting_a_traversing_id_does_nothing()
     {
-        var store = new SecureTokenStore(new DpapiTokenProtector(), _root);
+        var store = new SecureTokenStore(new PlainProtector(), _root);
 
         store.Delete("../../anything");
     }

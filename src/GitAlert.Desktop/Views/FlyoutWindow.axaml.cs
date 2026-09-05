@@ -218,7 +218,7 @@ public partial class FlyoutWindow : Window
             var height = Bounds.Height > 0 ? Bounds.Height : Height;
             var size = new PixelSize((int)Math.Round(Width * scale), (int)Math.Round(height * scale));
 
-            if (_platform.PlaceFlyout(screenPoint, size) is { } position)
+            if (_platform.PlaceFlyout(this, screenPoint, size) is { } position)
             {
                 Position = position;
             }

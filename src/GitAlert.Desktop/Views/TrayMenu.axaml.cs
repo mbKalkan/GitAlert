@@ -17,14 +17,6 @@ namespace GitAlert.Views;
 /// </summary>
 public partial class TrayMenu : Window, IDisposable
 {
-    /// <summary>One line of the menu; <see cref="Separator"/> draws a rule instead.</summary>
-    public sealed record Entry(string Header, Action? Action, bool Bold = false)
-    {
-        public static readonly Entry Separator = new(string.Empty, null);
-
-        public bool IsSeparator => Action is null;
-    }
-
     /// <summary>
     /// How long after opening a deactivation is shell noise rather than a dismissal; the same
     /// grace the flyout gives, for the same reason.
@@ -43,7 +35,7 @@ public partial class TrayMenu : Window, IDisposable
     private bool _reallyClosing;
     private bool _hiding;
 
-    public TrayMenu(IPlatform platform, IReadOnlyList<Entry> entries)
+    public TrayMenu(IPlatform platform, IReadOnlyList<TrayMenuEntry> entries)
     {
         InitializeComponent();
 
@@ -65,7 +57,7 @@ public partial class TrayMenu : Window, IDisposable
 
             var button = new Button { Content = entry.Header };
 
-            if (entry.Bold)
+            if (entry.IsDefault)
             {
                 button.FontWeight = FontWeight.SemiBold;
             }
@@ -75,7 +67,7 @@ public partial class TrayMenu : Window, IDisposable
             button.Click += (_, _) =>
             {
                 Dismiss("entry chosen");
-                entry.Action?.Invoke();
+                entry.Invoke?.Invoke();
             };
 
             Items.Children.Add(button);

@@ -180,6 +180,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public bool HasNoAccounts => Accounts.Count == 0;
 
+    /// <summary>Where this platform keeps the tokens, in the store's own words.</summary>
+    public string TokenStorageNote => _tokenStore.StorageNote;
+
     public string Version =>
         typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 

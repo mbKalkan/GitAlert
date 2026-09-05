@@ -156,6 +156,11 @@ public sealed class TrayIcon : ITrayHost
         _data.dwInfoFlags = NativeMethods.NIIF_NONE;
     }
 
+    /// <summary>The shell draws its own menu on <see cref="ContextMenuRequested"/>; nothing to hand over.</summary>
+    public void SetMenu(IReadOnlyList<TrayMenuEntry> entries)
+    {
+    }
+
     private void TryAdd()
     {
         if (_disposed)

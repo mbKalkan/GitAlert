@@ -3,14 +3,37 @@ using System.IO;
 namespace GitAlert.Core;
 
 /// <summary>
-/// Central place for every file GitAlert writes. Everything lives under
-/// <c>%APPDATA%\GitAlert</c> so the app stays fully per-user and needs no elevation.
+/// Central place for every file GitAlert writes. Everything lives in the folder the platform keeps
+/// for a per-user application - <c>%APPDATA%\GitAlert</c> on Windows - so nothing needs elevation.
 /// </summary>
 public static class AppPaths
 {
-    public static string DataDirectory { get; } = Path.Combine(
+    public static string DataDirectory { get; } = Locate(
+        OperatingSystem.IsWindows(),
+        OperatingSystem.IsMacOS(),
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "GitAlert");
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        Environment.GetEnvironmentVariable("XDG_CONFIG_HOME"));
+
+    /// <summary>
+    /// Roaming AppData on Windows, Application Support on macOS, the XDG config home on Linux -
+    /// the one folder each platform tells applications to keep their per-user files in.
+    /// </summary>
+    public static string Locate(bool windows, bool macOS, string applicationData, string home, string? xdgConfigHome)
+    {
+        if (windows)
+        {
+            return Path.Combine(applicationData, "GitAlert");
+        }
+
+        if (macOS)
+        {
+            return Path.Combine(home, "Library", "Application Support", "GitAlert");
+        }
+
+        var config = string.IsNullOrWhiteSpace(xdgConfigHome) ? Path.Combine(home, ".config") : xdgConfigHome;
+        return Path.Combine(config, "GitAlert");
+    }
 
     public static string SettingsFile => Path.Combine(DataDirectory, "settings.json");
 

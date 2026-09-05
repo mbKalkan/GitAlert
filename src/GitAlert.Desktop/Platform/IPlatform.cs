@@ -22,9 +22,10 @@ public interface IPlatform
 
     /// <summary>
     /// Where a flyout of the given size belongs beside the tray anchor, in physical pixels, or null
-    /// when the platform has no better idea than the window's own.
+    /// when the platform has no better idea than the window's own. The window is there for its
+    /// screens; Windows asks the monitor API instead.
     /// </summary>
-    PixelPoint? PlaceFlyout(ScreenPoint anchor, PixelSize size);
+    PixelPoint? PlaceFlyout(Window window, ScreenPoint anchor, PixelSize size);
 
     /// <summary>
     /// Insists on the foreground for a window the shell has just activated. Returns true when the
@@ -57,6 +58,16 @@ public static class Platforms
             return new WindowsPlatform();
         }
 
-        throw new PlatformNotSupportedException("GitAlert runs on Windows for now; macOS and Linux arrive with phase 3.");
+        if (OperatingSystem.IsMacOS())
+        {
+            return new MacOS.MacPlatform();
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            return new Linux.LinuxPlatform();
+        }
+
+        throw new PlatformNotSupportedException("GitAlert runs on Windows, macOS and Linux.");
     }
 }

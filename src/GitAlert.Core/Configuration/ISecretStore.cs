@@ -6,6 +6,12 @@ namespace GitAlert.Configuration;
 /// </summary>
 public interface ISecretStore
 {
+    /// <summary>
+    /// One sentence for the settings window on where the tokens live and how they are guarded,
+    /// because it differs by platform and a file fallback is worth knowing about.
+    /// </summary>
+    string StorageNote { get; }
+
     bool Has(string accountId);
 
     string? Read(string accountId);

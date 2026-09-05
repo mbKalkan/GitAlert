@@ -10,10 +10,16 @@ internal static class Program
     /// <summary>Used by the build to regenerate <c>app.ico</c> from the vector artwork.</summary>
     private const string ExportIconSwitch = "--export-icon";
 
+    /// <summary>Used by the macOS and Linux packaging to draw the icon files from the same artwork.</summary>
+    private const string ExportPngSwitch = "--export-png";
+
+    /// <summary>Every size the macOS iconset wants, which covers the Linux icon theme too.</summary>
+    private static readonly int[] PngSizes = [16, 32, 64, 128, 256, 512, 1024];
+
     [STAThread]
     public static int Main(string[] args)
     {
-        if (TryExportIcon(args))
+        if (TryExportIcon(args) || TryExportPngs(args))
         {
             return 0;
         }
@@ -49,6 +55,30 @@ internal static class Program
 
         instance.Activated += onActivated;
         instance.Listen();
+    }
+
+    /// <summary>
+    /// Writes <c>gitalert-{size}.png</c> for every size into a folder and exits. Runs before
+    /// Avalonia starts, so it needs no display: the packaging jobs run it on a build machine.
+    /// </summary>
+    private static bool TryExportPngs(string[] args)
+    {
+        var index = Array.FindIndex(args, a => a.Equals(ExportPngSwitch, StringComparison.OrdinalIgnoreCase));
+
+        if (index < 0 || index + 1 >= args.Length)
+        {
+            return false;
+        }
+
+        var directory = args[index + 1];
+        Directory.CreateDirectory(directory);
+
+        foreach (var size in PngSizes)
+        {
+            File.WriteAllBytes(Path.Combine(directory, $"gitalert-{size}.png"), Bell.RenderAppIconPng(size));
+        }
+
+        return true;
     }
 
     /// <summary>Also what the previewer and the headless render tool start from.</summary>

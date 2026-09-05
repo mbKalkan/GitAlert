@@ -13,13 +13,15 @@ public sealed class WindowsPlatform : IPlatform
 {
     public ITrayHost CreateTray() => new TrayIcon(Bell.RenderTrayIcon);
 
-    public ISecretStore CreateSecretStore() => new SecureTokenStore(new DpapiTokenProtector());
+    public ISecretStore CreateSecretStore() => new SecureTokenStore(
+        new DpapiTokenProtector(),
+        storageNote: "Tokens are encrypted with your Windows account and never leave this machine.");
 
     public IStartupRegistrar Startup { get; } = new StartupManager();
 
     public bool IsSystemDark => SystemTheme.IsSystemDark;
 
-    public PixelPoint? PlaceFlyout(ScreenPoint anchor, PixelSize size)
+    public PixelPoint? PlaceFlyout(Window window, ScreenPoint anchor, PixelSize size)
     {
         // Avalonia positions windows in physical pixels, so no scale is applied here.
         var (left, top) = FlyoutPositioner.Place(anchor, size.Width, size.Height, 1, 1);

@@ -63,16 +63,21 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _flyout.ApplyPreferences(settings);
         _flyout.PlacementChanged += OnPlacementChanged;
 
-        _menu = new TrayMenu(platform,
+        TrayMenuEntry[] entries =
         [
-            new TrayMenu.Entry("Open GitAlert", OpenFlyoutAtTray, Bold: true),
-            new TrayMenu.Entry("Check now", () => _monitor.RequestRefresh()),
-            TrayMenu.Entry.Separator,
-            new TrayMenu.Entry("Mark all read", () => _flyoutViewModel.MarkAllReadCommand.Execute(null)),
-            new TrayMenu.Entry("Settings…", ShowSettings),
-            TrayMenu.Entry.Separator,
-            new TrayMenu.Entry("Quit", Quit),
-        ]);
+            new("Open GitAlert", OpenFlyoutAtTray, IsDefault: true),
+            new("Check now", () => _monitor.RequestRefresh()),
+            TrayMenuEntry.Separator,
+            new("Mark all read", () => _flyoutViewModel.MarkAllReadCommand.Execute(null)),
+            new("Settings…", ShowSettings),
+            TrayMenuEntry.Separator,
+            new("Quit", Quit),
+        ];
+
+        // Windows asks for the menu on a right click and GitAlert draws it; the status items on
+        // macOS and Linux show a native menu of their own, so they get the same entries up front.
+        _menu = new TrayMenu(platform, entries);
+        _tray.SetMenu(entries);
 
         _monitor.AlertsReceived += OnAlertsReceived;
         _monitor.StatusChanged += OnStatusChanged;

@@ -412,7 +412,11 @@
               <TextBlock Classes="muted"
                          TextWrapping="Wrap"
                          Margin="0,0,0,10"
-                         Text="Public repositories need no scopes. Add repo for private repositories, and notifications for mentions and review requests. A fine-grained token works too, with read access to Metadata, Contents and Actions on the repositories you watch. The token is encrypted with your Windows account." />
+                         Text="Public repositories need no scopes. Add repo for private repositories, and notifications for mentions and review requests. A fine-grained token works too, with read access to Metadata, Contents and Actions on the repositories you watch." />
+              <TextBlock Classes="muted"
+                         TextWrapping="Wrap"
+                         Margin="0,-6,0,10"
+                         Text="{Binding TokenStorageNote}" />
 
               <Grid ColumnDefinitions="*,Auto,Auto">
                 <TextBox Grid.Column="0"
@@ -676,8 +680,8 @@
 
               <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="0,0,0,6"
                          Text="Built because tabbing back to GitHub to find out whether anything happened is a poor use of a working day." />
-              <TextBlock Classes="muted" TextWrapping="Wrap"
-                         Text="Your tokens stay on this machine, encrypted with your user account. GitAlert talks to api.github.com and nowhere else." />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding TokenStorageNote}" />
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="GitAlert talks to api.github.com and nowhere else." />
             </StackPanel>
           </Border>
         </StackPanel>

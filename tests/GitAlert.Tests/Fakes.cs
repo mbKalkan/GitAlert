@@ -6,6 +6,17 @@ using System.Text;
 
 namespace GitAlert.Tests;
 
+/// <summary>
+/// Keeps tokens as they are. DPAPI is Windows-only and is not what these tests are about; the
+/// store's file handling is the same whatever the protector does to the bytes.
+/// </summary>
+internal sealed class PlainProtector : GitAlert.Platform.ITokenProtector
+{
+    public byte[]? Protect(byte[] plain) => plain;
+
+    public byte[]? Unprotect(byte[] cipher) => cipher;
+}
+
 /// <summary>What a request looked like, captured before the client disposes it.</summary>
 internal sealed record RecordedRequest(
     string Method,

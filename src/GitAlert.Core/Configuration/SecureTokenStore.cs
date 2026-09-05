@@ -15,14 +15,17 @@ public sealed class SecureTokenStore : ISecretStore
     private readonly string _directory;
     private readonly string _legacyFile;
 
-    public SecureTokenStore(ITokenProtector protector, string? dataDirectory = null)
+    public SecureTokenStore(ITokenProtector protector, string? dataDirectory = null, string? storageNote = null)
     {
         var root = dataDirectory ?? AppPaths.DataDirectory;
 
         _protector = protector;
         _directory = Path.Combine(root, "tokens");
         _legacyFile = Path.Combine(root, "token.bin");
+        StorageNote = storageNote ?? "Tokens stay on this machine, encrypted for your user account.";
     }
+
+    public string StorageNote { get; }
 
     /// <summary>
     /// Whether an account id may be used as a file name.
@@ -47,11 +50,38 @@ public sealed class SecureTokenStore : ISecretStore
             ?? throw new ArgumentException($"'{accountId}' is not a usable account id.", nameof(accountId));
 
         Directory.CreateDirectory(_directory);
+        RestrictToUser(_directory);
 
         var protectedBytes = _protector.Protect(Encoding.UTF8.GetBytes(token))
             ?? throw new InvalidOperationException("The access token could not be encrypted.");
 
         File.WriteAllBytes(path, protectedBytes);
+        RestrictToUser(path);
+    }
+
+    /// <summary>
+    /// On the platforms with Unix permissions the folder and the files are the user's alone. Where
+    /// the protector is DPAPI this is belt and braces; where it is nothing, it is the whole guard.
+    /// </summary>
+    private static void RestrictToUser(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(
+                path,
+                Directory.Exists(path)
+                    ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                    : UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A file system without permissions to set; the file is still written.
+        }
     }
 
     public void Delete(string accountId)

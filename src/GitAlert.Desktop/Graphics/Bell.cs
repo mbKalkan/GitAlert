@@ -76,6 +76,23 @@ public static class Bell
         return bitmap.Bytes;
     }
 
+    /// <summary>
+    /// The application icon as a PNG, for the platforms that want their icons as image files: the
+    /// macOS iconset and the Linux icon theme are both built from these.
+    /// </summary>
+    public static byte[] RenderAppIconPng(int size)
+    {
+        var pixels = RenderAppIcon(size);
+
+        using var bitmap = new SKBitmap(new SKImageInfo(size, size, SKColorType.Bgra8888, SKAlphaType.Premul));
+        System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bitmap.GetPixels(), pixels.Length);
+
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+
+        return data.ToArray();
+    }
+
     /// <summary>Draws the bell in design units; a badge, when there is one, sits in a ring cut out of it.</summary>
     private static void DrawBell(SKCanvas canvas, Rgb foreground, Rgb? badge)
     {

@@ -77,7 +77,7 @@ public class SettingsCloseTests : IDisposable
 
         return new SettingsViewModel(
             new SettingsStore(Path.Combine(_root, "settings.json")),
-            new SecureTokenStore(new DpapiTokenProtector(), _root),
+            new SecureTokenStore(new PlainProtector(), _root),
             host,
             startup ?? new StartupOff());
     }

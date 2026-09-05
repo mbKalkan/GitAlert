@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.VisualTree;
 using GitAlert.Core;
+using GitAlert.Platform;
 using GitAlert.Views;
 using Xunit;
 
@@ -102,10 +103,10 @@ public class TrayMenuTests
     private static TrayMenu Build(List<string> chosen) => new(
         new HeadlessPlatform(),
         [
-            new TrayMenu.Entry("Open GitAlert", () => chosen.Add("open"), Bold: true),
-            new TrayMenu.Entry("Check now", () => chosen.Add("check")),
-            TrayMenu.Entry.Separator,
-            new TrayMenu.Entry("Quit", () => chosen.Add("quit")),
+            new TrayMenuEntry("Open GitAlert", () => chosen.Add("open"), IsDefault: true),
+            new TrayMenuEntry("Check now", () => chosen.Add("check")),
+            TrayMenuEntry.Separator,
+            new TrayMenuEntry("Quit", () => chosen.Add("quit")),
         ]);
 
     private static List<Button> Buttons(TrayMenu menu) => menu.GetVisualDescendants().OfType<Button>().ToList();

@@ -11,7 +11,7 @@
     <Description>GitAlert on Avalonia: the same tray app for Windows, macOS and Linux.</Description>
     <!-- The runtime identifier belongs to `dotnet publish`, not to the project: pinning it here
          makes a plain restore and a Release build disagree about the assets file. -->
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64;linux-x64</RuntimeIdentifiers>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <PublishTrimmed>false</PublishTrimmed>
@@ -31,6 +31,10 @@
     <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="GitAlert.Desktop.Tests" />
   </ItemGroup>
 
   <ItemGroup>

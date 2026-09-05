@@ -19,7 +19,7 @@ public class SettingsMigrationTests : IDisposable
     public SettingsMigrationTests()
     {
         Directory.CreateDirectory(_directory);
-        _tokens = new SecureTokenStore(new DpapiTokenProtector(), _directory);
+        _tokens = new SecureTokenStore(new PlainProtector(), _directory);
     }
 
     /// <summary>
