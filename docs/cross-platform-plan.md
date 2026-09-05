@@ -110,7 +110,10 @@ an ancestor with a tunnelling handler; a nested button's `Click` bubbles through
 button's `Click`, so the outer handler checks `e.Source`; and controls inside an element marked
 `WindowDecorationProperties.ElementRole="TitleBar"` need `ElementRole="User"` or the platform
 takes every press on them as a window move. The headless mouse (`MouseDown`, `MouseMove` with
-`RawInputModifiers.LeftMouseButton`, `MouseUp`) drives all of this in tests.
+`RawInputModifiers.LeftMouseButton`, `MouseUp`) drives all of this in tests. The trial also showed
+that two front ends sharing `%APPDATA%\GitAlert` poll the same repositories twice and overwrite
+each other's settings, so the Avalonia build now holds the WPF build's mutex and answers its named
+event: one GitAlert per session, whichever was launched first, and the other one wakes it and exits.
 
 - Add the Avalonia app project next to the WPF one, both on Core.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become
