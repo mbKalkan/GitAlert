@@ -146,7 +146,7 @@ Acceptance: side-by-side screenshots match the WPF build within an agreed tolera
 is reachable by keyboard with visible focus; the Avalonia build runs as the daily tray app on this
 PC for at least a week without a regression report.
 
-### Phase 3: macOS and Linux (the packages ship from 1.25.1)
+### Phase 3: macOS and Linux (the packages ship from 1.25.2)
 
 - Implement the platform matrix for both systems, including per-OS `IAppPaths`.
 - CI: `ci.yml` becomes a matrix over `windows-latest`, `macos-latest`, `ubuntu-latest`;
@@ -164,7 +164,7 @@ icon appears; the AppImage runs on Ubuntu with the AppIndicator extension and on
 survive an app restart on each platform.
 
 Status on 2026-09-05: the platform layer, the three-OS CI and the packaging are on `main`
-(b792e0e, 9f7fbed, 2536ba2 and the fixes after them) and `v1.25.1` is the first tag to carry all
+(b792e0e, 9f7fbed, 2536ba2 and the fixes after them) and `v1.25.2` is the first tag to carry all
 seven assets. CI is green; the acceptance items that need a person are still open: a real Mac for
 the DMG, the menu bar icon and the keychain round trip, and Ubuntu under WSLg for the AppImage,
 the `.deb`, AppIndicator and `secret-tool`. The Windows app in 1.25.x is otherwise the 1.24.1 app
@@ -173,8 +173,9 @@ plus the storage note in the settings window.
 What the first three-platform runs taught:
 
 - A shell script committed from Windows has no executable bit, and a runner refuses to start it.
-  `git update-index --chmod=+x` fixes the mode in the index; `v1.25.0` built Windows only for that
-  reason and has no release.
+  `git update-index --chmod=+x` fixes the mode in the index. appimagetool quits when
+  `desktop-file-validate` is not installed. `v1.25.0` and `v1.25.1` fell to those two and have no
+  release; CI now runs both packaging scripts on every push so a tag cannot be the first to try.
 - A test helper that sets `ApartmentState.STA` throws `PlatformNotSupportedException` off Windows.
   One shared `StaThread.Run` guards the call with `OperatingSystem.IsWindows()`.
 - `FileShare.None` locks nothing on Unix: a file another handle holds open is replaced by a rename

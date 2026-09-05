@@ -137,7 +137,7 @@ and run `GitAlert.exe`.
 
 ### macOS and Linux (early builds)
 
-Since 1.25.1 every release also carries packages built from the same source on GitHub's macOS and
+Since 1.25.2 every release also carries packages built from the same source on GitHub's macOS and
 Linux runners. They pass the headless test suite there, but nobody has used them on a real desk
 yet: treat them as previews and [say what you find](https://github.com/mbKalkan/GitAlert/issues).
 
