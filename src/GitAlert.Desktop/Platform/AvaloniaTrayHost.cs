@@ -58,10 +58,10 @@ public sealed class AvaloniaTrayHost : ITrayHost
     public event EventHandler<ScreenPoint>? Activated;
 
     /// <summary>Never raised here: the right click opens the menu handed to <see cref="SetMenu"/>.</summary>
-    public event EventHandler<ScreenPoint>? ContextMenuRequested;
+    public event EventHandler<ScreenPoint>? ContextMenuRequested { add { } remove { } }
 
     /// <summary>Never raised here: neither notifier reports a click back.</summary>
-    public event EventHandler? NotificationClicked;
+    public event EventHandler? NotificationClicked { add { } remove { } }
 
     public string Tooltip
     {
