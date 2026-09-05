@@ -866,7 +866,8 @@ public sealed class MonitorService : IAsyncDisposable
 
     private bool ShouldDeliver(Alert alert, GitHubAccount account, AppSettings settings)
     {
-        if (settings.IsMuted(alert.Kind))
+        // A repository with its tick off is not polled, but the inbox can still speak of it.
+        if (settings.IsMuted(alert.Kind) || settings.IsSwitchedOff(alert.Repository))
         {
             return false;
         }

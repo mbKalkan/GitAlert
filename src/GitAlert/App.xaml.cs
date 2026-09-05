@@ -93,11 +93,14 @@ public partial class App : Application
 
         // A repository removed while GitAlert was not running leaves its alerts behind in the
         // history file. Reconcile before anything has a chance to count them or list the project.
-        // A repository that is merely switched off keeps its history: pausing is not removing.
+        // A repository that is merely switched off keeps its history, out of sight: pausing is
+        // not removing.
         if (_alerts.RemoveUnwatched(settings.Repositories.Select(r => r.FullName)) > 0)
         {
             _alerts.Save();
         }
+
+        _alerts.Hide(settings.SwitchedOffRepositories);
 
         _monitor = new MonitorService(_alerts, new StateStore());
         _monitor.Configure(settings, tokenStore.ReadAll(settings.Accounts.Select(a => a.Id)));

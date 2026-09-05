@@ -22,6 +22,7 @@ public sealed class AlertStore
     private readonly List<Alert> _alerts = [];
     private readonly HashSet<string> _seenIds = new(StringComparer.Ordinal);
 
+    private HashSet<string> _hidden = new(StringComparer.OrdinalIgnoreCase);
     private int _maxHistory = 300;
 
     public AlertStore(string? path = null) => _path = path ?? AppPaths.HistoryFile;
@@ -39,28 +40,50 @@ public sealed class AlertStore
         }
     }
 
-    /// <summary>Newest first.</summary>
+    /// <summary>Newest first, without the repositories that are switched off.</summary>
     public IReadOnlyList<Alert> Snapshot
     {
         get
         {
             lock (_gate)
             {
-                return _alerts.ToArray();
+                return _alerts.Where(IsShown).ToArray();
             }
         }
     }
 
+    /// <summary>What is unread among the alerts that show; the tray and the window count from here.</summary>
     public int UnreadCount
     {
         get
         {
             lock (_gate)
             {
-                return _alerts.Count(a => !a.IsRead);
+                return _alerts.Count(a => !a.IsRead && IsShown(a));
             }
         }
     }
+
+    /// <summary>
+    /// Repositories whose tick is off in settings. Their alerts stay in the history, out of sight
+    /// and out of every count, until the tick comes back: switching off is not removing.
+    /// </summary>
+    /// <remarks>
+    /// They used to stay on show, on the grounds that a switched-off project is still one the user
+    /// watches. The user switched one off to make it go away, and it did not.
+    /// </remarks>
+    public void Hide(IEnumerable<string> repositories)
+    {
+        var hidden = new HashSet<string>(repositories, StringComparer.OrdinalIgnoreCase);
+
+        lock (_gate)
+        {
+            _hidden = hidden;
+        }
+    }
+
+    /// <summary>Callers hold <see cref="_gate"/>.</summary>
+    private bool IsShown(Alert alert) => !_hidden.Contains(alert.Repository);
 
     /// <summary>
     /// Adds alerts that have not been seen before and returns them newest first, so the caller

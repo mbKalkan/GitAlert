@@ -171,11 +171,13 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _monitor.Configure(settings, tokens);
 
         // A repository that is no longer watched takes its alerts with it. One that is only
-        // switched off is still watched in the user's mind, so it keeps them.
+        // switched off keeps them in the history, out of sight until it is switched back on.
         if (_alerts.RemoveUnwatched(settings.Repositories.Select(r => r.FullName)) > 0)
         {
             _alerts.Save();
         }
+
+        _alerts.Hide(settings.SwitchedOffRepositories);
 
         // And the list is rebuilt either way: it is the only thing that knows which projects exist.
         _flyoutViewModel.Reload();

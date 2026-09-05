@@ -103,6 +103,20 @@ public sealed class AppSettings
 
     public bool IsMuted(AlertKind kind) => MutedKinds.Contains(kind);
 
+    /// <summary>
+    /// The repositories on the watch list with their tick off. They are neither polled nor shown,
+    /// and their history waits for the tick to come back. A name watched under two accounts is
+    /// off only when it is off under both.
+    /// </summary>
+    public IEnumerable<string> SwitchedOffRepositories =>
+        Repositories
+            .GroupBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.All(r => !r.Enabled))
+            .Select(g => g.Key);
+
+    public bool IsSwitchedOff(string repository) =>
+        SwitchedOffRepositories.Contains(repository, StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The repositories watched under one account.</summary>
     public IEnumerable<RepoSubscription> RepositoriesFor(string accountId) =>
         Repositories.Where(r => string.Equals(r.AccountId, accountId, StringComparison.Ordinal));

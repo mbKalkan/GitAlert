@@ -557,6 +557,30 @@ public class MonitorServiceTests : IDisposable
         Assert.DoesNotContain(harness.Handler.Requests, r => r.Path == "/notifications");
     }
 
+    /// <summary>
+    /// The repository is on the list with its tick off. It is not polled, and a mention there
+    /// arriving through the inbox is not announced either: off means off.
+    /// </summary>
+    [Fact]
+    public async Task The_inbox_stays_quiet_about_a_repository_that_is_switched_off()
+    {
+        var github = new FakeGitHub { Inbox = Inbox(("n1", "mention", "2026-01-01T10:00:00Z")) };
+
+        await using var harness = NewHarness(github, configure: s =>
+        {
+            s.Accounts[0].IncludeInbox = true;
+            s.Repositories[0].Enabled = false;
+        });
+
+        await harness.PollAsync();
+
+        github.Inbox = Inbox(("n2", "mention", "2026-01-01T11:00:00Z"), ("n1", "mention", "2026-01-01T10:00:00Z"));
+        await harness.PollAsync();
+
+        Assert.Empty(harness.Delivered);
+        Assert.DoesNotContain(harness.Handler.Requests, r => r.Path.StartsWith("/repos/", StringComparison.Ordinal));
+    }
+
     /// <summary>An inbox failure is about the inbox, not about the repositories.</summary>
     [Fact]
     public async Task A_failing_inbox_does_not_stop_repositories_being_checked()
