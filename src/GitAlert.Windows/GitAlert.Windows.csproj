@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- A plain net10.0 target, marked Windows-only, rather than net10.0-windows: the Avalonia app
+         targets net10.0 for three platforms and could not reference a net10.0-windows library.
+         The platform analyzer still makes every caller outside this assembly guard its calls. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <SupportedOSPlatform>windows</SupportedOSPlatform>
     <AssemblyName>GitAlert.Windows</AssemblyName>
     <RootNamespace>GitAlert</RootNamespace>
     <Description>GitAlert's Windows layer: the notification-area icon, DPAPI, the Run key, the taskbar theme and the interop behind them. No UI framework, so more than one front end can share it.</Description>

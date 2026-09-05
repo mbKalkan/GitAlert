@@ -1,0 +1,437 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:GitAlert.Converters">
+
+  <!-- Shared control themes and styles. Every colour comes from the palette dictionary in front of
+       the application's merged resources, through DynamicResource, so swapping Dark, DarkGitHub
+       and Light at runtime needs no changes here. Data-driven looks are style classes bound from
+       the view models (Classes.read="{Binding IsRead}") where WPF used data triggers. -->
+
+  <Styles.Resources>
+    <ResourceDictionary>
+
+      <conv:EqualsConverter x:Key="Equals" />
+      <conv:WhenTrueConverter x:Key="WhenTrue" />
+      <conv:KindToGlyphConverter x:Key="KindToGlyph" />
+      <conv:ThemeBrushConverter x:Key="ThemeBrush" />
+
+      <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI, Inter, Helvetica Neue, Ubuntu, Cantarell, Noto Sans</FontFamily>
+      <FontFamily x:Key="CodeFont">Cascadia Mono, Consolas, Menlo, SF Mono, DejaVu Sans Mono, Courier New</FontFamily>
+
+      <!-- ==================== Buttons ==================== -->
+
+      <ControlTheme x:Key="BaseButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Style Selector="^:disabled">
+          <Setter Property="Cursor" Value="Arrow" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+        <Setter Property="Padding" Value="16,7" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg"
+                    Background="{DynamicResource Accent}"
+                    CornerRadius="7"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource AccentHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource AccentHover}" />
+        </Style>
+        <Style Selector="^:disabled /template/ Border#Bg">
+          <Setter Property="Opacity" Value="0.45" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Padding" Value="14,7" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg"
+                    Background="{DynamicResource SurfaceElevated}"
+                    BorderBrush="{DynamicResource Border}"
+                    BorderThickness="1"
+                    CornerRadius="7"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="^:disabled /template/ Border#Bg">
+          <Setter Property="Opacity" Value="0.45" />
+        </Style>
+      </ControlTheme>
+
+      <!-- A quiet text button for footers and inline actions. -->
+      <ControlTheme x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Padding" Value="9,5" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.45" />
+        </Style>
+      </ControlTheme>
+
+      <!-- The same, smaller, for a line of actions inside a list row. -->
+      <ControlTheme x:Key="LinkButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Padding" Value="6,2" />
+      </ControlTheme>
+
+      <!-- Square button holding a 16 x 16 Path, used across the flyout header. -->
+      <ControlTheme x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg" Background="Transparent" CornerRadius="7">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.4" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Filter chip. The label and the badge are the button's content; "selected" is a class. -->
+      <ControlTheme x:Key="ChipButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg"
+                    Background="{DynamicResource ChipBackground}"
+                    CornerRadius="12"
+                    Padding="9,4">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+        </Style>
+        <Style Selector="^.selected /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource Accent}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Alerts / History, and "Unread only". -->
+      <ControlTheme x:Key="ModeChipButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg" Background="Transparent" CornerRadius="11" Padding="14,4">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+        </Style>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource ChipHover}" />
+        </Style>
+        <Style Selector="^.selected /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="^.selected">
+          <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- The small buttons on a project header: the tick that reads it and the two arrows that
+           order it. Only visible while the header is hovered. -->
+      <ControlTheme x:Key="HeaderToolButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="Width" Value="20" />
+        <Setter Property="Height" Value="18" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg" Background="Transparent" CornerRadius="4">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:pointerover">
+          <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.25" />
+        </Style>
+      </ControlTheme>
+
+      <!-- The repository header above a group of alerts. Clicking it folds the group away. -->
+      <ControlTheme x:Key="GroupHeaderButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg" Background="Transparent" CornerRadius="6" Padding="6,5" Margin="0,4,0,1">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="Stretch" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- The whole alert row is a button, so it is keyboard reachable and gets a real hover state. -->
+      <ControlTheme x:Key="AlertCardButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="2,0,0,0"
+                    CornerRadius="9"
+                    Padding="9,7,10,7"
+                    Margin="0,1">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="Stretch" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <!-- The selected row is the one the detail pane is showing, so it stays marked even
+             while the mouse is somewhere else entirely. -->
+        <Style Selector="^.selected /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource AccentSubtle}" />
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- A row in the change list. Same idea as the alert card: the whole row is the button. -->
+      <ControlTheme x:Key="FileRowButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="2,0,0,0"
+                    CornerRadius="6"
+                    Padding="8,4"
+                    Margin="0,1">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="Stretch" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^.selected /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource AccentSubtle}" />
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+      </ControlTheme>
+
+      <!-- ==================== Tray context menu ==================== -->
+
+      <ControlTheme x:Key="TrayMenuItem" TargetType="MenuItem">
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg" Background="Transparent" CornerRadius="6" Margin="4,1" Padding="{TemplateBinding Padding}">
+              <ContentPresenter Name="PART_HeaderPresenter"
+                                Content="{TemplateBinding Header}"
+                                ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:selected /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.45" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="TrayMenuSeparator" TargetType="Separator">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="10,4" />
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- ==================== Text ==================== -->
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+  </Style>
+
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+  </Style>
+
+  <Style Selector="TextBlock.muted">
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+  </Style>
+
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+
+  <!-- ==================== Tooltips ==================== -->
+
+  <!-- Both ends pinned to the palette: an icon button's light glyph colour would otherwise land
+       on the theme's tooltip background. -->
+  <Style Selector="ToolTip">
+    <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceElevated}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="9,6" />
+    <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- ==================== Menus ==================== -->
+
+  <Style Selector="MenuFlyoutPresenter.tray">
+    <Setter Property="Background" Value="{DynamicResource SurfaceElevated}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="Padding" Value="0,5" />
+    <Setter Property="MinWidth" Value="188" />
+  </Style>
+
+  <Style Selector="MenuFlyoutPresenter.tray MenuItem">
+    <Setter Property="Theme" Value="{StaticResource TrayMenuItem}" />
+  </Style>
+
+  <Style Selector="MenuFlyoutPresenter.tray Separator">
+    <Setter Property="Theme" Value="{StaticResource TrayMenuSeparator}" />
+  </Style>
+
+</Styles>

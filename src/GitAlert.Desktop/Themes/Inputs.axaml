@@ -1,0 +1,212 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="using:GitAlert.Converters">
+
+  <!-- The settings window's inputs. Text boxes and check boxes get their own templates, the
+       combo box keeps Fluent's and reads the palette through the keys aliased in Dark/Light.axaml. -->
+
+  <Styles.Resources>
+    <ResourceDictionary>
+
+      <conv:MinutesConverter x:Key="MinutesToText" />
+      <conv:AppThemeConverter x:Key="ThemeToText" />
+      <conv:DarkPaletteConverter x:Key="DarkPaletteToText" />
+      <conv:HistorySizeConverter x:Key="HistoryToText" />
+
+      <ControlTheme x:Key="ModernTextBox" TargetType="TextBox">
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource Accent}" />
+        <Setter Property="SelectionForegroundBrush" Value="{DynamicResource OnAccent}" />
+        <Setter Property="Background" Value="{DynamicResource ControlBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="7" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Panel>
+              <Border Name="Bg"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="{TemplateBinding CornerRadius}"
+                      MinHeight="{TemplateBinding MinHeight}" />
+              <Border Margin="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                <ScrollViewer Name="PART_ScrollViewer"
+                              HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                              VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}">
+                  <Panel>
+                    <TextBlock Name="PART_Placeholder"
+                               Text="{TemplateBinding PlaceholderText}"
+                               Foreground="{DynamicResource TextMuted}"
+                               FontSize="11.5"
+                               TextWrapping="{TemplateBinding TextWrapping}"
+                               IsVisible="{TemplateBinding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                               HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    <TextPresenter Name="PART_TextPresenter"
+                                   Text="{TemplateBinding Text, Mode=TwoWay}"
+                                   CaretIndex="{TemplateBinding CaretIndex}"
+                                   SelectionStart="{TemplateBinding SelectionStart}"
+                                   SelectionEnd="{TemplateBinding SelectionEnd}"
+                                   TextAlignment="{TemplateBinding TextAlignment}"
+                                   TextWrapping="{TemplateBinding TextWrapping}"
+                                   PasswordChar="{TemplateBinding PasswordChar}"
+                                   RevealPassword="{TemplateBinding RevealPassword}"
+                                   SelectionBrush="{TemplateBinding SelectionBrush}"
+                                   SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+                                   CaretBrush="{TemplateBinding CaretBrush}"
+                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                  </Panel>
+                </ScrollViewer>
+              </Border>
+            </Panel>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="BorderBrush" Value="{DynamicResource TextMuted}" />
+        </Style>
+        <Style Selector="^:focus /template/ Border#Bg">
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.45" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="ModernCheckBox" TargetType="CheckBox">
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border Name="Box"
+                      Width="17"
+                      Height="17"
+                      CornerRadius="5"
+                      Background="{DynamicResource ControlBackground}"
+                      BorderBrush="{DynamicResource Border}"
+                      BorderThickness="1"
+                      VerticalAlignment="Center">
+                <Path Name="Tick"
+                      Data="M2.6,6.4 L5.2,9 L10.4,3.4"
+                      Stroke="{DynamicResource OnAccent}"
+                      StrokeThickness="1.9"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Width="13"
+                      Height="13"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      IsVisible="False" />
+              </Border>
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Margin="9,0,0,0"
+                                VerticalAlignment="Center"
+                                IsVisible="{TemplateBinding Content, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </StackPanel>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:checked /template/ Border#Box">
+          <Setter Property="Background" Value="{DynamicResource Accent}" />
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="^:checked /template/ Path#Tick">
+          <Setter Property="IsVisible" Value="True" />
+        </Style>
+        <Style Selector="^:pointerover /template/ Border#Box">
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Box">
+          <Setter Property="BorderBrush" Value="{DynamicResource Accent}" />
+        </Style>
+        <Style Selector="^:disabled">
+          <Setter Property="Opacity" Value="0.45" />
+          <Setter Property="Cursor" Value="Arrow" />
+        </Style>
+      </ControlTheme>
+
+      <!-- The settings navigation on the left: a list box whose rows read as tabs. -->
+      <ControlTheme x:Key="NavItem" TargetType="ListBoxItem">
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Padding" Value="12,9" />
+        <Setter Property="Margin" Value="0,1" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="Bg"
+                    Background="Transparent"
+                    CornerRadius="7"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter Name="PART_ContentPresenter"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource SurfaceHover}" />
+        </Style>
+        <Style Selector="^:selected /template/ Border#Bg">
+          <Setter Property="Background" Value="{DynamicResource AccentSubtle}" />
+        </Style>
+        <Style Selector="^:selected">
+          <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+          <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+      </ControlTheme>
+
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- Combo boxes keep Fluent's template; the palette aliases the brushes it reads. -->
+  <Style Selector="ComboBox.modern">
+    <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Padding" Value="11,0,30,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="ComboBox.modern ComboBoxItem">
+    <Setter Property="FontFamily" Value="{DynamicResource UiFont}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="Margin" Value="4,1" />
+    <Setter Property="CornerRadius" Value="5" />
+  </Style>
+
+  <!-- The navigation list itself: a bare panel of rows. -->
+  <Style Selector="ListBox.nav">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="ListBox.nav ListBoxItem">
+    <Setter Property="Theme" Value="{StaticResource NavItem}" />
+  </Style>
+
+</Styles>

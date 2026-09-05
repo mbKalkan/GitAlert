@@ -1,0 +1,852 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GitAlert.ViewModels"
+        xmlns:gfx="using:GitAlert.Graphics"
+        x:Class="GitAlert.Views.FlyoutWindow"
+        x:DataType="vm:FlyoutViewModel"
+        Title="GitAlert"
+        Width="1020"
+        Height="660"
+        MinWidth="640"
+        MinHeight="420"
+        ExtendClientAreaToDecorationsHint="True"
+        WindowDecorations="BorderOnly"
+        Background="{DynamicResource Surface}"
+        Foreground="{DynamicResource TextPrimary}"
+        ShowInTaskbar="True"
+        UseLayoutRounding="True">
+
+  <!-- A real resizable window rather than a popup: the caption is drawn by the header below, but
+       the frame and the resize borders are the system's. -->
+
+  <Window.Resources>
+
+    <DataTemplate x:Key="AlertTemplate" x:DataType="vm:AlertViewModel">
+      <StackPanel Classes.read="{Binding IsRead}" Classes.selected="{Binding IsSelected}">
+        <Button Theme="{StaticResource AlertCardButton}"
+                Classes.selected="{Binding IsSelected}"
+                Command="{Binding $parent[Window].((vm:FlyoutViewModel)DataContext).SelectAlertCommand}"
+                CommandParameter="{Binding}"
+                ToolTip.Tip="{Binding Tooltip}">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+
+            <!-- Kind badge: the glyph in its accent colour on a tile tinted with the same hue. -->
+            <Border Grid.Column="0"
+                    Width="30"
+                    Height="30"
+                    CornerRadius="8"
+                    Background="{Binding AccentKey, Converter={StaticResource ThemeBrush}}"
+                    Opacity="0.16"
+                    VerticalAlignment="Top" />
+
+            <Path Grid.Column="0"
+                  Data="{Binding Kind, Converter={StaticResource KindToGlyph}}"
+                  Fill="{Binding AccentKey, Converter={StaticResource ThemeBrush}}"
+                  Width="16"
+                  Height="16"
+                  Stretch="Uniform"
+                  Margin="0,7,0,0"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top" />
+
+            <StackPanel Grid.Column="1" Margin="11,0,8,0" VerticalAlignment="Center">
+              <!-- Weight and colour come from styles, not from here: a value set on the element
+                   itself would outrank the style that dims a read alert. -->
+              <TextBlock Name="TitleLine"
+                         Text="{Binding PrimaryText}"
+                         FontSize="13"
+                         TextTrimming="CharacterEllipsis" />
+
+              <TextBlock Text="{Binding SecondaryText}"
+                         FontSize="12"
+                         Margin="0,2,0,0"
+                         Foreground="{DynamicResource TextSecondary}"
+                         TextTrimming="CharacterEllipsis"
+                         IsVisible="{Binding HasSecondaryText}" />
+
+              <TextBlock Text="{Binding RowMeta}"
+                         FontSize="11.5"
+                         Margin="0,2,0,0"
+                         Foreground="{DynamicResource TextMuted}"
+                         TextTrimming="CharacterEllipsis"
+                         IsVisible="{Binding RowMeta, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0">
+              <TextBlock Text="{Binding Age}"
+                         FontSize="11.5"
+                         Foreground="{DynamicResource TextMuted}"
+                         HorizontalAlignment="Right" />
+
+              <Ellipse Name="UnreadDot"
+                       Width="7"
+                       Height="7"
+                       Margin="0,6,1,0"
+                       Fill="{DynamicResource Accent}"
+                       HorizontalAlignment="Right" />
+            </StackPanel>
+          </Grid>
+        </Button>
+
+        <!-- What the open alert unfolds: one line with the count and the two actions, then the
+             files it touched. They belong to the detail view model, which only ever holds the
+             selected alert's, so every card may bind to it and only the open one shows it. -->
+        <StackPanel Name="Changes"
+                    Margin="36,0,4,6"
+                    DataContext="{Binding $parent[Window].((vm:FlyoutViewModel)DataContext).Detail}"
+                    x:DataType="vm:AlertDetailViewModel">
+          <StackPanel.Transitions>
+            <Transitions>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+            </Transitions>
+          </StackPanel.Transitions>
+
+          <Grid Margin="10,3,2,3" ColumnDefinitions="*,Auto,Auto">
+            <TextBlock Grid.Column="0"
+                       Classes="muted"
+                       Text="{Binding Caption}"
+                       Margin="0,0,8,0"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+
+            <Button Grid.Column="1"
+                    Content="Reload"
+                    Theme="{StaticResource LinkButton}"
+                    Command="{Binding ReloadCommand}"
+                    ToolTip.Tip="Fetch the changed files again"
+                    IsVisible="{Binding CanReload}" />
+
+            <Button Grid.Column="2"
+                    Content="Open on GitHub"
+                    Theme="{StaticResource LinkButton}"
+                    Margin="4,0,0,0"
+                    Command="{Binding OpenOnGitHubCommand}" />
+          </Grid>
+
+          <!-- Bound only while open, so a folded card keeps no row containers for the selected
+               alert's files. The panel's context is the detail model; the card's own IsSelected
+               sits one level up. -->
+          <ItemsControl Name="FileRows" ItemTemplate="{StaticResource FileRowTemplate}">
+            <ItemsControl.ItemsSource>
+              <MultiBinding Converter="{StaticResource WhenTrue}">
+                <Binding Path="Files" />
+                <Binding Path="$parent[StackPanel].((vm:AlertViewModel)DataContext).IsSelected" />
+              </MultiBinding>
+            </ItemsControl.ItemsSource>
+          </ItemsControl>
+
+          <!-- A merge across hundreds of files would otherwise push every other project off the
+               bottom of the list. -->
+          <Button Content="{Binding ShowAllFilesLabel}"
+                  Theme="{StaticResource LinkButton}"
+                  HorizontalAlignment="Left"
+                  Margin="6,2,0,0"
+                  Command="{Binding ShowAllFilesCommand}"
+                  IsVisible="{Binding HasHiddenFiles}" />
+        </StackPanel>
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="ProjectGroupTemplate" x:DataType="vm:ProjectGroupViewModel">
+      <StackPanel Classes.expanded="{Binding IsExpanded}"
+                  Classes.dragging="{Binding IsBeingDragged}"
+                  Classes.unread="{Binding HasUnread}"
+                  Classes.dropAbove="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Above}"
+                  Classes.dropBelow="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Below}">
+        <Border Name="DropAbove" Classes="dropLine" />
+
+        <!-- Pressing and moving the header drags the project; a plain click still folds it. -->
+        <Button Name="Header"
+                Theme="{StaticResource GroupHeaderButton}"
+                ToolTip.Tip="{Binding Repository}"
+                Click="OnGroupHeaderClick"
+                PointerPressed="OnGroupHeaderPointerPressed"
+                PointerMoved="OnGroupHeaderPointerMoved"
+                PointerReleased="OnGroupHeaderPointerReleased"
+                PointerCaptureLost="OnGroupHeaderCaptureLost">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+
+            <Path Name="Chevron"
+                  Grid.Column="0"
+                  Data="M4,2.5 L8.5,7 L4,11.5"
+                  Stroke="{DynamicResource TextMuted}"
+                  StrokeThickness="1.5"
+                  StrokeLineCap="Round"
+                  Width="11"
+                  Height="12"
+                  Stretch="Uniform"
+                  VerticalAlignment="Center" />
+
+            <TextBlock Grid.Column="1"
+                       Margin="7,0,8,0"
+                       VerticalAlignment="Center"
+                       FontSize="12.5"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" /></TextBlock>
+
+            <StackPanel Name="HeaderTools"
+                        Grid.Column="2"
+                        Orientation="Horizontal"
+                        Margin="0,0,6,0"
+                        VerticalAlignment="Center">
+              <!-- One tick reads the whole project, so a busy repository need not be read row by row. -->
+              <Button Theme="{StaticResource HeaderToolButton}"
+                      Command="{Binding MarkReadCommand}"
+                      IsEnabled="{Binding HasUnread}"
+                      Margin="0,0,4,0"
+                      ToolTip.Tip="Mark everything in this project read">
+                <Path Data="M2,7.2 L5.6,10.6 L11.6,3.6"
+                      Stroke="{Binding $parent[Button].Foreground}"
+                      StrokeThickness="1.6"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round" />
+              </Button>
+              <Button Theme="{StaticResource HeaderToolButton}"
+                      Command="{Binding MoveUpCommand}"
+                      IsEnabled="{Binding CanMoveUp}"
+                      ToolTip.Tip="Move this project up">
+                <Path Data="M2,7 L6.5,2.5 L11,7"
+                      Stroke="{Binding $parent[Button].Foreground}"
+                      StrokeThickness="1.6"
+                      StrokeLineCap="Round" />
+              </Button>
+              <Button Theme="{StaticResource HeaderToolButton}"
+                      Command="{Binding MoveDownCommand}"
+                      IsEnabled="{Binding CanMoveDown}"
+                      ToolTip.Tip="Move this project down">
+                <Path Data="M2,2.5 L6.5,7 L11,2.5"
+                      Stroke="{Binding $parent[Button].Foreground}"
+                      StrokeThickness="1.6"
+                      StrokeLineCap="Round" />
+              </Button>
+            </StackPanel>
+
+            <Border Name="CountBadge"
+                    Grid.Column="3"
+                    MinWidth="16"
+                    Height="16"
+                    CornerRadius="8"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding ShowCount}">
+              <TextBlock Name="CountText"
+                         Text="{Binding CountText}"
+                         FontSize="10"
+                         FontWeight="SemiBold"
+                         Margin="5,0"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+            </Border>
+          </Grid>
+        </Button>
+
+        <!-- Everything below only exists while the section is open. -->
+        <StackPanel Name="Body" Margin="0,0,0,2">
+          <ItemsControl Name="Rows" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource AlertTemplate}" />
+
+          <TextBlock Text="Reading&#8230;"
+                     Classes="muted"
+                     Margin="26,4,0,4"
+                     IsVisible="{Binding IsLoading}" />
+
+          <TextBlock Text="{Binding Message}"
+                     Classes="muted"
+                     Margin="26,4,10,4"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding HasMessage}" />
+
+          <Button Content="{Binding LoadMoreLabel}"
+                  Theme="{StaticResource GhostButton}"
+                  HorizontalAlignment="Left"
+                  Margin="22,2,0,4"
+                  Command="{Binding LoadMoreCommand}"
+                  IsVisible="{Binding CanLoadMore}" />
+        </StackPanel>
+
+        <Border Name="DropBelow" Classes="dropLine" />
+      </StackPanel>
+    </DataTemplate>
+
+    <DataTemplate x:Key="FileRowTemplate" x:DataType="vm:FileDiffViewModel">
+      <Button Theme="{StaticResource FileRowButton}"
+              Classes.selected="{Binding IsSelected}"
+              Command="{Binding $parent[ItemsControl].((vm:AlertDetailViewModel)DataContext).SelectFileCommand}"
+              CommandParameter="{Binding}"
+              ToolTip.Tip="{Binding Tooltip}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Path Grid.Column="0"
+                Data="M2,1 L8,1 L11,4 L11,14 L2,14 Z M8,1 L8,4 L11,4"
+                Stroke="{DynamicResource TextMuted}"
+                StrokeThickness="1.3"
+                StrokeJoin="Round"
+                Width="10"
+                Height="13"
+                Stretch="Uniform"
+                VerticalAlignment="Center" />
+
+          <!-- The name first, the folder dimmed after it; the counts wait in the tooltip and on
+               the bar above the diff, where there is room for them. -->
+          <TextBlock Grid.Column="1"
+                     Margin="9,0,8,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"><Run Text="{Binding FileName}" Foreground="{DynamicResource TextPrimary}" /><Run Text="  " /><Run Text="{Binding Folder}" Foreground="{DynamicResource TextMuted}" FontSize="11" /></TextBlock>
+
+          <TextBlock Name="Letter"
+                     Grid.Column="2"
+                     Classes.added="{Binding IsAdded}"
+                     Classes.deleted="{Binding IsDeleted}"
+                     Text="{Binding StatusLetter}"
+                     VerticalAlignment="Center"
+                     Width="14"
+                     TextAlignment="Center"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     FontWeight="SemiBold"
+                     ToolTip.Tip="{Binding Status}" />
+        </Grid>
+      </Button>
+    </DataTemplate>
+
+    <!-- One row of a unified diff: the two line numbers, the +/- marker, then the code. -->
+    <DataTemplate x:Key="DiffLineTemplate" x:DataType="vm:DiffLineViewModel">
+      <Border Name="Row"
+              Classes.added="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Added}"
+              Classes.removed="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Removed}"
+              Classes.hunk="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Hunk}"
+              Classes.note="{Binding Kind, Converter={StaticResource Equals}, ConverterParameter=Note}">
+        <Grid ColumnDefinitions="38,38,14,*">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding OldNumber}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11"
+                     Foreground="{DynamicResource DiffGutterText}"
+                     TextAlignment="Right"
+                     Padding="0,1,8,1" />
+
+          <TextBlock Grid.Column="1"
+                     Text="{Binding NewNumber}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11"
+                     Foreground="{DynamicResource DiffGutterText}"
+                     TextAlignment="Right"
+                     Padding="0,1,8,1" />
+
+          <TextBlock Name="Marker"
+                     Grid.Column="2"
+                     Text="{Binding Marker}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     Padding="0,1,0,1" />
+
+          <TextBlock Name="Code"
+                     Grid.Column="3"
+                     Text="{Binding Text}"
+                     FontFamily="{StaticResource CodeFont}"
+                     FontSize="11.5"
+                     Padding="0,1,10,1"
+                     TextWrapping="NoWrap" />
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+  </Window.Resources>
+
+  <Window.Styles>
+
+    <!-- Resting looks, as styles rather than values on the elements: a value set on the element
+         itself outranks every style, so the data-driven classes below could never override it. -->
+    <Style Selector="TextBlock#TitleLine">
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    </Style>
+    <Style Selector="StackPanel#Changes">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="StackPanel#HeaderTools">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="StackPanel#Body">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Border#CountBadge">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+    </Style>
+    <Style Selector="TextBlock#CountText">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+    </Style>
+    <Style Selector="TextBlock#Letter">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+    </Style>
+    <Style Selector="Border#Row">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="TextBlock#Marker">
+      <Setter Property="Foreground" Value="{DynamicResource DiffGutterText}" />
+    </Style>
+    <Style Selector="TextBlock#Code">
+      <Setter Property="Foreground" Value="{DynamicResource DiffCodeText}" />
+    </Style>
+
+    <!-- Read alerts lose the dot and the emphasis, but stay in the list. -->
+    <Style Selector="StackPanel.read TextBlock#TitleLine">
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+    </Style>
+    <Style Selector="StackPanel.read Ellipse#UnreadDot">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+
+    <!-- The open card: its changes unfold under it, fading in rather than snapping. -->
+    <Style Selector="StackPanel.selected > StackPanel#Changes">
+      <Setter Property="IsVisible" Value="True" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+
+    <!-- The line that says where a dragged project will land. -->
+    <Style Selector="Border.dropLine">
+      <Setter Property="Height" Value="2" />
+      <Setter Property="CornerRadius" Value="1" />
+      <Setter Property="Margin" Value="6,2,8,2" />
+      <Setter Property="Background" Value="{DynamicResource Accent}" />
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="StackPanel.dropAbove > Border#DropAbove">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="StackPanel.dropBelow > Border#DropBelow">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="StackPanel.dragging > Button#Header">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+
+    <!-- The header's own hover, by name, lights its tools. -->
+    <Style Selector="Button#Header:pointerover StackPanel#HeaderTools">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+
+    <Style Selector="StackPanel.expanded > StackPanel#Body">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="StackPanel.expanded Path#Chevron">
+      <Setter Property="RenderTransform" Value="rotate(90deg)" />
+    </Style>
+
+    <!-- A project with unread alerts wears the accent, so a folded one still says so. -->
+    <Style Selector="StackPanel.unread Border#CountBadge">
+      <Setter Property="Background" Value="{DynamicResource Accent}" />
+    </Style>
+    <Style Selector="StackPanel.unread TextBlock#CountText">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+    </Style>
+
+    <!-- The status letter beside a file, and the rows of the diff. -->
+    <Style Selector="TextBlock#Letter.added">
+      <Setter Property="Foreground" Value="{DynamicResource DiffAddedAccent}" />
+    </Style>
+    <Style Selector="TextBlock#Letter.deleted">
+      <Setter Property="Foreground" Value="{DynamicResource DiffRemovedAccent}" />
+    </Style>
+    <Style Selector="Border#Row.added">
+      <Setter Property="Background" Value="{DynamicResource DiffAddedBackground}" />
+    </Style>
+    <Style Selector="Border#Row.added TextBlock#Marker">
+      <Setter Property="Foreground" Value="{DynamicResource DiffAddedAccent}" />
+    </Style>
+    <Style Selector="Border#Row.removed">
+      <Setter Property="Background" Value="{DynamicResource DiffRemovedBackground}" />
+    </Style>
+    <Style Selector="Border#Row.removed TextBlock#Marker">
+      <Setter Property="Foreground" Value="{DynamicResource DiffRemovedAccent}" />
+    </Style>
+    <Style Selector="Border#Row.hunk">
+      <Setter Property="Background" Value="{DynamicResource DiffHunkBackground}" />
+    </Style>
+    <Style Selector="Border#Row.hunk TextBlock#Code">
+      <Setter Property="Foreground" Value="{DynamicResource DiffHunkText}" />
+    </Style>
+    <Style Selector="Border#Row.note TextBlock#Code">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+      <Setter Property="FontStyle" Value="Italic" />
+    </Style>
+
+    <!-- The dot beside the status line in the header. -->
+    <Style Selector="Ellipse#StatusDot">
+      <Setter Property="Fill" Value="{DynamicResource StatusIdle}" />
+    </Style>
+    <Style Selector="Ellipse#StatusDot.connected">
+      <Setter Property="Fill" Value="{DynamicResource StatusConnected}" />
+    </Style>
+    <Style Selector="Ellipse#StatusDot.connecting">
+      <Setter Property="Fill" Value="{DynamicResource StatusWorking}" />
+    </Style>
+    <Style Selector="Ellipse#StatusDot.warning">
+      <Setter Property="Fill" Value="{DynamicResource StatusWarning}" />
+    </Style>
+    <Style Selector="Ellipse#StatusDot.error">
+      <Setter Property="Fill" Value="{DynamicResource StatusError}" />
+    </Style>
+
+    <!-- The pushpin takes the accent while the window is kept on top. -->
+    <Style Selector="Path#PinGlyph">
+      <Setter Property="Fill" Value="{DynamicResource TextMuted}" />
+    </Style>
+    <Style Selector="Path#PinGlyph.pinned">
+      <Setter Property="Fill" Value="{DynamicResource Accent}" />
+    </Style>
+
+    <!-- The filter chip's label and badge invert when the chip takes the accent. -->
+    <Style Selector="Button.chip TextBlock#ChipLabel">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+    </Style>
+    <Style Selector="Button.chip:pointerover TextBlock#ChipLabel">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+    </Style>
+    <Style Selector="Button.chip.selected TextBlock#ChipLabel">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+    </Style>
+    <Style Selector="Button.chip Border#ChipCount">
+      <Setter Property="Background" Value="{DynamicResource Accent}" />
+    </Style>
+    <Style Selector="Button.chip.selected Border#ChipCount">
+      <Setter Property="Background" Value="{DynamicResource OnAccent}" />
+    </Style>
+    <Style Selector="Button.chip TextBlock#ChipCountText">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+    </Style>
+    <Style Selector="Button.chip.selected TextBlock#ChipCountText">
+      <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+    </Style>
+
+  </Window.Styles>
+
+  <Border Background="{DynamicResource Surface}"
+          BorderBrush="{DynamicResource Border}"
+          BorderThickness="1">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+      <!-- ==================== Header ==================== -->
+
+      <Grid Grid.Row="0"
+            Name="Header"
+            Margin="16,14,10,10"
+            ColumnDefinitions="Auto,*,Auto"
+            Background="Transparent"
+            WindowDecorationProperties.ElementRole="TitleBar">
+
+        <Viewbox Grid.Column="0" Width="20" Height="20" VerticalAlignment="Center">
+          <Path Data="{x:Static gfx:Bell.Geometry}" Fill="{DynamicResource Accent}" />
+        </Viewbox>
+
+        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="GitAlert" Classes="title" />
+
+          <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+            <Ellipse Name="StatusDot"
+                     Width="7"
+                     Height="7"
+                     VerticalAlignment="Center"
+                     Classes.connected="{Binding Status, Converter={StaticResource Equals}, ConverterParameter=Connected}"
+                     Classes.connecting="{Binding Status, Converter={StaticResource Equals}, ConverterParameter=Connecting}"
+                     Classes.warning="{Binding Status, Converter={StaticResource Equals}, ConverterParameter=Warning}"
+                     Classes.error="{Binding Status, Converter={StaticResource Equals}, ConverterParameter=Error}" />
+            <TextBlock Text="{Binding StatusText}"
+                       Classes="muted"
+                       Margin="6,0,0,0"
+                       MaxWidth="320"
+                       TextTrimming="CharacterEllipsis"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="&#183;"
+                       Classes="muted"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding LastUpdatedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <TextBlock Text="{Binding LastUpdatedText}"
+                       Classes="muted"
+                       Margin="6,0,0,0"
+                       VerticalAlignment="Center"
+                       IsVisible="{Binding LastUpdatedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+
+          <Button Theme="{StaticResource IconButton}" Command="{Binding RefreshCommand}" ToolTip.Tip="Check now">
+            <Canvas Width="16" Height="16">
+              <Path Data="M13.4,8 A5.4,5.4 0 1 1 11.2,3.7"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    StrokeThickness="1.6"
+                    StrokeLineCap="Round" />
+              <Path Data="M11.9,1.3 L12.6,4.8 L9.1,4.4 Z"
+                    Fill="{Binding $parent[Button].Foreground}" />
+            </Canvas>
+          </Button>
+
+          <!-- A pushpin, not a map marker: the button keeps the window on top. -->
+          <Button Name="PinButton" Theme="{StaticResource IconButton}" Click="OnPinClicked" ToolTip.Tip="Keep on top">
+            <Path Name="PinGlyph"
+                  Width="15"
+                  Height="15"
+                  Stretch="Uniform"
+                  Classes.pinned="{Binding $parent[Window].Topmost}"
+                  Data="M5.5,1.2 L10.5,1.2 A0.7,0.7 0 0 1 10.5,2.6 L10.1,2.6 L10.1,6.4 L12.4,8.6 A1,1 0 0 1 12.7,9.3 L12.7,9.6 A0.6,0.6 0 0 1 12.1,10.2 L8.7,10.2 L8.7,14.2 L8,15.2 L7.3,14.2 L7.3,10.2 L3.9,10.2 A0.6,0.6 0 0 1 3.3,9.6 L3.3,9.3 A1,1 0 0 1 3.6,8.6 L5.9,6.4 L5.9,2.6 L5.5,2.6 A0.7,0.7 0 0 1 5.5,1.2 Z" />
+          </Button>
+
+          <Button Theme="{StaticResource IconButton}" Command="{Binding ShowSettingsCommand}" ToolTip.Tip="Settings">
+            <Canvas Width="16" Height="16">
+              <Path Data="M8,5.4 A2.6,2.6 0 1 0 8,10.6 A2.6,2.6 0 1 0 8,5.4 Z"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    StrokeThickness="1.5" />
+              <Path Data="M8,1.2 L8,3.1 M8,12.9 L8,14.8 M14.8,8 L12.9,8 M3.1,8 L1.2,8 M12.8,3.2 L11.5,4.5 M4.5,11.5 L3.2,12.8 M12.8,12.8 L11.5,11.5 M4.5,4.5 L3.2,3.2"
+                    Stroke="{Binding $parent[Button].Foreground}"
+                    StrokeThickness="1.5"
+                    StrokeLineCap="Round" />
+            </Canvas>
+          </Button>
+
+          <Button Name="CloseButton" Theme="{StaticResource IconButton}" Click="OnCloseClicked" ToolTip.Tip="Close">
+            <Path Data="M3.4,3.4 L12.6,12.6 M12.6,3.4 L3.4,12.6"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  StrokeThickness="1.6"
+                  StrokeLineCap="Round" />
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <!-- ==================== Filters ==================== -->
+
+      <!-- Both filters on one row: what kind, and whether read alerts count. -->
+      <Grid Grid.Row="1" Margin="16,0,14,8" ColumnDefinitions="*,Auto">
+
+        <ItemsControl Grid.Column="0" ItemsSource="{Binding Filters}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:FilterChipViewModel">
+              <Button Theme="{StaticResource ChipButton}"
+                      Classes="chip"
+                      Classes.selected="{Binding IsSelected}"
+                      Margin="0,0,4,5"
+                      Command="{Binding $parent[Window].((vm:FlyoutViewModel)DataContext).SelectFilterCommand}"
+                      CommandParameter="{Binding}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Name="ChipLabel"
+                             Text="{Binding Label}"
+                             FontSize="11.5"
+                             FontWeight="Medium"
+                             VerticalAlignment="Center" />
+                  <Border Name="ChipCount"
+                          Margin="5,0,0,0"
+                          MinWidth="15"
+                          Height="15"
+                          CornerRadius="7.5"
+                          VerticalAlignment="Center"
+                          IsVisible="{Binding HasCount}">
+                    <TextBlock Name="ChipCountText"
+                               Text="{Binding Count}"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Margin="4,0"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                  </Border>
+                </StackPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border Grid.Column="1"
+                CornerRadius="13"
+                Padding="2"
+                Margin="8,0,0,5"
+                VerticalAlignment="Top"
+                Background="{DynamicResource ChipBackground}">
+          <Button Theme="{StaticResource ModeChipButton}"
+                  Content="Unread only"
+                  Classes.selected="{Binding UnreadOnly}"
+                  ToolTip.Tip="Show only alerts you have not read, and only the projects that have some"
+                  Command="{Binding ToggleUnreadOnlyCommand}" />
+        </Border>
+      </Grid>
+
+      <!-- ==================== List and detail ==================== -->
+
+      <Grid Grid.Row="2" Name="Panes">
+        <Grid.ColumnDefinitions>
+          <!-- Proportional rather than fixed: a fixed list column would starve the detail pane
+               instead of shrinking with it when the window is dragged narrow. -->
+          <ColumnDefinition Width="0.6*" MinWidth="250" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" MinWidth="320" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Alerts -->
+        <Grid Grid.Column="0">
+          <ScrollViewer Name="ListScroller"
+                        Margin="8,0,4,0"
+                        HorizontalScrollBarVisibility="Disabled"
+                        IsVisible="{Binding !IsEmpty}">
+            <ItemsControl Name="GroupList"
+                          ItemsSource="{Binding Groups}"
+                          ItemTemplate="{StaticResource ProjectGroupTemplate}"
+                          Margin="0,0,4,8"
+                          Background="Transparent" />
+          </ScrollViewer>
+
+          <StackPanel VerticalAlignment="Center"
+                      HorizontalAlignment="Center"
+                      Margin="28,24,28,32"
+                      IsVisible="{Binding IsEmpty}">
+            <Viewbox Width="34" Height="34" Opacity="0.28" HorizontalAlignment="Center">
+              <Path Data="{x:Static gfx:Bell.Geometry}" Fill="{DynamicResource TextMuted}" />
+            </Viewbox>
+            <TextBlock Text="{Binding EmptyMessage}"
+                       Classes="secondary"
+                       Margin="0,12,0,0"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       MaxWidth="240" />
+          </StackPanel>
+        </Grid>
+
+        <!-- Where it is left is kept with the window's placement, like its size. -->
+        <GridSplitter Grid.Column="1"
+                      Width="4"
+                      Background="Transparent"
+                      ResizeDirection="Columns"
+                      DragCompleted="OnListSplitterDragCompleted" />
+
+        <!-- The diff of whichever file is picked under the open alert. -->
+        <Border Grid.Column="2"
+                BorderBrush="{DynamicResource BorderSubtle}"
+                BorderThickness="1,0,0,0"
+                Background="{DynamicResource SurfaceSunken}">
+          <Grid DataContext="{Binding Detail}" x:DataType="vm:AlertDetailViewModel">
+
+            <!-- Nothing picked yet. -->
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Margin="30"
+                        IsVisible="{Binding !HasSelection}">
+              <TextBlock Text="Nothing selected"
+                         Classes="secondary"
+                         FontSize="13.5"
+                         HorizontalAlignment="Center" />
+              <TextBlock Text="Pick an alert or a commit. The files it changed unfold under it, and the diff of the one you pick opens here."
+                         Classes="muted"
+                         Margin="0,6,0,0"
+                         TextAlignment="Center"
+                         TextWrapping="Wrap"
+                         MaxWidth="280" />
+            </StackPanel>
+
+            <Grid IsVisible="{Binding HasSelection}">
+              <Grid IsVisible="{Binding HasSelectedFile}" RowDefinitions="Auto,*,Auto">
+
+                <!-- The file bar: where the file lives, dimmed, then its name, then its counts. -->
+                <Border Grid.Row="0"
+                        Padding="14,10,10,10"
+                        Background="{DynamicResource SurfaceElevated}"
+                        BorderBrush="{DynamicResource BorderSubtle}"
+                        BorderThickness="0,0,0,1">
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Grid.Column="0"
+                               FontFamily="{StaticResource CodeFont}"
+                               FontSize="11.5"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding SelectedFile.Tooltip}"><Run Text="{Binding SelectedFile.Folder}" Foreground="{DynamicResource TextMuted}" /><Run Text="{Binding SelectedFile.FileName}" Foreground="{DynamicResource TextPrimary}" FontWeight="SemiBold" /></TextBlock>
+
+                    <TextBlock Grid.Column="1"
+                               VerticalAlignment="Center"
+                               Margin="12,0,6,0"
+                               FontFamily="{StaticResource CodeFont}"
+                               FontSize="10.5"><Run Text="{Binding SelectedFile.Additions, StringFormat='+{0}'}" Foreground="{DynamicResource DiffAddedAccent}" /><Run Text="  " /><Run Text="{Binding SelectedFile.Deletions, StringFormat='-{0}'}" Foreground="{DynamicResource DiffRemovedAccent}" /></TextBlock>
+
+                    <Button Grid.Column="2"
+                            Content="Open file"
+                            Theme="{StaticResource GhostButton}"
+                            Command="{Binding SelectedFile.OpenOnGitHubCommand}" />
+                  </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding SelectedFile.Lines}"
+                                ItemTemplate="{StaticResource DiffLineTemplate}"
+                                VerticalAlignment="Top" />
+                </ScrollViewer>
+
+                <TextBlock Grid.Row="2"
+                           Text="{Binding SelectedFile.Note}"
+                           Margin="14,8,12,10"
+                           FontSize="11.5"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextMuted}"
+                           IsVisible="{Binding SelectedFile.HasNote}" />
+              </Grid>
+
+              <TextBlock Text="Fetching the changed files from GitHub&#8230;"
+                         Classes="secondary"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding IsLoading}" />
+
+              <TextBlock Text="{Binding Error}"
+                         Foreground="{DynamicResource Danger}"
+                         FontSize="12.5"
+                         Margin="30"
+                         TextWrapping="Wrap"
+                         TextAlignment="Center"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding HasError}" />
+
+              <TextBlock Text="{Binding Notice}"
+                         Classes="muted"
+                         Margin="30"
+                         MaxWidth="320"
+                         TextWrapping="Wrap"
+                         TextAlignment="Center"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsVisible="{Binding HasNotice}" />
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- ==================== Footer ==================== -->
+
+      <Border Grid.Row="3"
+              BorderBrush="{DynamicResource BorderSubtle}"
+              BorderThickness="0,1,0,0"
+              Padding="12,8">
+        <Grid ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="6,0,0,0">
+            <TextBlock Text="{Binding UnreadText}" Classes="muted" />
+            <TextBlock Text="{Binding RateLimitText}"
+                       Classes="muted"
+                       FontSize="10.5"
+                       Opacity="0.75"
+                       IsVisible="{Binding RateLimitText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <Button Content="Mark all read"
+                    Theme="{StaticResource GhostButton}"
+                    Command="{Binding MarkAllReadCommand}"
+                    IsEnabled="{Binding HasUnread}" />
+            <Button Content="Quit"
+                    Theme="{StaticResource GhostButton}"
+                    Command="{Binding QuitCommand}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+    </Grid>
+  </Border>
+</Window>

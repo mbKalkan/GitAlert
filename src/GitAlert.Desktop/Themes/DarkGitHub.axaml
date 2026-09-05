@@ -1,0 +1,97 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- The other dark palette: GitHub's own, to the number, so a diff read here and the same
+       diff read on the site look like one change. Same keys as Dark.xaml. -->
+
+  <SolidColorBrush x:Key="Surface" Color="#0D1117" />
+  <SolidColorBrush x:Key="SurfaceElevated" Color="#161B22" />
+  <SolidColorBrush x:Key="SurfaceHover" Color="#1F2428" />
+  <SolidColorBrush x:Key="SurfaceSunken" Color="#010409" />
+
+  <SolidColorBrush x:Key="Border" Color="#30363D" />
+  <SolidColorBrush x:Key="BorderSubtle" Color="#21262D" />
+
+  <SolidColorBrush x:Key="TextPrimary" Color="#E6EDF3" />
+  <SolidColorBrush x:Key="TextSecondary" Color="#8B949E" />
+  <SolidColorBrush x:Key="TextMuted" Color="#6E7681" />
+
+  <SolidColorBrush x:Key="Accent" Color="#2F81F7" />
+  <SolidColorBrush x:Key="AccentHover" Color="#58A6FF" />
+  <SolidColorBrush x:Key="OnAccent" Color="#FFFFFF" />
+  <SolidColorBrush x:Key="AccentSubtle" Color="#14263F" />
+
+  <SolidColorBrush x:Key="Danger" Color="#F85149" />
+  <SolidColorBrush x:Key="Success" Color="#3FB950" />
+
+  <SolidColorBrush x:Key="ChipBackground" Color="#21262D" />
+  <SolidColorBrush x:Key="ChipHover" Color="#30363D" />
+
+  <SolidColorBrush x:Key="ControlBackground" Color="#010409" />
+  <SolidColorBrush x:Key="ScrollThumb" Color="#484F58" />
+  <SolidColorBrush x:Key="ScrollThumbHover" Color="#6E7681" />
+
+  <SolidColorBrush x:Key="DiffAddedBackground" Color="#12261E" />
+  <SolidColorBrush x:Key="DiffAddedAccent" Color="#3FB950" />
+  <SolidColorBrush x:Key="DiffRemovedBackground" Color="#2C1A1D" />
+  <SolidColorBrush x:Key="DiffRemovedAccent" Color="#F85149" />
+  <SolidColorBrush x:Key="DiffHunkBackground" Color="#14263F" />
+  <SolidColorBrush x:Key="DiffHunkText" Color="#8DB4F0" />
+  <SolidColorBrush x:Key="DiffGutterText" Color="#6E7681" />
+  <SolidColorBrush x:Key="DiffCodeText" Color="#E6EDF3" />
+
+  <!-- The glyph on each alert card, by kind, and the severity that overrides it. -->
+  <SolidColorBrush x:Key="KindPush" Color="#58A6FF" />
+  <SolidColorBrush x:Key="KindPullRequest" Color="#A371F7" />
+  <SolidColorBrush x:Key="KindIssue" Color="#3FB950" />
+  <SolidColorBrush x:Key="KindComment" Color="#8B949E" />
+  <SolidColorBrush x:Key="KindReview" Color="#3FB950" />
+  <SolidColorBrush x:Key="KindRelease" Color="#DB6D28" />
+  <SolidColorBrush x:Key="KindBranch" Color="#58A6FF" />
+  <SolidColorBrush x:Key="KindWorkflow" Color="#8B949E" />
+  <SolidColorBrush x:Key="KindStar" Color="#E3B341" />
+  <SolidColorBrush x:Key="KindFork" Color="#8B949E" />
+  <SolidColorBrush x:Key="KindMention" Color="#DB61A2" />
+  <SolidColorBrush x:Key="KindOther" Color="#8B949E" />
+  <SolidColorBrush x:Key="SeveritySuccess" Color="#3FB950" />
+  <SolidColorBrush x:Key="SeverityWarning" Color="#D29922" />
+  <SolidColorBrush x:Key="SeverityError" Color="#F85149" />
+
+  <!-- The dot beside the status line in the header. -->
+  <SolidColorBrush x:Key="StatusConnected" Color="#34A853" />
+  <SolidColorBrush x:Key="StatusWorking" Color="#589CF0" />
+  <SolidColorBrush x:Key="StatusWarning" Color="#C7931F" />
+  <SolidColorBrush x:Key="StatusError" Color="#E5534B" />
+  <SolidColorBrush x:Key="StatusIdle" Color="#8993A1" />
+
+  <Color x:Key="ShadowColor">#000000</Color>
+  <x:Double x:Key="ShadowOpacity">0.55</x:Double>
+
+
+  <!-- Fluent draws the combo box and its drop-down from these; aliased so they follow the palette. -->
+  <CornerRadius x:Key="ControlCornerRadius">7</CornerRadius>
+  <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
+  <StaticResource x:Key="ComboBoxBackground" ResourceKey="ControlBackground" />
+  <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="ControlBackground" />
+  <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="ControlBackground" />
+  <StaticResource x:Key="ComboBoxBackgroundDisabled" ResourceKey="ControlBackground" />
+  <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="Border" />
+  <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="TextMuted" />
+  <StaticResource x:Key="ComboBoxBorderBrushPressed" ResourceKey="Accent" />
+  <StaticResource x:Key="ComboBoxForeground" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxForegroundPointerOver" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxForegroundPressed" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxForegroundFocused" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxDropDownBackground" ResourceKey="SurfaceElevated" />
+  <StaticResource x:Key="ComboBoxDropDownBorderBrush" ResourceKey="Border" />
+  <StaticResource x:Key="ComboBoxDropDownGlyphForeground" ResourceKey="TextSecondary" />
+  <StaticResource x:Key="ComboBoxItemForeground" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxItemForegroundPointerOver" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxItemForegroundSelected" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxItemForegroundSelectedPointerOver" ResourceKey="TextPrimary" />
+  <StaticResource x:Key="ComboBoxItemBackgroundPointerOver" ResourceKey="SurfaceHover" />
+  <StaticResource x:Key="ComboBoxItemBackgroundSelected" ResourceKey="AccentSubtle" />
+  <StaticResource x:Key="ComboBoxItemBackgroundSelectedPointerOver" ResourceKey="AccentSubtle" />
+  <StaticResource x:Key="ComboBoxItemBackgroundSelectedPressed" ResourceKey="AccentSubtle" />
+
+</ResourceDictionary>
