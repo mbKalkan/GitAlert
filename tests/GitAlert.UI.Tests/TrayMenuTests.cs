@@ -9,7 +9,7 @@ using GitAlert.Platform;
 using GitAlert.Views;
 using Xunit;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>
 /// The menu behind a right click on the tray icon: its entries, the click that chooses one, and the

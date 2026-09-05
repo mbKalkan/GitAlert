@@ -7,7 +7,7 @@ using GitAlert.Graphics;
 
 namespace GitAlert.Platform;
 
-/// <summary>Windows, through the shared <c>GitAlert.Windows</c> layer the WPF app also runs on.</summary>
+/// <summary>Windows, through the <c>GitAlert.Windows</c> layer the WPF app ran on before the Avalonia one.</summary>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsPlatform : IPlatform
 {

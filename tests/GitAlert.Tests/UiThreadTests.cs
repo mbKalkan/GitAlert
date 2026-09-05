@@ -5,7 +5,7 @@ namespace GitAlert.Tests;
 
 /// <summary>
 /// The view models hand background work to the UI thread through this and nothing else, which is
-/// what lets them sit under WPF today and Avalonia later without knowing either dispatcher.
+/// what let them move from WPF to Avalonia without knowing either dispatcher.
 /// </summary>
 public class UiThreadTests
 {

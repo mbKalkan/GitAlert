@@ -1,9 +1,9 @@
 namespace GitAlert.Core;
 
 /// <summary>
-/// Hands work from a background thread to the thread the view models belong to. WPF and Avalonia
-/// both install a <see cref="SynchronizationContext"/> on their UI thread, and that is all the
-/// view models need to know about either of them.
+/// Hands work from a background thread to the thread the view models belong to. Avalonia installs
+/// a <see cref="SynchronizationContext"/> on its UI thread, as WPF did before it, and that is all
+/// the view models need to know about the UI framework.
 /// </summary>
 public sealed class UiThread
 {

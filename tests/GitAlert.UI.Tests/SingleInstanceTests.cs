@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>
 /// One GitAlert per session, whichever front end got there first. Every test uses names of its own,

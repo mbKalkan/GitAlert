@@ -7,7 +7,7 @@ using GitAlert.Platform.Linux;
 using GitAlert.Platform.MacOS;
 using Xunit;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>
 /// The parts of the macOS and Linux platform layers that are pure: where a flyout lands, what the

@@ -5,7 +5,7 @@ namespace GitAlert.ViewModels;
 /// <summary>
 /// The 16 x 16 vector glyph for each <see cref="AlertKind"/>, as path data, and the palette key its
 /// accent colour is read from. Nothing here knows how a path is drawn: the view parses and caches it,
-/// which is what lets the same view models sit under WPF today and Avalonia tomorrow.
+/// which is what let the same view models move from WPF to Avalonia untouched.
 /// </summary>
 public static class AlertGlyphs
 {

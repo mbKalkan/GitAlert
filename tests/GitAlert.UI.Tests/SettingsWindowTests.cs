@@ -10,7 +10,7 @@ using GitAlert.ViewModels;
 using GitAlert.Views;
 using Xunit;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>The settings window: the accounts it lists, the pages it switches between, and clean bindings.</summary>
 public class SettingsWindowTests

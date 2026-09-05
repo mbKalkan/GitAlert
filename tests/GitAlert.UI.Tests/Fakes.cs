@@ -12,7 +12,7 @@ using GitAlert.Core;
 using GitAlert.Platform;
 using GitAlert.ViewModels;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>No tray, no foreground fights, no platform placement: the window as it lays itself out.</summary>
 internal sealed class HeadlessPlatform : IPlatform

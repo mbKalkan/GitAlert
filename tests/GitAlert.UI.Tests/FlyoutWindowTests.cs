@@ -14,7 +14,7 @@ using GitAlert.ViewModels;
 using GitAlert.Views;
 using Xunit;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>
 /// The flyout as the user sees it: what a project unfolds, what an open alert unfolds, and that

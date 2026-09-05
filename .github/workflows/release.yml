@@ -107,7 +107,7 @@ jobs:
         shell: bash
         run: |
           dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj -c Release
-          dotnet test tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj -c Release
+          dotnet test tests/GitAlert.UI.Tests/GitAlert.UI.Tests.csproj -c Release
 
       - name: Publish for both architectures
         shell: bash
@@ -115,7 +115,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           for rid in osx-arm64 osx-x64; do
-            dotnet publish src/GitAlert.Desktop/GitAlert.Desktop.csproj -c Release -r "$rid" --self-contained true \
+            dotnet publish src/GitAlert/GitAlert.csproj -c Release -r "$rid" --self-contained true \
               -p:DebugType=none -p:Version="$VERSION" -p:AssemblyVersion="$VERSION.0" -p:FileVersion="$VERSION.0" -p:InformationalVersion="$VERSION" \
               -o "artifacts/publish-$rid"
           done
@@ -159,14 +159,14 @@ jobs:
         shell: bash
         run: |
           dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj -c Release
-          dotnet test tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj -c Release
+          dotnet test tests/GitAlert.UI.Tests/GitAlert.UI.Tests.csproj -c Release
 
       - name: Publish
         shell: bash
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          dotnet publish src/GitAlert.Desktop/GitAlert.Desktop.csproj -c Release -r linux-x64 --self-contained true \
+          dotnet publish src/GitAlert/GitAlert.csproj -c Release -r linux-x64 --self-contained true \
             -p:DebugType=none -p:Version="$VERSION" -p:AssemblyVersion="$VERSION.0" -p:FileVersion="$VERSION.0" -p:InformationalVersion="$VERSION" \
             -o artifacts/publish-linux-x64
 
@@ -232,6 +232,10 @@ jobs:
             install anything? Take the portable `.zip`, unpack it anywhere and run `GitAlert.exe`.
             SmartScreen will warn about an unrecognised publisher: the build is not code signed.
             Choose **More info -> Run anyway**, or check the source and build it yourself.
+
+            **Not yet tested by people: the macOS and Linux builds.** They come from the same source
+            and pass the test suite on GitHub's runners, but nobody has run them on a real Mac or
+            Linux desktop yet. Please report what you find.
 
             **macOS.** Open the `.dmg` for your Mac - `osx-arm64` for Apple silicon, `osx-x64` for
             Intel - and drag GitAlert to Applications. The app is signed ad hoc, not notarised, so the

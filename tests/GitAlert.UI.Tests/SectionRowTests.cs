@@ -12,7 +12,7 @@ using GitAlert.ViewModels;
 using GitAlert.Views;
 using Xunit;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>
 /// Sections in the window: the header that folds them, the box that names them, the drop that

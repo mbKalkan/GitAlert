@@ -279,8 +279,6 @@ public class FlyoutCountTests : IDisposable
         public void UnreadChanged() => UnreadChangedCalls++;
     }
 
-    /// <summary>The window's view models are WPF objects, so they get a thread WPF is happy on.</summary>
-
     public void Dispose()
     {
         GC.SuppressFinalize(this);

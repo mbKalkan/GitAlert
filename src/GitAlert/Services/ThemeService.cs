@@ -1,59 +1,70 @@
-using System.Windows;
+using Avalonia;
+using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Platform;
+using Avalonia.Styling;
 using GitAlert.Configuration;
-using GitAlert.Platform;
 
 namespace GitAlert.Services;
 
 /// <summary>
 /// Swaps the palette dictionary at the front of the application's merged resources. Every control
 /// style refers to those keys with <c>DynamicResource</c>, so a swap re-themes the whole app
-/// without recreating a single window.
+/// without recreating a single window. The Fluent base theme is switched between its light and
+/// dark variants alongside, so the pieces it still draws - tooltips, scrollbars - agree.
 /// </summary>
-public static class ThemeService
+public sealed class ThemeService
 {
-    private static readonly Uri VsCodeDark = new("/Themes/Dark.xaml", UriKind.Relative);
-    private static readonly Uri GitHubDark = new("/Themes/DarkGitHub.xaml", UriKind.Relative);
-    private static readonly Uri Light = new("/Themes/Light.xaml", UriKind.Relative);
+    private static readonly Uri Base = new("avares://GitAlert/");
+    private static readonly Uri VsCodeDark = new("avares://GitAlert/Themes/Dark.axaml");
+    private static readonly Uri GitHubDark = new("avares://GitAlert/Themes/DarkGitHub.axaml");
+    private static readonly Uri Light = new("avares://GitAlert/Themes/Light.axaml");
 
-    private static AppTheme _mode = AppTheme.System;
-    private static DarkPalette _palette = DarkPalette.VsCode;
+    private readonly Application _app;
+    private readonly IPlatformSettings? _system;
+
+    private AppTheme _mode = AppTheme.System;
+    private DarkPalette _palette = DarkPalette.VsCode;
+
+    public ThemeService(Application app)
+    {
+        _app = app;
+        _system = app.PlatformSettings;
+
+        if (_system is not null)
+        {
+            _system.ColorValuesChanged += (_, _) => Reapply();
+        }
+    }
 
     /// <summary>True when the app is currently painting itself dark.</summary>
-    public static bool IsDark { get; private set; } = true;
+    public bool IsDark { get; private set; } = true;
 
-    public static event EventHandler? Applied;
+    public event EventHandler? Applied;
 
     /// <summary>
     /// Light has one look; dark has a choice, which only matters when dark is what comes out -
-    /// whether because it was asked for or because Windows is dark.
+    /// whether because it was asked for or because the system is dark.
     /// </summary>
-    public static void Apply(AppTheme mode, DarkPalette palette = DarkPalette.VsCode)
+    public void Apply(AppTheme mode, DarkPalette palette = DarkPalette.VsCode)
     {
         _mode = mode;
         _palette = palette;
         Reapply();
     }
 
-    /// <summary>Re-evaluates the system theme; called when Windows reports a preference change.</summary>
-    public static void Reapply()
+    /// <summary>Re-evaluates the system theme; called when the OS reports a preference change.</summary>
+    public void Reapply()
     {
         var dark = _mode switch
         {
             AppTheme.Dark => true,
             AppTheme.Light => false,
-            _ => SystemTheme.IsAppDark,
+            _ => _system?.GetColorValues().ThemeVariant != PlatformThemeVariant.Light,
         };
 
-        var application = Application.Current;
-        if (application is null)
-        {
-            IsDark = dark;
-            return;
-        }
-
         var source = !dark ? Light : _palette == DarkPalette.GitHub ? GitHubDark : VsCodeDark;
-        var palette = new ResourceDictionary { Source = source };
-        var merged = application.Resources.MergedDictionaries;
+        var palette = new ResourceInclude(Base) { Source = source };
+        var merged = _app.Resources.MergedDictionaries;
 
         // The palette always sits first so the control styles that follow can override nothing
         // and simply resolve against it.
@@ -66,7 +77,9 @@ public static class ThemeService
             merged[0] = palette;
         }
 
+        _app.RequestedThemeVariant = dark ? ThemeVariant.Dark : ThemeVariant.Light;
+
         IsDark = dark;
-        Applied?.Invoke(null, EventArgs.Empty);
+        Applied?.Invoke(this, EventArgs.Empty);
     }
 }

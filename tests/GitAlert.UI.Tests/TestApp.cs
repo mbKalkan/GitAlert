@@ -1,11 +1,11 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
-using GitAlert.Desktop.Tests;
+using GitAlert.UI.Tests;
 
 [assembly: AvaloniaTestApplication(typeof(TestApp))]
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>
 /// The real <see cref="App"/>, on the headless platform with Skia drawing on, so the windows lay

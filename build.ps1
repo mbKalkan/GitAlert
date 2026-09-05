@@ -38,8 +38,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $root = $PSScriptRoot
-# The Avalonia app is what ships; the WPF project stays in the solution until the 2.0 cutover.
-$project = Join-Path $root 'src/GitAlert.Desktop/GitAlert.Desktop.csproj'
+$project = Join-Path $root 'src/GitAlert/GitAlert.csproj'
 $tests = Join-Path $root 'GitAlert.sln'
 $artifacts = Join-Path $root 'artifacts'
 $publishDir = Join-Path $artifacts 'publish'
@@ -134,9 +133,9 @@ if ($RegenerateIcon) {
     # always come from the same vector artwork.
     Write-Step 'Regenerating app.ico from the vector artwork'
 
-    $builtExe = Join-Path $root "src/GitAlert.Desktop/bin/$Configuration/net10.0/GitAlert.exe"
+    $builtExe = Join-Path $root "src/GitAlert/bin/$Configuration/net10.0/GitAlert.exe"
     if (-not (Test-Path $builtExe)) {
-        $builtExe = Join-Path $root "src/GitAlert.Desktop/bin/$Configuration/net10.0/win-x64/GitAlert.exe"
+        $builtExe = Join-Path $root "src/GitAlert/bin/$Configuration/net10.0/win-x64/GitAlert.exe"
     }
 
     # GitAlert is a GUI subsystem executable, so the call operator would not wait for it.

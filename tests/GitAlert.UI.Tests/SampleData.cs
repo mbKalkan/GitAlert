@@ -1,7 +1,7 @@
 using GitAlert.Configuration;
 using GitAlert.Core;
 
-namespace GitAlert.Desktop.Tests;
+namespace GitAlert.UI.Tests;
 
 /// <summary>A small day: two projects, three alerts, one push with a diff behind it.</summary>
 internal static class SampleData
