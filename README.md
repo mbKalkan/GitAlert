@@ -4,7 +4,7 @@
 
 # GitAlert
 
-**A Windows tray app that watches the GitHub repositories you care about — and tells you the moment something happens.**
+**A Windows tray app — now also building for macOS and Linux — that watches the GitHub repositories you care about and tells you the moment something happens.**
 
 Pushes, pull requests, reviews, issues, comments, releases, branches and CI runs,
 in one quiet panel that drops out of the notification area — and the diff, right there beside it.
@@ -12,8 +12,8 @@ in one quiet panel that drops out of the notification area — and the diff, rig
 [![CI](https://github.com/mbKalkan/GitAlert/actions/workflows/ci.yml/badge.svg)](https://github.com/mbKalkan/GitAlert/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/mbKalkan/GitAlert?include_prereleases&sort=semver)](https://github.com/mbKalkan/GitAlert/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
-[![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4)](#install)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078D4)](#install)
 
 </div>
 
@@ -135,6 +135,24 @@ to install.
 Prefer not to install anything? Take the `-portable.zip` from the same release, unpack it anywhere
 and run `GitAlert.exe`.
 
+### macOS and Linux (early builds)
+
+Since 1.25.1 every release also carries packages built from the same source on GitHub's macOS and
+Linux runners. They pass the headless test suite there, but nobody has used them on a real desk
+yet: treat them as previews and [say what you find](https://github.com/mbKalkan/GitAlert/issues).
+
+**macOS.** Open `GitAlert-x.y.z-osx-arm64.dmg` on Apple silicon or `-osx-x64.dmg` on Intel and drag
+GitAlert to Applications. The app is signed ad hoc, not notarised, so the first launch is refused:
+open **System Settings → Privacy & Security**, find the message about GitAlert and choose
+**Open Anyway**. GitAlert lives in the menu bar; there is no Dock icon. Tokens go into your login
+keychain.
+
+**Linux.** `sudo apt install ./gitalert_x.y.z_amd64.deb` on Debian and Ubuntu; `chmod +x` the
+`.AppImage` and run it from anywhere; or unpack the `.tar.gz`. Stock GNOME shows no tray icons
+without the AppIndicator extension. Tokens go into the desktop's secret service when `secret-tool`
+(libsecret) is installed, and into a file only your user can read otherwise; the settings window
+says which.
+
 ### From source
 
 ```powershell
@@ -145,6 +163,14 @@ cd GitAlert
 
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). To build the installer
 too, install Inno Setup 6 (`winget install JRSoftware.InnoSetup`) and run `.\build.ps1 -Installer`.
+
+On macOS or Linux the SDK alone builds and tests the Avalonia app:
+
+```bash
+dotnet build src/GitAlert.Desktop/GitAlert.Desktop.csproj
+dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj
+dotnet test tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj
+```
 
 ## Setting it up
 
@@ -207,13 +233,16 @@ Four endpoints do the work: `/repos/{owner}/{repo}/commits` for pushes,
 
 ## Your data
 
-- Each account's access token is encrypted with **DPAPI**, scoped to your Windows user account, and
-  kept in its own file under `%APPDATA%\GitAlert\tokens`. A blob on disk is useless to another user
-  or on another machine, and one account's token is never used for another's repositories.
+- On Windows each account's access token is encrypted with **DPAPI**, scoped to your Windows user
+  account, and kept in its own file under `%APPDATA%\GitAlert\tokens`. A blob on disk is useless to
+  another user or on another machine. On macOS the token sits in your login keychain; on Linux in
+  the desktop's secret service or, without one, in a file only your user can read. One account's
+  token is never used for another's repositories.
 - While GitAlert runs, each token is held in memory as an ordinary .NET string so it can be sent
   with every request. That copy cannot be scrubbed, which is the same trade every desktop client
   makes; it is only ever readable by a process running as you.
-- Settings, sync state and alert history live in `%APPDATA%\GitAlert` as plain JSON you can read.
+- Settings, sync state and alert history live in `%APPDATA%\GitAlert` as plain JSON you can read
+  (`~/Library/Application Support/GitAlert` on macOS, `~/.config/GitAlert` on Linux).
 - GitAlert talks to `api.github.com` and nothing else. No telemetry, no analytics, no update pings.
 
 Uninstalling leaves `%APPDATA%\GitAlert` in place so a reinstall picks up where you left off; delete
@@ -230,7 +259,8 @@ src/GitAlert.Core/   Everything that is not a window; no UI framework, builds on
   ViewModels/      MVVM view models (CommunityToolkit.Mvvm)
   Platform/        The seams the app fills in: token encryption, run at sign-in
 src/GitAlert.Windows/ The Windows layer, no UI framework: Shell_NotifyIcon, DPAPI, the Run key, interop
-src/GitAlert.Desktop/ The app on Avalonia, which the releases ship as GitAlert.exe; on its way to macOS and Linux (see docs/cross-platform-plan.md)
+src/GitAlert.Desktop/ The app on Avalonia: GitAlert.exe on Windows and the macOS and Linux builds (see docs/cross-platform-plan.md)
+  Platform/        What differs per system: the Windows tray and DPAPI, MacOS/ (keychain, launch agent), Linux/ (secret service, autostart)
   Services/        Theming, the tray shell and its menu
   Graphics/        The vector artwork, rendered for the tray and the application icon
   Views/           The main window with its diff pane, and the settings window
@@ -238,7 +268,7 @@ src/GitAlert.Desktop/ The app on Avalonia, which the releases ship as GitAlert.e
 src/GitAlert/        The WPF app it replaced, kept until the 2.0 cutover
 tests/GitAlert.Tests/         xUnit tests for parsing, translation, history, settings and the view models
 tests/GitAlert.Desktop.Tests/ Headless UI tests that drive the Avalonia windows
-installer/         Inno Setup script
+installer/         Inno Setup script (Windows), macos/ (app bundle and DMG), linux/ (.deb, AppImage, tar.gz)
 ```
 
 A few decisions worth calling out:
@@ -263,11 +293,13 @@ A few decisions worth calling out:
 dotnet test                    # tests on their own
 ```
 
-CI builds and tests every push. Tagging `v1.2.3` builds the installer and publishes a release.
+CI builds and tests every push on Windows, macOS and Linux. Tagging `v1.2.3` builds the packages
+for all three and publishes them as one release.
 
 ## Known limitations
 
-- Windows 10 and 11, x64 only.
+- Windows 10 and 11 on x64. The macOS (11 and later, Apple silicon and Intel) and Linux (x64)
+  builds are early and have not been used on real hardware yet; see Install.
 - Polling, not webhooks — a desktop app has nowhere for GitHub to call back to. Expect alerts within
   your chosen interval rather than instantly.
 - GitHub's events timeline is served from a cache. On public repositories it is near real time; on
@@ -282,7 +314,8 @@ CI builds and tests every push. Tagging `v1.2.3` builds the installer and publis
 - **"Ignore activity I caused myself" is off by default**, so your own pushes are reported too.
   Turn it on under Notifications once seeing your own work echoed back stops being useful.
 - Notifications are delivered as tray balloons, which Windows renders as toasts. They carry no
-  action buttons; clicking one opens the relevant page.
+  action buttons; clicking one opens the relevant page. On macOS and Linux they go through the
+  system's notification service and a click does nothing yet.
 - The build is not code signed, so SmartScreen will warn on first run.
 
 ## Contributing

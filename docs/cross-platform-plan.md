@@ -54,9 +54,9 @@ installer/                GitAlert.iss (Windows), macos/ (Info.plist, DMG script
 | Concern | Windows | macOS | Linux |
 |---|---|---|---|
 | Tray icon | Win32 `Shell_NotifyIcon` (existing) | Avalonia `TrayIcon` (NSStatusItem) | Avalonia `TrayIcon` (StatusNotifierItem over DBus) |
-| Notifications | Balloon via `NIF_INFO` (existing) | UNUserNotificationCenter; needs the .app bundle | `org.freedesktop.Notifications` over DBus |
-| Flyout placement | Anchored to the icon rect (existing) | Below the menu bar, near the pointer | Near the pointer, clamped to the work area |
-| Secret store | DPAPI (existing) | Keychain via Security.framework | Secret Service (libsecret) over DBus; `0600` file fallback with a visible warning |
+| Notifications | Balloon via `NIF_INFO` (existing) | `osascript display notification` for now; UNUserNotificationCenter wants a signed bundle, revisit with the developer account | `notify-send` (libnotify), which speaks `org.freedesktop.Notifications` for us |
+| Flyout placement | Anchored to the icon rect (existing) | Top-right of the work area, under the menu bar: Avalonia's tray click carries no pointer position | The work-area corner nearest the panel, for the same reason |
+| Secret store | DPAPI (existing) | Login keychain through the `security` tool | Secret Service through `secret-tool`; `0600` file fallback, and the settings window says which store is in use |
 | Run at login | HKCU `Run` key (existing) | `~/Library/LaunchAgents/*.plist` | `~/.config/autostart/*.desktop` |
 | Theme signal | Avalonia `PlatformSettings`; Registry only for the taskbar theme that colours the tray icon | Avalonia `PlatformSettings` | Avalonia `PlatformSettings` |
 | Data directory | `%APPDATA%\GitAlert` (unchanged) | `~/Library/Application Support/GitAlert` | `$XDG_CONFIG_HOME/GitAlert` |
@@ -146,7 +146,7 @@ Acceptance: side-by-side screenshots match the WPF build within an agreed tolera
 is reachable by keyboard with visible focus; the Avalonia build runs as the daily tray app on this
 PC for at least a week without a regression report.
 
-### Phase 3: macOS and Linux
+### Phase 3: macOS and Linux (the packages ship from 1.25.1)
 
 - Implement the platform matrix for both systems, including per-OS `IAppPaths`.
 - CI: `ci.yml` becomes a matrix over `windows-latest`, `macos-latest`, `ubuntu-latest`;
@@ -162,6 +162,29 @@ PC for at least a week without a regression report.
 Acceptance: green CI on three operating systems; the DMG opens after "Open Anyway" and the tray
 icon appears; the AppImage runs on Ubuntu with the AppIndicator extension and on KDE; tokens
 survive an app restart on each platform.
+
+Status on 2026-09-05: the platform layer, the three-OS CI and the packaging are on `main`
+(b792e0e, 9f7fbed, 2536ba2 and the fixes after them) and `v1.25.1` is the first tag to carry all
+seven assets. CI is green; the acceptance items that need a person are still open: a real Mac for
+the DMG, the menu bar icon and the keychain round trip, and Ubuntu under WSLg for the AppImage,
+the `.deb`, AppIndicator and `secret-tool`. The Windows app in 1.25.x is otherwise the 1.24.1 app
+plus the storage note in the settings window.
+
+What the first three-platform runs taught:
+
+- A shell script committed from Windows has no executable bit, and a runner refuses to start it.
+  `git update-index --chmod=+x` fixes the mode in the index; `v1.25.0` built Windows only for that
+  reason and has no release.
+- A test helper that sets `ApartmentState.STA` throws `PlatformNotSupportedException` off Windows.
+  One shared `StaThread.Run` guards the call with `OperatingSystem.IsWindows()`.
+- `FileShare.None` locks nothing on Unix: a file another handle holds open is replaced by a rename
+  all the same. To simulate a save that cannot land, take the write bit off the folder instead.
+- A named pipe on macOS is a Unix socket under `$TMPDIR`, and a socket path stops at 104
+  characters. Pipe names must stay short; a test holds the shipped name under 40.
+- The branch rule on `main` waits for a check called "Build and test". A matrix renames every leg,
+  so a summary job wears the required name and turns green only when all legs did.
+- Avalonia's `TrayIcon` reports a click without a pointer position, so the flyout takes a
+  work-area corner on macOS and Linux rather than following the pointer.
 
 ### Phase 4: cutover (ships as 2.0.0)
 
@@ -200,7 +223,8 @@ GitAlert-X.Y.Z-linux-x64.tar.gz
 ## Open decisions
 
 - Apple Developer account for notarization: decide before the 2.0.0 tag.
-- Minimum macOS version: take it from Avalonia 12's support matrix in phase 3.
+- Minimum macOS version: `Info.plist` declares 11.0 provisionally; the real floor is whatever the
+  bundled .NET 10 runtime supports. Confirm on a Mac before 2.0.0.
 - Windows installer scope: today's machine has an all-users install under Program Files while the
-  script declares per-user; settle it when the installer is touched in phase 3.
+  script declares per-user. Phase 3 did not touch the installer, so this is still open.
 - rpm and Flatpak: after 2.0, on request.
