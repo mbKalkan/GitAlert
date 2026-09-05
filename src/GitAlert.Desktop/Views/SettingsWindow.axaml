@@ -165,10 +165,12 @@
 
           <!-- Replace-token panel. -->
           <Grid Margin="0,12,0,0" ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding IsReplacingToken}">
+            <!-- No undo history: a secret cleared from the box must not come back with Ctrl+Z. -->
             <TextBox Grid.Column="0"
                      Theme="{StaticResource ModernTextBox}"
                      PasswordChar="●"
-                     Text="{Binding PendingToken}">
+                     IsUndoEnabled="False"
+                     Text="{Binding ReplacementToken}">
               <TextBox.KeyBindings>
                 <KeyBinding Gesture="Enter" Command="{Binding ApplyTokenCommand}" />
               </TextBox.KeyBindings>
@@ -416,6 +418,7 @@
                 <TextBox Grid.Column="0"
                          Theme="{StaticResource ModernTextBox}"
                          PasswordChar="●"
+                         IsUndoEnabled="False"
                          Text="{Binding NewAccountToken}">
                   <TextBox.KeyBindings>
                     <KeyBinding Gesture="Enter" Command="{Binding AddAccountCommand}" />

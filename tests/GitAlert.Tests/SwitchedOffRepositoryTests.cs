@@ -95,6 +95,52 @@ public class SwitchedOffRepositoryTests : IDisposable
         Assert.Equal(2, flyout.UnreadCount);
     }
 
+    [Fact]
+    public void Marking_everything_read_leaves_the_hidden_alerts_for_their_return()
+    {
+        var store = new AlertStore(NewFile());
+        store.Add([Alert("a", "acme/api-gateway"), Alert("b", "acme/web")]);
+
+        store.Hide(["acme/web"]);
+        store.MarkAllRead();
+        store.Hide([]);
+
+        Assert.Equal(["b"], store.Snapshot.Where(a => !a.IsRead).Select(a => a.Title));
+        Assert.Equal(1, store.UnreadCount);
+    }
+
+    [Fact]
+    public async Task A_switched_off_project_keeps_its_place_while_the_others_are_reordered()
+    {
+        var store = new AlertStore(NewFile());
+        store.Add([Alert("a", "acme/alpha"), Alert("b", "acme/beta"), Alert("c", "acme/gamma")]);
+
+        await using var monitor = new MonitorService(
+            store,
+            new StateStore(NewFile()),
+            new HttpClient(new StubHandler(_ => throw new InvalidOperationException("no request expected"))));
+
+        var shell = new RecordingShell();
+        using var flyout = new FlyoutViewModel(store, monitor, shell, new AppSettings());
+
+        // beta sits in the middle, then its tick goes off.
+        store.Hide(["acme/beta"]);
+        flyout.Reload();
+
+        Assert.Equal(["acme/alpha", "acme/gamma"], flyout.Groups.Select(g => g.Repository));
+
+        // gamma moves up past the hidden project; the saved order still knows where beta belongs.
+        flyout.Groups.Single(g => g.Repository == "acme/gamma").MoveUpCommand.Execute(null);
+
+        Assert.Equal(["acme/gamma", "acme/alpha"], flyout.Groups.Select(g => g.Repository));
+        Assert.Equal(["acme/gamma", "acme/beta", "acme/alpha"], shell.SavedOrder);
+
+        store.Hide([]);
+        flyout.Reload();
+
+        Assert.Equal(["acme/gamma", "acme/beta", "acme/alpha"], flyout.Groups.Select(g => g.Repository));
+    }
+
     public void Dispose()
     {
         GC.SuppressFinalize(this);
@@ -126,6 +172,30 @@ public class SwitchedOffRepositoryTests : IDisposable
         var path = Path.Combine(Path.GetTempPath(), $"gitalert-switched-off-{Guid.NewGuid():N}.json");
         _files.Add(path);
         return path;
+    }
+
+    /// <summary>A shell that remembers the order the list asked it to save.</summary>
+    private sealed class RecordingShell : IShellCommands
+    {
+        public List<string>? SavedOrder { get; private set; }
+
+        public void ShowSettings()
+        {
+        }
+
+        public void HideFlyout()
+        {
+        }
+
+        public void Quit()
+        {
+        }
+
+        public void SaveListPreferences(IReadOnlyList<string> projectOrder, bool unreadOnly) => SavedOrder = [.. projectOrder];
+
+        public void UnreadChanged()
+        {
+        }
     }
 
     /// <summary>The shell, only so far as the window is allowed to talk to it.</summary>

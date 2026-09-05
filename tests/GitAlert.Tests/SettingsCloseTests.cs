@@ -36,6 +36,24 @@ public class SettingsCloseTests : IDisposable
         Assert.Equal(["close"], host.Calls);
     }
 
+    /// <summary>
+    /// The refusal used to be reported and the window closed in the same breath, so nobody ever
+    /// read it. Everything else is still saved and applied; only the window stays.
+    /// </summary>
+    [Fact]
+    public void A_refused_startup_entry_keeps_the_window_open_with_the_message()
+    {
+        var host = new RecordingHost();
+        using var settings = Build(host, new StartupRefusing());
+
+        settings.StartWithWindows = true;
+        settings.SaveCommand.Execute(null);
+
+        Assert.Equal(["apply"], host.Calls);
+        Assert.True(settings.IsMessageError);
+        Assert.Contains("startup entry", settings.Message, StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         GC.SuppressFinalize(this);
@@ -53,7 +71,7 @@ public class SettingsCloseTests : IDisposable
         }
     }
 
-    private SettingsViewModel Build(ISettingsHost host)
+    private SettingsViewModel Build(ISettingsHost host, IStartupRegistrar? startup = null)
     {
         Directory.CreateDirectory(_root);
 
@@ -61,7 +79,15 @@ public class SettingsCloseTests : IDisposable
             new SettingsStore(Path.Combine(_root, "settings.json")),
             new SecureTokenStore(new DpapiTokenProtector(), _root),
             host,
-            new StartupOff());
+            startup ?? new StartupOff());
+    }
+
+    /// <summary>A startup entry that cannot be written, the way a locked-down profile answers.</summary>
+    private sealed class StartupRefusing : IStartupRegistrar
+    {
+        public bool IsEnabled => false;
+
+        public bool SetEnabled(bool enabled) => false;
     }
 
     private sealed class RecordingHost : ISettingsHost

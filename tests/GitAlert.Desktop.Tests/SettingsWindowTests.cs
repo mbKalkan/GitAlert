@@ -103,6 +103,32 @@ public class SettingsWindowTests
         }
     }
 
+    /// <summary>A theme of its own gets no context menu from Fluent; the token field lives by paste.</summary>
+    [AvaloniaFact]
+    public void Every_text_box_offers_paste_on_the_right_button()
+    {
+        var (window, _, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var boxes = window.GetVisualDescendants().OfType<TextBox>().ToList();
+
+            Assert.NotEmpty(boxes);
+            Assert.All(boxes, box =>
+            {
+                var menu = Assert.IsType<MenuFlyout>(box.ContextFlyout);
+                Assert.Contains(menu.Items.OfType<MenuItem>(), item => item.Header as string == "Paste");
+            });
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
     private static bool IsShown(SettingsWindow window, string pageTitle) =>
         window.GetVisualDescendants()
             .OfType<TextBlock>()

@@ -38,4 +38,12 @@
     <ProjectReference Include="../GitAlert.Windows/GitAlert.Windows.csproj" />
   </ItemGroup>
 
+  <!-- SkiaSharp and HarfBuzzSharp ship their native debug symbols (100 MB) alongside the libraries,
+       and DebugType=none does not reach package assets. Nobody debugs them from the installed folder. -->
+  <Target Name="DropNativeSymbols" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
 </Project>

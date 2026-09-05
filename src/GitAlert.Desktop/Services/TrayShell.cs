@@ -259,8 +259,10 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
     {
         // Anchor on the far corner of the primary work area; close enough to the icon in the
         // common case, and always inside the screen.
+        // Right and Bottom are exclusive edges: one pixel further is already the next monitor
+        // when one sits to the right or below, and the flyout would open there.
         var work = _flyout.Screens.Primary?.WorkingArea ?? _flyout.Screens.All.FirstOrDefault()?.WorkingArea;
-        var anchor = work is { } area ? new ScreenPoint(area.Right, area.Bottom) : new ScreenPoint(0, 0);
+        var anchor = work is { } area ? new ScreenPoint(area.Right - 1, area.Bottom - 1) : new ScreenPoint(0, 0);
 
         _flyout.ShowAt(anchor);
     }

@@ -310,7 +310,9 @@ public sealed class TrayApplication : IShellCommands, ISettingsHost, IDisposable
         var work = SystemParameters.WorkArea;
         var scale = VisualTreeHelper.GetDpi(_flyout);
 
-        _flyout.ShowAt(new Point(work.Right * scale.DpiScaleX, work.Bottom * scale.DpiScaleY));
+        // One pixel inside the corner: the exclusive edge itself already belongs to a monitor
+        // placed to the right or below, and the flyout would open there.
+        _flyout.ShowAt(new Point(work.Right * scale.DpiScaleX - 1, work.Bottom * scale.DpiScaleY - 1));
         BringToFront(_flyout);
     }
 

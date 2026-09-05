@@ -50,6 +50,14 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string? _pendingToken;
 
+    /// <summary>
+    /// What the replace-token box holds while it is open. Kept apart from the pending token: a
+    /// just-added account has its only copy of the token there, and opening the box and cancelling
+    /// used to wipe it, so the account was saved with no token at all.
+    /// </summary>
+    [ObservableProperty]
+    private string? _replacementToken;
+
     [ObservableProperty]
     private bool _isDiscovering;
 
@@ -142,8 +150,12 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
-    /// <summary>False when the token could not be decrypted, which needs the user to re-enter it.</summary>
-    public bool HasStoredToken { get; private set; }
+    /// <summary>
+    /// False when the token could not be decrypted, which needs the user to re-enter it. Observable,
+    /// because the notice that says so is bound to it and has to go away once a new token works.
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasStoredToken;
 
     public string RepositorySummary => Repositories.Count switch
     {
@@ -329,7 +341,7 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void BeginReplaceToken()
     {
-        PendingToken = string.Empty;
+        ReplacementToken = string.Empty;
         IsReplacingToken = true;
         Message = string.Empty;
     }
@@ -337,7 +349,7 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CancelReplaceToken()
     {
-        PendingToken = null;
+        ReplacementToken = null;
         IsReplacingToken = false;
     }
 
@@ -345,7 +357,9 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ApplyTokenAsync()
     {
-        if (string.IsNullOrWhiteSpace(PendingToken))
+        var token = ReplacementToken?.Trim();
+
+        if (string.IsNullOrEmpty(token))
         {
             Report("Paste a personal access token first.", isError: true);
             return;
@@ -356,9 +370,12 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
         try
         {
-            _client.SetToken(PendingToken);
+            _client.SetToken(token);
             var user = await _client.GetAuthenticatedUserAsync().ConfigureAwait(true);
 
+            // Only a token that works replaces the one waiting for the save.
+            PendingToken = token;
+            ReplacementToken = null;
             Login = user.Login;
             HasStoredToken = true;
             IsReplacingToken = false;

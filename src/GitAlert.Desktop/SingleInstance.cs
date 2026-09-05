@@ -146,9 +146,10 @@ public sealed class SingleInstance : IDisposable
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // The name is still held, by an instance on its way out. Wait rather than spin.
+                // The name is still held, by an instance on its way out or by another user's
+                // session on a shared machine. Wait rather than spin.
                 try
                 {
                     await Task.Delay(TimeSpan.FromSeconds(1), token).ConfigureAwait(false);

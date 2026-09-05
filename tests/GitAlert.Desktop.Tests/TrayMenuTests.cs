@@ -29,7 +29,7 @@ public class TrayMenuTests
 
         Assert.True(menu.IsVisible);
         Assert.Equal(["Open GitAlert", "Check now", "Quit"], buttons.Select(b => b.Content as string));
-        Assert.Single(menu.GetVisualDescendants().OfType<Border>().Where(b => b.Classes.Contains("trayRule")));
+        Assert.Single(menu.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("trayRule"));
 
         var at = Centre(buttons[1], menu);
         menu.MouseDown(at, MouseButton.Left);

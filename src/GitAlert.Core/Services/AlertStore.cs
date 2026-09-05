@@ -117,13 +117,26 @@ public sealed class AlertStore
         return accepted;
     }
 
+    /// <summary>Reads everything on show. What a switched-off repository holds stays unread for its return.</summary>
     public void MarkAllRead()
     {
         lock (_gate)
         {
-            foreach (var alert in _alerts)
+            foreach (var alert in _alerts.Where(IsShown))
             {
                 alert.IsRead = true;
+            }
+        }
+    }
+
+    /// <summary>The repositories whose alerts are hidden, as last told by <see cref="Hide"/>.</summary>
+    public IReadOnlyCollection<string> Hidden
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _hidden];
             }
         }
     }

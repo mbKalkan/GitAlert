@@ -41,6 +41,7 @@ public sealed class TrayIcon : ITrayHost
     private bool _added;
     private bool _disposed;
     private int _retries;
+    private bool _version4;
     private DateTime _lastActivation = DateTime.MinValue;
 
     /// <param name="render">
@@ -170,8 +171,9 @@ public sealed class TrayIcon : ITrayHost
             _retryTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
             // Opt into the version 4 callback contract: richer messages and screen coordinates.
+            // Whether the shell agreed decides which of its duplicate messages count below.
             _data.uVersion = NativeMethods.NOTIFYICON_VERSION_4;
-            NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_SETVERSION, ref _data);
+            _version4 = NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_SETVERSION, ref _data);
 
             TraceLog.Write($"tray icon added after {_retries} retries");
             return;
@@ -237,11 +239,9 @@ public sealed class TrayIcon : ITrayHost
 
         TraceLog.Write($"tray callback 0x{notification:X4} at {point.X},{point.Y}");
 
-        switch (notification)
+        switch (Classify(notification, _version4))
         {
-            case NativeMethods.NIN_SELECT:
-            case NativeMethods.NIN_KEYSELECT:
-            case NativeMethods.WM_LBUTTONUP:
+            case TrayGesture.Activate:
                 var now = DateTime.UtcNow;
 
                 if (now - _lastActivation < ActivationEcho)
@@ -254,12 +254,11 @@ public sealed class TrayIcon : ITrayHost
                 Activated?.Invoke(this, point);
                 return IntPtr.Zero;
 
-            case NativeMethods.WM_CONTEXTMENU:
-            case NativeMethods.WM_RBUTTONUP:
+            case TrayGesture.ContextMenu:
                 ContextMenuRequested?.Invoke(this, point);
                 return IntPtr.Zero;
 
-            case NativeMethods.NIN_BALLOONUSERCLICK:
+            case TrayGesture.NotificationClick:
                 NotificationClicked?.Invoke(this, EventArgs.Empty);
                 return IntPtr.Zero;
 
@@ -267,6 +266,31 @@ public sealed class TrayIcon : ITrayHost
                 return null;
         }
     }
+
+    /// <summary>What a shell callback asks for, or nothing.</summary>
+    public enum TrayGesture
+    {
+        None,
+        Activate,
+        ContextMenu,
+        NotificationClick,
+    }
+
+    /// <summary>
+    /// Sorts a callback into the gesture it stands for. Under the version 4 contract the shell
+    /// sends the legacy mouse message and the richer notification for the same click, so only the
+    /// richer one counts there: a right click used to open the menu twice, once per message. Without
+    /// the contract the legacy messages are all there is.
+    /// </summary>
+    internal static TrayGesture Classify(int notification, bool version4) => notification switch
+    {
+        NativeMethods.NIN_SELECT or NativeMethods.NIN_KEYSELECT when version4 => TrayGesture.Activate,
+        NativeMethods.WM_LBUTTONUP when !version4 => TrayGesture.Activate,
+        NativeMethods.WM_CONTEXTMENU when version4 => TrayGesture.ContextMenu,
+        NativeMethods.WM_RBUTTONUP when !version4 => TrayGesture.ContextMenu,
+        NativeMethods.NIN_BALLOONUSERCLICK => TrayGesture.NotificationClick,
+        _ => TrayGesture.None,
+    };
 
     private static int LowWord(IntPtr value) => (int)((long)value & 0xFFFF);
 

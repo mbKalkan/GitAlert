@@ -546,7 +546,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var order = AllProjects();
+        var order = OrderForEditing();
         var a = order.FindIndex(r => string.Equals(r, visible[from], StringComparison.OrdinalIgnoreCase));
         var b = order.FindIndex(r => string.Equals(r, visible[to], StringComparison.OrdinalIgnoreCase));
 
@@ -575,7 +575,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var order = AllProjects();
+        var order = OrderForEditing();
         var from = order.FindIndex(r => string.Equals(r, moved.Repository, StringComparison.OrdinalIgnoreCase));
 
         if (from < 0)
@@ -674,6 +674,25 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Every project GitAlert knows about, in the user's order.</summary>
+    /// <summary>
+    /// The total order a move or a drop edits: every project in view plus the ones switched off in
+    /// settings, which are out of sight but keep their place for when the tick comes back. Without
+    /// them the first reorder wrote the list back without the hidden project, and it came back last.
+    /// </summary>
+    private List<string> OrderForEditing()
+    {
+        var hidden = _store.Hidden;
+
+        return
+        [
+            .. AllProjects()
+                .Concat(hidden)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(Rank)
+                .ThenBy(r => r, StringComparer.OrdinalIgnoreCase),
+        ];
+    }
+
     private List<string> AllProjects()
     {
         var known = _monitor.Watched

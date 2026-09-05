@@ -25,7 +25,10 @@ internal sealed class HeadlessPlatform : IPlatform
 
     public bool IsSystemDark => true;
 
-    public PixelPoint? PlaceFlyout(ScreenPoint anchor, PixelSize size) => null;
+    /// <summary>Where the flyout is parked on a first opening; null means "leave it where it is".</summary>
+    public PixelPoint? FlyoutPlace { get; set; }
+
+    public PixelPoint? PlaceFlyout(ScreenPoint anchor, PixelSize size) => FlyoutPlace;
 
     public bool TakeForeground(Window window) => true;
 

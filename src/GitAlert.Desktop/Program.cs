@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Threading;
 using GitAlert.Graphics;
 using GitAlert.Platform;
 
@@ -28,12 +27,28 @@ internal static class Program
             return 0;
         }
 
-        // Show the window, not the setup prompt: whoever launched GitAlert again wants to see
-        // their alerts, and is already past being told to add an account.
-        instance.Activated += () => Dispatcher.UIThread.Post(() => (Application.Current as App)?.ShowFlyout());
-        instance.Listen();
+        // Listening starts once the app is up (see ListenForActivation): a knock answered from a
+        // pool thread before Avalonia has claimed the UI thread would claim it for that thread.
+        s_instance = instance;
 
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
+    }
+
+    private static SingleInstance? s_instance;
+
+    /// <summary>
+    /// Starts answering second launches. Called by the app once its shell exists; a knock that
+    /// arrives earlier waits on the pipe for up to two seconds, which covers a slow start.
+    /// </summary>
+    internal static void ListenForActivation(Action onActivated)
+    {
+        if (s_instance is not { } instance)
+        {
+            return;
+        }
+
+        instance.Activated += onActivated;
+        instance.Listen();
     }
 
     /// <summary>Also what the previewer and the headless render tool start from.</summary>

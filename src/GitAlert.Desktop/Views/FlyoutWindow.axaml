@@ -421,7 +421,9 @@
     </Style>
 
     <!-- The header's own hover, by name, lights its tools. -->
-    <Style Selector="Button#Header:pointerover StackPanel#HeaderTools">
+    <!-- The tools also surface while one of them holds the keyboard focus; a focus ring around
+         an invisible button helps nobody. -->
+    <Style Selector="Button#Header:pointerover StackPanel#HeaderTools, StackPanel#HeaderTools:focus-within">
       <Setter Property="Opacity" Value="1" />
     </Style>
 

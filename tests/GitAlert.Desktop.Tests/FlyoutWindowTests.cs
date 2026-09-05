@@ -248,7 +248,154 @@ public class FlyoutWindowTests
         }
     }
 
-    private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build()
+    /// <summary>
+    /// The first layout pass inside Show() changes the size while the window already counts as
+    /// visible, and that used to pass for the user having placed it: the tray-side parking never ran.
+    /// </summary>
+    [AvaloniaFact]
+    public void A_window_never_placed_is_parked_where_the_platform_says_on_its_first_opening()
+    {
+        var platform = new HeadlessPlatform { FlyoutPlace = new PixelPoint(640, 360) };
+        var (window, _, dispose) = Build(platform);
+
+        try
+        {
+            window.ShowAt(new ScreenPoint(1900, 1040));
+            Frames.Settle();
+
+            Assert.Equal(new PixelPoint(640, 360), window.Position);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    /// <summary>
+    /// At quit the windows are closed before the shell saves, and a closed window reports its
+    /// position as the origin; the next start then opened in the top-left corner.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_placement_saved_after_the_window_closed_is_where_it_last_stood()
+    {
+        var (window, _, dispose) = Build();
+
+        try
+        {
+            window.ShowAt(new ScreenPoint(0, 0));
+            Frames.Settle();
+
+            window.Position = new PixelPoint(300, 200);
+            Frames.Settle();
+
+            window.HideFlyout();
+            window.CloseForGood();
+
+            var settings = new AppSettings();
+            window.CapturePreferences(settings);
+
+            Assert.Equal(300, settings.WindowLeft);
+            Assert.Equal(200, settings.WindowTop);
+            Assert.Equal(1020, settings.WindowWidth);
+            Assert.Equal(660, settings.WindowHeight);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_close_request_hides_the_window_and_it_opens_again()
+    {
+        var (window, _, dispose) = Build();
+
+        try
+        {
+            window.ShowAt(new ScreenPoint(0, 0));
+            Frames.Settle();
+
+            window.Close();
+            Frames.Settle();
+
+            Assert.False(window.IsVisible);
+
+            window.ShowAt(new ScreenPoint(0, 0));
+            Frames.Settle();
+
+            Assert.True(window.IsVisible);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Letting_go_of_a_dragged_header_outside_the_list_moves_nothing()
+    {
+        var (window, vm, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var first = vm.Groups[0];
+            var second = vm.Groups[1];
+
+            var grip = Centre(HeaderOf(window, second), window);
+            var outside = new Point(window.Bounds.Width - 40, grip.Y);
+
+            window.MouseDown(grip, MouseButton.Left);
+            window.MouseMove(grip + new Vector(0, -8), RawInputModifiers.LeftMouseButton);
+            window.MouseMove(outside, RawInputModifiers.LeftMouseButton);
+            Frames.Settle();
+
+            Assert.True(second.IsBeingDragged);
+            Assert.All(vm.Groups, g => Assert.Equal(DropMarker.None, g.DropMarker));
+
+            window.MouseUp(outside, MouseButton.Left);
+            Frames.Settle();
+
+            Assert.Equal([first.Repository, second.Repository], vm.Groups.Select(g => g.Repository));
+            Assert.False(second.IsBeingDragged);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_header_tools_show_while_one_of_them_holds_the_keyboard_focus()
+    {
+        var (window, vm, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var first = vm.Groups[0];
+            var tools = window.GetVisualDescendants()
+                .OfType<StackPanel>()
+                .First(p => p.Name == "HeaderTools" && ReferenceEquals(p.DataContext, first));
+
+            Assert.Equal(0, tools.Opacity);
+
+            ToolOf(window, first, "Move this project down").Focus(NavigationMethod.Tab);
+            Frames.Settle();
+
+            Assert.Equal(1, tools.Opacity);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build(HeadlessPlatform? platform = null)
     {
         var work = SampleData.NewWorkDir();
         var account = GitHubAccount.Create("mbKalkan");
@@ -265,7 +412,7 @@ public class FlyoutWindowTests
         monitor.Configure(settings, new Dictionary<string, string> { [account.Id] = "ghp_sample" });
 
         var vm = new FlyoutViewModel(store, monitor, new NoShell(), settings);
-        var window = new FlyoutWindow(vm, new HeadlessPlatform());
+        var window = new FlyoutWindow(vm, platform ?? new HeadlessPlatform());
 
         return (window, vm, () =>
         {

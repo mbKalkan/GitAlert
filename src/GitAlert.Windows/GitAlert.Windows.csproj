@@ -15,4 +15,8 @@
     <ProjectReference Include="../GitAlert.Core/GitAlert.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="GitAlert.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -246,7 +246,7 @@
 
             <PasswordBox Grid.Column="0"
                          Style="{StaticResource ModernPasswordBox}"
-                         views:PasswordBoxBinder.BoundPassword="{Binding PendingToken, Mode=TwoWay}">
+                         views:PasswordBoxBinder.BoundPassword="{Binding ReplacementToken, Mode=TwoWay}">
               <PasswordBox.InputBindings>
                 <KeyBinding Key="Enter" Command="{Binding ApplyTokenCommand}" />
               </PasswordBox.InputBindings>

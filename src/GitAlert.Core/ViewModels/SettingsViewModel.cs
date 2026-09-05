@@ -354,12 +354,18 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _tokenStore.Prune(_settings.Accounts.Select(a => a.Id));
 
-        if (StartWithWindows != _startup.IsEnabled && !_startup.SetEnabled(StartWithWindows))
-        {
-            Report("Could not change the Windows startup entry.", isError: true);
-        }
+        var startupRefused = StartWithWindows != _startup.IsEnabled && !_startup.SetEnabled(StartWithWindows);
 
         _host.ApplySettings(_settings, _tokenStore.ReadAll(_settings.Accounts.Select(a => a.Id)));
+
+        // Everything else is saved and applied; the window stays open only so the refusal can be
+        // read. Closing it would have taken the message away before it was ever drawn.
+        if (startupRefused)
+        {
+            Report("Could not change the Windows startup entry.", isError: true);
+            return;
+        }
+
         _host.CloseSettings(saved: true);
     }
 

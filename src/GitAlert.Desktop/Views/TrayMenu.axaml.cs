@@ -41,6 +41,7 @@ public partial class TrayMenu : Window, IDisposable
     private DateTime _shownAt = DateTime.MinValue;
     private int _foregroundAttempts;
     private bool _reallyClosing;
+    private bool _hiding;
 
     public TrayMenu(IPlatform platform, IReadOnlyList<Entry> entries)
     {
@@ -138,8 +139,10 @@ public partial class TrayMenu : Window, IDisposable
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        // The shell owns the menu's lifetime; a close request just puts it away.
-        if (!_reallyClosing)
+        // The shell owns the menu's lifetime; a close request just puts it away. The application
+        // shutting down or the session ending is not a request, and refusing it would hold up the
+        // sign-out for a menu nobody can see.
+        if (!_reallyClosing && e.CloseReason == WindowCloseReason.WindowClosing)
         {
             e.Cancel = true;
             Dismiss("close requested");
@@ -202,7 +205,7 @@ public partial class TrayMenu : Window, IDisposable
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
-        if (!IsVisible)
+        if (!IsVisible || _hiding)
         {
             return;
         }
@@ -245,12 +248,24 @@ public partial class TrayMenu : Window, IDisposable
     {
         _settleTimer.Stop();
 
-        if (!IsVisible)
+        if (!IsVisible || _hiding)
         {
             return;
         }
 
         TraceLog.Write($"menu hidden: {reason}");
-        Hide();
+
+        // Hiding deactivates the window before IsVisible turns false, and that deactivation must
+        // not start a fight for the foreground on a window that is on its way out.
+        _hiding = true;
+
+        try
+        {
+            Hide();
+        }
+        finally
+        {
+            _hiding = false;
+        }
     }
 }

@@ -116,6 +116,13 @@ takes every press on them as a window move. The headless mouse (`MouseDown`, `Mo
 that two front ends sharing `%APPDATA%\GitAlert` poll the same repositories twice and overwrite
 each other's settings, so the Avalonia build now holds the WPF build's mutex and answers its named
 event: one GitAlert per session, whichever was launched first, and the other one wakes it and exits.
+A six-part code review after the cutover (1.22.0) added three more lessons: a window that cancels
+`Closing` to hide itself must let `ApplicationShutdown`/`OSShutdown` through, or Windows reports
+the app as blocking the sign-out (WPF ignored the cancel; Avalonia's lifetime honours it); the
+lifetime closes every window before `Exit`, and a closed window reports its `Position` as the
+origin, so the shell must save a placement remembered while the window was on screen; and
+`Show()` marks the window visible before its first layout pass, so a `SizeChanged` handler runs
+during `Show()` and must not be mistaken for the user resizing.
 
 - Add the Avalonia app project next to the WPF one, both on Core.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become

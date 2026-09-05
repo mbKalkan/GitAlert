@@ -55,6 +55,13 @@ public partial class FlyoutWindow : Window
     private bool _hasStoredPlacement;
     private bool _reallyClosing;
 
+    /// <summary>
+    /// Where the window last stood while it was on screen, in device-independent units. Read back
+    /// once it is hidden or closed: a closed window reports its position as the origin, and at
+    /// quit the windows are closed before the shell saves.
+    /// </summary>
+    private (double Left, double Top, double Width, double Height)? _lastPlacement;
+
     public FlyoutWindow(FlyoutViewModel viewModel, IPlatform platform)
     {
         InitializeComponent();
@@ -67,8 +74,16 @@ public partial class FlyoutWindow : Window
         _settleTimer.Tick += OnSettled;
 
         Deactivated += OnDeactivated;
-        PositionChanged += (_, _) => NotePlacement();
-        SizeChanged += (_, _) => NotePlacement();
+        PositionChanged += (_, _) =>
+        {
+            NotePlacement();
+            RememberPlacement();
+        };
+        SizeChanged += (_, _) =>
+        {
+            NotePlacement();
+            RememberPlacement();
+        };
 
         // Clicking a row that sits half off the edge focuses it, and focus asks the list to scroll
         // the row fully into view - so the list jumped under the pointer. A pointer is already
@@ -118,13 +133,14 @@ public partial class FlyoutWindow : Window
     /// <summary>Copies the current size, position and pinned state back into the settings.</summary>
     public void CapturePreferences(AppSettings settings)
     {
-        if (WindowState == WindowState.Normal && Bounds.Width > 0 && Bounds.Height > 0)
+        RememberPlacement();
+
+        if (_lastPlacement is { } placement)
         {
-            var scale = RenderScaling;
-            settings.WindowLeft = Position.X / scale;
-            settings.WindowTop = Position.Y / scale;
-            settings.WindowWidth = Bounds.Width;
-            settings.WindowHeight = Bounds.Height;
+            settings.WindowLeft = placement.Left;
+            settings.WindowTop = placement.Top;
+            settings.WindowWidth = placement.Width;
+            settings.WindowHeight = placement.Height;
         }
 
         settings.AlwaysOnTop = Topmost;
@@ -183,12 +199,16 @@ public partial class FlyoutWindow : Window
             WindowState = WindowState.Normal;
         }
 
+        // Decided before showing: the first layout pass inside Show() changes the size while the
+        // window already counts as visible, and that used to look like the user placing it.
+        var placed = _hasStoredPlacement;
+
         Show();
         UpdateLayout();
 
         // Once the user has moved or resized the window, that is where they want it. Only a
         // window that has never been placed gets parked beside the tray icon.
-        if (_hasStoredPlacement)
+        if (placed)
         {
             KeepOnScreen();
         }
@@ -235,6 +255,7 @@ public partial class FlyoutWindow : Window
 
         TraceLog.Write("window hide");
 
+        RememberPlacement();
         _hiddenAt = DateTime.UtcNow;
         _viewModel.OnHidden();
         Hide();
@@ -395,6 +416,14 @@ public partial class FlyoutWindow : Window
     {
         if (_dragged is { } dragged)
         {
+            // Off the list there is nowhere to drop: the marker goes away and the list stays put.
+            if (!IsOverList(e))
+            {
+                _viewModel.ClearDragMarkers();
+                dragged.IsBeingDragged = true;
+                return;
+            }
+
             UpdateDropMarkers(dragged, e.GetPosition(GroupList));
             ScrollTowardsEdge(e.GetPosition(ListScroller));
             return;
@@ -432,7 +461,9 @@ public partial class FlyoutWindow : Window
             return;
         }
 
-        var (target, above) = TargetUnder(e.GetPosition(GroupList));
+        // Let go somewhere else - the diff pane, the desktop, another window - and nothing moves,
+        // which is what the WPF build did and what a drag that missed should do.
+        var (target, above) = IsOverList(e) ? TargetUnder(e.GetPosition(GroupList)) : (null, false);
         _viewModel.ClearDragMarkers();
 
         // The list is rebuilt once the release has finished its round: the header that holds the
@@ -524,6 +555,13 @@ public partial class FlyoutWindow : Window
         return (last, false);
     }
 
+    /// <summary>
+    /// Whether the pointer is over the visible part of the list. The list itself may be taller than
+    /// its scroller, so the scroller's viewport is what counts, not the list's own bounds.
+    /// </summary>
+    private bool IsOverList(PointerEventArgs e) =>
+        new Rect(ListScroller.Bounds.Size).Contains(e.GetPosition(ListScroller));
+
     /// <summary>Creeps the list along while a drag hovers near its top or bottom edge.</summary>
     private void ScrollTowardsEdge(Point pointInScroller)
     {
@@ -572,14 +610,17 @@ public partial class FlyoutWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        // The tray icon owns the app's lifetime, so a close request just tucks the panel away.
-        if (!_reallyClosing)
+        // The tray icon owns the app's lifetime, so a close request just tucks the panel away. The
+        // application shutting down or the session ending is not a request: refusing it made
+        // Windows report GitAlert as the program preventing the sign-out.
+        if (!_reallyClosing && e.CloseReason == WindowCloseReason.WindowClosing)
         {
             e.Cancel = true;
             HideFlyout();
             return;
         }
 
+        RememberPlacement();
         base.OnClosing(e);
     }
 
@@ -602,6 +643,19 @@ public partial class FlyoutWindow : Window
         {
             _hasStoredPlacement = true;
         }
+    }
+
+    /// <summary>Takes a note of the placement while the window can still be asked for it.</summary>
+    private void RememberPlacement()
+    {
+        if (!IsVisible || WindowState != WindowState.Normal || Bounds.Width <= 0 || Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        // Stored in device-independent units, the way the WPF build kept them.
+        var scale = RenderScaling;
+        _lastPlacement = (Position.X / scale, Position.Y / scale, Bounds.Width, Bounds.Height);
     }
 
     private void PlayEntranceAnimation()

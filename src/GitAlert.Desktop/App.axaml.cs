@@ -39,6 +39,10 @@ public partial class App : Application
         try
         {
             Compose(desktop.Args ?? []);
+
+            // Show the window, not the setup prompt: whoever launched GitAlert again wants to see
+            // their alerts, and is already past being told to add an account.
+            Program.ListenForActivation(() => Dispatcher.UIThread.Post(ShowFlyout));
         }
         catch (Exception ex)
         {
