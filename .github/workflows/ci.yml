@@ -42,15 +42,7 @@ jobs:
         run: dotnet build GitAlert.sln -c Release --no-restore
 
       - name: Test
-        run: dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj -c Release --no-build --logger "trx;LogFileName=results.trx" --results-directory artifacts/test-results
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: test-results
-          path: artifacts/test-results
-          if-no-files-found: ignore
+        run: dotnet test GitAlert.sln -c Release --no-build
 
       # A quick smoke check that the app starts, renders its vector artwork and exits cleanly.
       # --export-icon exercises WPF rendering without needing an interactive desktop session.

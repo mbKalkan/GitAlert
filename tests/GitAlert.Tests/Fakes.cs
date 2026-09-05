@@ -26,7 +26,23 @@ internal sealed record RecordedRequest(
 /// </summary>
 internal sealed class StubHandler(Func<RecordedRequest, HttpResponseMessage> respond) : HttpMessageHandler
 {
-    public List<RecordedRequest> Requests { get; } = [];
+    private readonly List<RecordedRequest> _requests = [];
+    private readonly Lock _sync = new();
+
+    /// <summary>
+    /// Everything asked so far, as a snapshot: the monitor goes on asking from its own thread while
+    /// a test reads, and a list enumerated under an append throws.
+    /// </summary>
+    public IReadOnlyList<RecordedRequest> Requests
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. _requests];
+            }
+        }
+    }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
@@ -42,7 +58,10 @@ internal sealed class StubHandler(Func<RecordedRequest, HttpResponseMessage> res
             request.Headers.UserAgent.ToString() is { Length: > 0 } agent ? agent : null,
             Header(request, "X-GitHub-Api-Version"));
 
-        Requests.Add(recorded);
+        lock (_sync)
+        {
+            _requests.Add(recorded);
+        }
 
         return Task.FromResult(respond(recorded));
     }

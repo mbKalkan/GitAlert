@@ -39,7 +39,7 @@ Set-StrictMode -Version Latest
 
 $root = $PSScriptRoot
 $project = Join-Path $root 'src/GitAlert/GitAlert.csproj'
-$tests = Join-Path $root 'tests/GitAlert.Tests/GitAlert.Tests.csproj'
+$tests = Join-Path $root 'GitAlert.sln'
 $artifacts = Join-Path $root 'artifacts'
 $publishDir = Join-Path $artifacts 'publish'
 $iconPath = Join-Path $root 'src/GitAlert/Resources/app.ico'
@@ -124,7 +124,7 @@ Invoke-Checked 'build' {
 if (-not $SkipTests) {
     Write-Step 'Testing'
     Invoke-Checked 'tests' {
-        dotnet test $tests -c $Configuration --no-build --verbosity quiet --nologo
+        dotnet test $tests -c $Configuration --no-build
     }
 }
 
