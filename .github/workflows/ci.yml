@@ -17,7 +17,12 @@ concurrency:
 jobs:
   build:
     name: Build and test
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     steps:
       - name: Check out
@@ -35,18 +40,42 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props') }}
           restore-keys: nuget-${{ runner.os }}-
 
+      # Windows builds the whole solution, WPF project included. The other two cannot build WPF,
+      # so they build the Avalonia app and both test projects, which pull the core and the Windows
+      # layer's portable parts in behind them.
       - name: Restore
-        run: dotnet restore GitAlert.sln
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            dotnet restore GitAlert.sln
+          else
+            dotnet restore src/GitAlert.Desktop/GitAlert.Desktop.csproj
+            dotnet restore tests/GitAlert.Tests/GitAlert.Tests.csproj
+            dotnet restore tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj
+          fi
 
       - name: Build
-        run: dotnet build GitAlert.sln -c Release --no-restore
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            dotnet build GitAlert.sln -c Release --no-restore
+          else
+            dotnet build src/GitAlert.Desktop/GitAlert.Desktop.csproj -c Release --no-restore
+            dotnet build tests/GitAlert.Tests/GitAlert.Tests.csproj -c Release --no-restore
+            dotnet build tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj -c Release --no-restore
+          fi
 
       - name: Test
-        run: dotnet test GitAlert.sln -c Release --no-build
+        shell: bash
+        run: |
+          dotnet test tests/GitAlert.Tests/GitAlert.Tests.csproj -c Release --no-build
+          dotnet test tests/GitAlert.Desktop.Tests/GitAlert.Desktop.Tests.csproj -c Release --no-build
 
       # A quick smoke check that the app starts, renders its vector artwork and exits cleanly.
       # --export-icon exercises WPF rendering without needing an interactive desktop session.
-      - name: Smoke test the icon pipeline
+      - name: Smoke test the icon pipeline (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
           dotnet publish src/GitAlert/GitAlert.csproj -c Release -r win-x64 --self-contained false -o artifacts/smoke
           $icon = Join-Path (Resolve-Path artifacts/smoke) 'app.ico'
@@ -54,4 +83,14 @@ jobs:
           if ($run.ExitCode -ne 0) { throw "GitAlert exited with $($run.ExitCode)." }
           if (-not (Test-Path $icon)) { throw "The icon was not generated." }
           Write-Host "Icon rendered: $((Get-Item $icon).Length) bytes"
-        shell: pwsh
+
+      # The same check for the Avalonia binary on the other two: it publishes for the machine it is
+      # on, starts without a display and draws the icon files the packages are built from.
+      - name: Smoke test the icon pipeline (macOS and Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          dotnet publish src/GitAlert.Desktop/GitAlert.Desktop.csproj -c Release --self-contained true -p:DebugType=none -o artifacts/smoke
+          ./artifacts/smoke/GitAlert --export-png artifacts/smoke/pngs
+          test -s artifacts/smoke/pngs/gitalert-1024.png
+          ls -l artifacts/smoke/pngs
