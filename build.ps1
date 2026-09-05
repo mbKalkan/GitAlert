@@ -18,7 +18,7 @@
     VersionPrefix in Directory.Build.props.
 
 .PARAMETER FrameworkDependent
-    Publishes against an installed .NET 9 Desktop Runtime instead of bundling it. Produces a
+    Publishes against an installed .NET 10 Desktop Runtime instead of bundling it. Produces a
     far smaller output, but the machine must already have the runtime.
 #>
 
@@ -133,9 +133,9 @@ if ($RegenerateIcon) {
     # always come from the same vector artwork.
     Write-Step 'Regenerating app.ico from the vector artwork'
 
-    $builtExe = Join-Path $root "src/GitAlert/bin/$Configuration/net9.0-windows/GitAlert.exe"
+    $builtExe = Join-Path $root "src/GitAlert/bin/$Configuration/net10.0-windows/GitAlert.exe"
     if (-not (Test-Path $builtExe)) {
-        $builtExe = Join-Path $root "src/GitAlert/bin/$Configuration/net9.0-windows/win-x64/GitAlert.exe"
+        $builtExe = Join-Path $root "src/GitAlert/bin/$Configuration/net10.0-windows/win-x64/GitAlert.exe"
     }
 
     # GitAlert is a GUI subsystem executable, so the call operator would not wait for it.

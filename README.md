@@ -139,7 +139,7 @@ cd GitAlert
 .\build.ps1 -Publish          # restore, build, test, publish to artifacts\publish
 ```
 
-Requires the [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0). To build the installer
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). To build the installer
 too, install Inno Setup 6 (`winget install JRSoftware.InnoSetup`) and run `.\build.ps1 -Installer`.
 
 ## Setting it up
