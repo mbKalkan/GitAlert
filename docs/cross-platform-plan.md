@@ -93,9 +93,18 @@ In progress since 2026-09-05. `src/GitAlert.Desktop` builds on Avalonia 12.1 wit
 settings window ported, the three palettes swapped at runtime, the Win32 tray and DPAPI reused from
 `GitAlert.Windows` behind `IPlatform`, and a named pipe for the second-launch signal. Headless
 renders of both windows match the WPF screenshots to the eye in all three palettes; a live run on
-this PC put the icon in the tray and brought the flyout up in front. Still open: the xunit v3 move
-and headless UI tests, a keyboard and pointer pass on the real app (tray menu, drag to reorder,
-splitter), and the daily-use trial.
+this PC put the icon in the tray and brought the flyout up in front. Both test projects run on
+xunit v3 through Microsoft.Testing.Platform, and `tests/GitAlert.Desktop.Tests` drives the real
+windows headlessly, including a check that no binding misses its target. Still open: a keyboard
+and pointer pass on the real app (tray menu, drag to reorder, splitter), scrollbar styling, and
+the daily-use trial.
+
+Lessons from the port, for the pieces still to come: a value set on an element outranks every
+style, so anything a class may change has to start life in a style; `$parent[Type;n]` counts
+ancestors of that type and `$parent[StackPanel]` from inside a StackPanel is the panel itself;
+`Avalonia.Headless.XUnit` pins the xunit.v3 line it was built against (3.2.x for 12.1); the new
+`dotnet test` forwards unknown flags such as `--nologo` to the test app, which then prints its
+help and reports zero tests.
 
 - Add the Avalonia app project next to the WPF one, both on Core.
 - Port `FlyoutWindow`, `SettingsWindow`, `Controls.xaml` and the theme dictionaries. Themes become
