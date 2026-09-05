@@ -76,6 +76,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 ; The uninstaller and its log (unins000.exe, unins000.dat) are left alone on purpose.
 Type: files; Name: "{app}\*.dll"
 Type: files; Name: "{app}\*.json"
+; Earlier builds shipped SkiaSharp's and HarfBuzz's native symbols; the publish no longer does.
+Type: files; Name: "{app}\*.pdb"
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
