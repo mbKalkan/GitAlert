@@ -7,7 +7,14 @@ namespace GitAlert.Tests;
 
 public class SettingsTests : IDisposable
 {
-    private readonly string _path = Path.Combine(Path.GetTempPath(), $"gitalert-settings-{Guid.NewGuid():N}.json");
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), $"gitalert-settings-{Guid.NewGuid():N}");
+    private readonly string _path;
+
+    public SettingsTests()
+    {
+        Directory.CreateDirectory(_folder);
+        _path = Path.Combine(_folder, "settings.json");
+    }
 
     private static RepoSubscription Repo(string accountId, string owner, string name, bool isPrivate = false) =>
         new() { AccountId = accountId, Owner = owner, Name = name, IsPrivate = isPrivate };
@@ -227,7 +234,7 @@ public class SettingsTests : IDisposable
         var store = new SettingsStore(_path);
         Assert.True(store.Save(new AppSettings()));
 
-        using (File.Open(_path, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (Unwritable())
         {
             Assert.False(store.Save(new AppSettings { PollIntervalMinutes = 30 }));
         }
@@ -396,14 +403,41 @@ public class SettingsTests : IDisposable
         Assert.False(File.Exists(_path + ".corrupt"));
     }
 
+    /// <summary>
+    /// Holds the settings file where the store cannot replace it, until disposed.
+    /// </summary>
+    /// <remarks>
+    /// Windows does that with a share lock on the file. Unix lets anyone swap a locked file out,
+    /// so there the folder loses its write bit instead and the store cannot even create its
+    /// temporary file. Running the tests as root defeats that half, since root ignores the mode.
+    /// </remarks>
+    private IDisposable Unwritable()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return File.Open(_path, FileMode.Open, FileAccess.Read, FileShare.None);
+        }
+
+        var mode = File.GetUnixFileMode(_folder);
+        File.SetUnixFileMode(_folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        return new Restore(() => File.SetUnixFileMode(_folder, mode));
+    }
+
+    private sealed class Restore(Action undo) : IDisposable
+    {
+        public void Dispose() => undo();
+    }
+
     public void Dispose()
     {
-        foreach (var file in new[] { _path, _path + ".corrupt", _path + ".tmp" })
+        if (Directory.Exists(_folder))
         {
-            if (File.Exists(file))
+            if (!OperatingSystem.IsWindows())
             {
-                File.Delete(file);
+                File.SetUnixFileMode(_folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
+
+            Directory.Delete(_folder, recursive: true);
         }
 
         GC.SuppressFinalize(this);
