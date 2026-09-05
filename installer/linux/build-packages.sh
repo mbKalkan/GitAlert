@@ -14,6 +14,15 @@ pngs="$3"
 out="$4"
 appimagetool="$5"
 
+# appimagetool validates the desktop entry with desktop-file-validate and quits when the validator is
+# not installed; better to hear that before the tarball and the deb have been built.
+for tool in dpkg-deb desktop-file-validate; do
+    if ! command -v "$tool" > /dev/null; then
+        echo "$tool is missing; install dpkg and desktop-file-utils." >&2
+        exit 1
+    fi
+done
+
 here="$(cd "$(dirname "$0")" && pwd)"
 work="$out/linux-work"
 rm -rf "$work"

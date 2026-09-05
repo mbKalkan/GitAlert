@@ -174,13 +174,14 @@ jobs:
         shell: bash
         run: ./artifacts/publish-linux-x64/GitAlert --export-png artifacts/pngs
 
-      # Pinned to a release and checked against its digest, the way the actions above are pinned:
-      # a packaging tool downloaded at build time is part of the supply chain too.
-      - name: Fetch appimagetool
+      # appimagetool validates the desktop entry with desktop-file-validate and quits without it.
+      # The tool itself comes through a script that pins its release and digest.
+      - name: Install the packaging tools
         shell: bash
         run: |
-          curl -sSL -o artifacts/appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage
-          echo "46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1  artifacts/appimagetool" | sha256sum -c -
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends desktop-file-utils
+          installer/linux/fetch-appimagetool.sh artifacts/appimagetool
 
       - name: Pack
         shell: bash
