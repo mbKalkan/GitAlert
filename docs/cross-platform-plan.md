@@ -76,7 +76,7 @@ installer/                GitAlert.iss (Windows), macos/ (Info.plist, DMG script
   `global.json`, update both workflows and `build.ps1`.
 - Tests: portable tests keep passing unchanged; the STA-bound tests stay for phase 2.
 
-Acceptance: no visible change; all 231 tests green; `build.ps1 -Installer` upgrades the current
+Acceptance: no visible change; the whole test suite green (333 cases today); `build.ps1 -Installer` upgrades the current
 install in place with settings, history and tokens intact.
 
 ### Phase 2: Avalonia UI, Windows first (merges to `main`; releases still ship WPF)
