@@ -57,6 +57,13 @@ reviews and review comments, issues and comments, releases, branches, tags, fork
 GitHub Actions runs are polled separately, because they never appear on the events timeline.
 Failures are red, and you can ask to hear about failures only.
 
+**Watches project boards**
+Paste a board's link, or pick one from the boards your token can see, and GitAlert reads it the
+way it reads a repository: a card arriving, moving between Status columns, being archived or
+leaving is an alert, filed under the board like alerts under a repository. Pick one and the pane
+shows the card — its column, its fields, the issue behind it — since a card has no diff. Ask for
+every field on a card, or just the column moves.
+
 **Read the diff without leaving the app**
 Pick an alert and the files it touched unfold right under it — name, path and an M/A/D badge, the
 way a source control view does — and the unified diff of the file you pick fills the pane beside
@@ -110,9 +117,9 @@ crisp at every DPI, adapts to a light or dark taskbar, and carries a badge when 
 
 <div align="center">
 
-| Light theme | Accounts and repositories | Notifications |
-|:---:|:---:|:---:|
-| <img src="docs/screenshots/flyout-light.png" width="260"> | <img src="docs/screenshots/settings-accounts.png" width="250"> | <img src="docs/screenshots/settings-notifications.png" width="250"> |
+| Light theme | A board card | Repositories and boards | Notifications |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/flyout-light.png" width="240"> | <img src="docs/screenshots/flyout-dark-board.png" width="240"> | <img src="docs/screenshots/settings-accounts.png" width="200"> | <img src="docs/screenshots/settings-notifications.png" width="200"> |
 
 </div>
 
@@ -184,15 +191,19 @@ dotnet test tests/GitAlert.UI.Tests/GitAlert.UI.Tests.csproj
    | Public repositories | *none at all* |
    | Private repositories | `repo` |
    | Mentions, review requests, assignments | `notifications` |
+   | Project boards | `read:project` |
 
    The link creates a classic token. A **fine-grained token** is the tighter choice and works just
    as well: give it read access to *Metadata* and *Contents* on the repositories you watch,
-   *Actions* (read) if you want CI runs, and the *Notifications* account permission for the
-   inbox. Nothing GitAlert does needs write access of any kind.
+   *Actions* (read) if you want CI runs, *Projects* (read) on the organisation or the account for
+   boards, and the *Notifications* account permission for the inbox. Nothing GitAlert does needs
+   write access of any kind.
 
 2. **Paste it in and hit Add.** GitAlert verifies the token and names the account it belongs to.
 
-3. **Add repositories under that account.** Paste a link → *Add repository*.
+3. **Add repositories and boards under that account.** Paste a link → *Add repository*, or a
+   board's link → *Add board*; *Find boards* lists the ones the token can see, yours and your
+   organisations'.
 
 4. **Repeat for any other account** — a work account, an organisation-scoped token, whatever you
    have. Each keeps its own token, its own repositories and its own inbox switch.
@@ -231,7 +242,8 @@ GitAlert is a polling client that tries hard to be a well-behaved one.
 
 Four endpoints do the work: `/repos/{owner}/{repo}/commits` for pushes,
 `/repos/{owner}/{repo}/events` for everything else in the timeline,
-`/repos/{owner}/{repo}/actions/runs` for CI, and `/notifications` for each account's inbox.
+`/repos/{owner}/{repo}/actions/runs` for CI, `/orgs/{org}/projectsV2/{n}/items` (or its `/users/`
+twin) for each board, and `/notifications` for each account's inbox.
 
 ## Your data
 
@@ -312,6 +324,9 @@ for all three and publishes them as one release.
   timeline's schedule.
 - Commit polling follows the default branch. A push to another branch is reported when the events
   timeline catches up.
+- A board is compared reading to reading, because GitHub keeps no history of one for the API to
+  hand out. An alert says what moved and where, not who moved it, and a board of more than a
+  thousand cards is read only that far.
 - Diffs are fetched from GitHub the moment you select an alert, and each one costs a request against
   the hourly rate limit. They are cached for as long as the window stays open. GitHub omits the
   patch for binary files and for very large ones; the pane says so rather than showing nothing.
