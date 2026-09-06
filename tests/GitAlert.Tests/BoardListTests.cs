@@ -93,9 +93,9 @@ public class BoardListTests : IDisposable
             Assert.True(flyout.Detail.HasCard);
             Assert.False(flyout.Detail.HasNotice);
             Assert.False(flyout.Detail.CanReload);
-            Assert.Equal("acme / Roadmap", card.Board);
+            Assert.Equal("acme / Roadmap", card.Source);
             Assert.Equal("acme / Roadmap", flyout.Detail.Caption);
-            Assert.Equal("https://github.com/orgs/acme/projects/12", card.BoardUrl);
+            Assert.Equal("https://github.com/orgs/acme/projects/12", card.SourceUrl);
             Assert.Equal("Moved to In progress", card.Headline);
             Assert.Equal("#13 Rate limit the poller", card.Item);
             Assert.Equal("Status · Todo → In progress", card.Note);
@@ -121,8 +121,8 @@ public class BoardListTests : IDisposable
             await flyout.SelectAlertCommand.ExecuteAsync(Assert.Single(flyout.Alerts));
 
             var card = flyout.Detail.Card!;
-            Assert.Equal("acme/#12", card.Board);
-            Assert.Equal("https://github.com/users/acme/projects/12", card.BoardUrl);
+            Assert.Equal("acme/#12", card.Source);
+            Assert.Equal("https://github.com/users/acme/projects/12", card.SourceUrl);
 
             var group = Assert.Single(flyout.Groups, g => g.Repository == "acme/#12");
             Assert.Equal("#12", group.DisplayName);

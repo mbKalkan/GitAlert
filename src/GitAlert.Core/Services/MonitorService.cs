@@ -963,6 +963,7 @@ public sealed class MonitorService : IAsyncDisposable
         Actor = alert.Actor,
         Note = alert.Note,
         Fields = alert.Fields,
+        Body = alert.Body,
         Url = alert.Url,
         Timestamp = alert.Timestamp,
         Severity = alert.Severity,

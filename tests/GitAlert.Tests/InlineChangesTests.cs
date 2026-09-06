@@ -54,9 +54,9 @@ public class InlineChangesTests : IDisposable
         });
     }
 
-    /// <summary>An issue has nothing to fetch, so the card says so and offers no reload.</summary>
+    /// <summary>An issue has nothing to fetch: the pane shows the issue itself, and the card offers no reload.</summary>
     [Fact]
-    public void An_alert_without_a_diff_says_so_on_its_card()
+    public void An_alert_without_a_diff_fills_the_pane_with_its_card_instead()
     {
         StaThread.Run(() =>
         {
@@ -64,10 +64,17 @@ public class InlineChangesTests : IDisposable
 
             Select(flyout, Find(flyout, "a"));
 
-            Assert.Equal("No changed files", flyout.Detail.Caption);
+            Assert.Equal(string.Empty, flyout.Detail.Caption);
             Assert.False(flyout.Detail.CanReload);
-            Assert.True(flyout.Detail.HasNotice);
+            Assert.False(flyout.Detail.HasNotice);
             Assert.Empty(flyout.Detail.Files);
+
+            var card = flyout.Detail.Card;
+            Assert.NotNull(card);
+            Assert.Equal("acme / api-gateway", card.Source);
+            Assert.Equal("https://github.com/acme/api-gateway", card.SourceUrl);
+            Assert.Equal("Open repository", card.SourceLabel);
+            Assert.Equal("Open issue", card.ItemLabel);
         });
     }
 

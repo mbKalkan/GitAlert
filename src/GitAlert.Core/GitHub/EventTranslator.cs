@@ -161,7 +161,8 @@ public static class EventTranslator
             repository,
             actor,
             review.GetStringOrNull("html_url") ?? pr.GetStringOrNull("html_url"),
-            severity);
+            severity,
+            body: PlainText.FromMarkdown(review.GetStringOrNull("body")));
     }
 
     private static Alert? ReviewComment(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -173,6 +174,8 @@ public static class EventTranslator
 
         var comment = payload.TryGetChild("comment", out var c) ? c : default;
         var number = pr.GetIntOrDefault("number", 0);
+        var path = comment.GetStringOrNull("path");
+        var line = comment.GetIntOrNull("line") ?? comment.GetIntOrNull("original_line");
 
         return Build(
             source,
@@ -181,7 +184,11 @@ public static class EventTranslator
             FirstLine(comment.GetStringOrNull("body")),
             repository,
             actor,
-            comment.GetStringOrNull("html_url") ?? pr.GetStringOrNull("html_url"));
+            comment.GetStringOrNull("html_url") ?? pr.GetStringOrNull("html_url"),
+            body: PlainText.FromMarkdown(comment.GetStringOrNull("body")),
+            fields: FieldsOf(
+                ("Pull request", Subject(number, pr.GetStringOrNull("title"))),
+                ("File", path is null ? null : line is { } at ? $"{path}:{at}" : path)));
     }
 
     private static Alert? Issue(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -214,7 +221,12 @@ public static class EventTranslator
             FirstLine(issue.GetStringOrNull("title")),
             repository,
             actor,
-            issue.GetStringOrNull("html_url") ?? $"{RepoUrl(repository)}/issues/{number}");
+            issue.GetStringOrNull("html_url") ?? $"{RepoUrl(repository)}/issues/{number}",
+            body: PlainText.FromMarkdown(issue.GetStringOrNull("body")),
+            fields: FieldsOf(
+                ("Labels", Names(issue, "labels", "name")),
+                ("Assignees", Names(issue, "assignees", "login")),
+                ("Milestone", issue.TryGetChild("milestone", out var milestone) ? milestone.GetStringOrNull("title") : null)));
     }
 
     private static Alert? IssueComment(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -238,7 +250,9 @@ public static class EventTranslator
             FirstLine(comment.GetStringOrNull("body")) ?? FirstLine(issue.GetStringOrNull("title")),
             repository,
             actor,
-            comment.GetStringOrNull("html_url") ?? issue.GetStringOrNull("html_url"));
+            comment.GetStringOrNull("html_url") ?? issue.GetStringOrNull("html_url"),
+            body: PlainText.FromMarkdown(comment.GetStringOrNull("body")),
+            fields: FieldsOf((isPullRequest ? "Pull request" : "Issue", Subject(number, issue.GetStringOrNull("title")))));
     }
 
     private static Alert? CommitComment(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -248,6 +262,8 @@ public static class EventTranslator
             return null;
         }
 
+        var sha = comment.GetStringOrNull("commit_id");
+
         return Build(
             source,
             AlertKind.Comment,
@@ -255,7 +271,9 @@ public static class EventTranslator
             FirstLine(comment.GetStringOrNull("body")),
             repository,
             actor,
-            comment.GetStringOrNull("html_url"));
+            comment.GetStringOrNull("html_url"),
+            body: PlainText.FromMarkdown(comment.GetStringOrNull("body")),
+            fields: FieldsOf(("Commit", sha is { Length: > 7 } ? sha[..7] : sha)));
     }
 
     private static Alert? Release(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -277,7 +295,9 @@ public static class EventTranslator
             repository,
             actor,
             release.GetStringOrNull("html_url") ?? $"{RepoUrl(repository)}/releases",
-            AlertSeverity.Success);
+            AlertSeverity.Success,
+            body: PlainText.FromMarkdown(release.GetStringOrNull("body")),
+            fields: FieldsOf(("Tag", tag), ("Target", release.GetStringOrNull("target_commitish"))));
     }
 
     private static Alert? Created(GhEvent source, string repository, string? actor, JsonElement payload)
@@ -547,7 +567,9 @@ public static class EventTranslator
         string? idOverride = null,
         string? diffHead = null,
         string? diffBase = null,
-        int? pullRequestNumber = null) =>
+        int? pullRequestNumber = null,
+        string? body = null,
+        List<AlertField>? fields = null) =>
         new()
         {
             Id = idOverride ?? $"event:{source.Id}",
@@ -562,7 +584,40 @@ public static class EventTranslator
             DiffHead = diffHead,
             DiffBase = diffBase,
             PullRequestNumber = pullRequestNumber,
+            Body = body,
+            Fields = fields,
         };
+
+    /// <summary>The fields worth a line on the card: those with a value. None at all gives null, not an empty list.</summary>
+    private static List<AlertField>? FieldsOf(params (string Name, string? Value)[] fields)
+    {
+        var present = fields
+            .Where(f => !string.IsNullOrWhiteSpace(f.Value))
+            .Select(f => new AlertField(f.Name, f.Value!.Trim()))
+            .ToList();
+
+        return present.Count == 0 ? null : present;
+    }
+
+    /// <summary>The names in an array of objects - labels by name, people by login - as one line.</summary>
+    private static string? Names(JsonElement parent, string property, string name)
+    {
+        if (!parent.TryGetChild(property, out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var names = array.EnumerateArray()
+            .Select(element => element.GetStringOrNull(name))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+
+        return names.Count == 0 ? null : string.Join(", ", names);
+    }
+
+    /// <summary>The issue or pull request a comment was left on: <c>#77 Rate limit the poller</c>.</summary>
+    private static string? Subject(int number, string? title) =>
+        FirstLine(title) is { } line ? (number > 0 ? $"#{number} {line}" : line) : number > 0 ? $"#{number}" : null;
 
     private static string RepoUrl(string repository) => $"https://github.com/{repository}";
 

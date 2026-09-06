@@ -291,38 +291,15 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
 
     private void ShowToast(IReadOnlyList<Alert> alerts)
     {
-        var newest = alerts[0];
-        _lastToastAlert = alerts.Count == 1 ? newest : null;
+        _lastToastAlert = alerts.Count == 1 ? alerts[0] : null;
 
-        var (title, body) = alerts.Count == 1
-            ? ($"{DisplayNameOf(newest.Repository)} - {newest.Title}", newest.ToastBody)
-            : ($"{alerts.Count} new alerts", Summarise(alerts));
+        var (title, body) = ToastText.Compose(alerts, DisplayNameOf);
 
         var kind = alerts.Any(a => a.Severity == AlertSeverity.Error)
             ? NotificationKind.Warning
             : NotificationKind.Info;
 
         _tray.ShowNotification(title, body, kind, _settings.PlaySound);
-    }
-
-    private string Summarise(IReadOnlyList<Alert> alerts)
-    {
-        var repositories = alerts
-            .Select(a => a.Repository)
-            .Where(r => !string.IsNullOrEmpty(r))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(3)
-            .Select(DisplayNameOf)
-            .ToList();
-
-        var lead = alerts[0].Title;
-
-        return repositories.Count switch
-        {
-            0 => lead,
-            1 => $"{lead} — {repositories[0]}",
-            _ => $"{lead} — {string.Join(", ", repositories)}",
-        };
     }
 
     /// <summary>A board's alerts are grouped under its key; a notification calls it by its title.</summary>

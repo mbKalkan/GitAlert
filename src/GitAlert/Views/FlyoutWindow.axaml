@@ -957,18 +957,15 @@
 
             <Grid IsVisible="{Binding HasSelection}">
 
-              <!-- A board card has no diff. What it has is the card itself: what happened to it,
-                   the fields it was read with, and the way to the issue behind it. -->
+              <!-- An issue, a comment, a release, a run or a board card has no diff. What it has is
+                   the card itself: what happened, what was said, the fields that describe it, and
+                   the way to it on GitHub. -->
               <ScrollViewer IsVisible="{Binding HasCard}" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Name="BoardCard"
+                <StackPanel Name="AlertCard"
                             Margin="20,18,20,20"
                             DataContext="{Binding Card}"
-                            x:DataType="vm:BoardCardViewModel">
-                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,12">
-                    <TextBlock Text="{Binding Board}" Classes="muted" />
-                    <TextBlock Text="&#183;" Classes="muted" />
-                    <TextBlock Text="{Binding When}" Classes="muted" />
-                  </StackPanel>
+                            x:DataType="vm:AlertCardViewModel">
+                  <TextBlock Text="{Binding Meta}" Classes="muted" Margin="0,0,0,12" TextWrapping="Wrap" />
 
                   <TextBlock Text="{Binding Headline}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
 
@@ -976,13 +973,29 @@
                              Classes="secondary"
                              FontSize="12.5"
                              Margin="0,4,0,0"
-                             TextWrapping="Wrap" />
+                             TextWrapping="Wrap"
+                             IsVisible="{Binding ShowsItem}" />
 
                   <TextBlock Text="{Binding Note}"
                              Classes="muted"
                              Margin="0,4,0,0"
                              TextWrapping="Wrap"
                              IsVisible="{Binding HasNote}" />
+
+                  <!-- What was said, as it was said: selectable, so a line can be copied out. -->
+                  <Border Margin="0,14,0,0"
+                          Padding="12,10"
+                          CornerRadius="6"
+                          Background="{DynamicResource SurfaceElevated}"
+                          BorderBrush="{DynamicResource BorderSubtle}"
+                          BorderThickness="1"
+                          IsVisible="{Binding HasBody}">
+                    <SelectableTextBlock Text="{Binding Body}"
+                                         FontSize="12.5"
+                                         LineHeight="19"
+                                         TextWrapping="Wrap"
+                                         Foreground="{DynamicResource TextPrimary}" />
+                  </Border>
 
                   <Border Height="1"
                           Background="{DynamicResource BorderSubtle}"
@@ -1017,9 +1030,9 @@
                             Theme="{StaticResource SecondaryButton}"
                             Command="{Binding OpenItemCommand}"
                             IsVisible="{Binding HasItemUrl}" />
-                    <Button Content="Open board"
+                    <Button Content="{Binding SourceLabel}"
                             Theme="{StaticResource SecondaryButton}"
-                            Command="{Binding OpenBoardCommand}" />
+                            Command="{Binding OpenSourceCommand}" />
                   </StackPanel>
                 </StackPanel>
               </ScrollViewer>

@@ -41,6 +41,7 @@ public static class BoardTranslator
             Number = content.GetIntOrNull("number"),
             Title = content.GetStringOrNull("title") ?? TitleField(item),
             Url = content.GetStringOrNull("html_url"),
+            Body = PlainText.FromMarkdown(content.GetStringOrNull("body")),
             UpdatedAt = item.UpdatedAt,
             IsArchived = item.ArchivedAt is not null,
         };
@@ -205,6 +206,7 @@ public static class BoardTranslator
             Url = item.Url ?? board.Url,
             Timestamp = when,
             Fields = item.Fields.Select(f => new AlertField(f.Key, f.Value)).ToList(),
+            Body = item.Body,
         };
 
     /// <summary>The card's own line: the issue or pull request with its number, or a draft's title.</summary>

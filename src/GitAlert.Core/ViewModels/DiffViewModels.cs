@@ -254,11 +254,11 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(Caption))]
     private string? _notice;
 
-    /// <summary>The card behind a board alert, shown in place of a diff.</summary>
+    /// <summary>The card shown in place of a diff: a board card, an issue, a release, a run.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCard))]
     [NotifyPropertyChangedFor(nameof(Caption))]
-    private BoardCardViewModel? _card;
+    private AlertCardViewModel? _card;
 
     /// <summary>
     /// How many changed files are waiting behind "show all". A merge across hundreds of files
@@ -313,7 +313,7 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
         { IsLoading: true } => "Fetching the changed files…",
         { HasError: true } => "The changed files could not be fetched",
         { HasSummary: true } => Summary,
-        { HasCard: true } => Card!.Board,
+        { HasCard: true } => Card!.Caption,
         { HasNotice: true } => "No changed files",
         _ => string.Empty,
     };
@@ -355,14 +355,14 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
             var url = board?.Url
                 ?? (BoardRef.TryParse(model.Repository, out var parsed) ? parsed.HtmlUrl : $"https://github.com/{model.Repository}");
 
-            Card = new BoardCardViewModel(model, name, url);
+            Card = AlertCardViewModel.ForBoard(model, name, url);
             return;
         }
 
+        // Nor has an issue, a release or a run: the pane shows what was said and where it leads.
         if (!model.HasDiff)
         {
-            Notice = $"A {Describe(model.Kind)} does not point at any changed files. "
-                   + "Open it on GitHub to see the rest.";
+            Card = AlertCardViewModel.ForRepository(model);
             return;
         }
 
@@ -527,21 +527,6 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
         HiddenFileCount = 0;
     }
-
-    private static string Describe(AlertKind kind) => kind switch
-    {
-        AlertKind.Workflow => "CI run",
-        AlertKind.Release => "release",
-        AlertKind.Issue => "issue",
-        AlertKind.Comment => "comment",
-        AlertKind.Review => "review",
-        AlertKind.Mention => "mention",
-        AlertKind.Branch => "branch or tag alert",
-        AlertKind.Star => "star",
-        AlertKind.Fork => "fork",
-        AlertKind.Board => "board change",
-        _ => "alert of this kind",
-    };
 
     private void Remember(string id, IReadOnlyList<GhFileChange> files)
     {

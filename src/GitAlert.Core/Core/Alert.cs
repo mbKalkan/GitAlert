@@ -69,10 +69,18 @@ public sealed class Alert
     public string? Note { get; init; }
 
     /// <summary>
-    /// The board card's fields at the time, for the detail pane. Null on every other kind, and on
-    /// board alerts stored before the pane learned to show them.
+    /// What describes the thing, for the detail pane: a board card's fields, an issue's labels and
+    /// assignees, the issue a comment was left on. Null where there is nothing of the sort, and on
+    /// alerts stored before the pane learned to show them.
     /// </summary>
     public List<AlertField>? Fields { get; init; }
+
+    /// <summary>
+    /// What the issue, comment or release said, as plain text and cut short (see
+    /// <see cref="PlainText"/>), for the detail pane and the toast. Null where GitHub sends no
+    /// text - a push, a star - and on alerts stored before the pane learned to show it.
+    /// </summary>
+    public string? Body { get; init; }
 
     public string? Url { get; init; }
 
@@ -85,18 +93,10 @@ public sealed class Alert
     /// </summary>
     [JsonConverter(typeof(AlertSeverityConverter))]
     public AlertSeverity Severity { get; init; } = AlertSeverity.Normal;
-
-    [JsonIgnore]
-    public string ToastTitle => $"{Repository} - {Title}";
-
-    [JsonIgnore]
-    public string ToastBody =>
-        !string.IsNullOrWhiteSpace(Detail) ? Detail! :
-        Actor is not null ? $"by {Actor}" :
-        Title;
 }
 
-/// <summary>One field of a board card, as a name and the value it held.</summary>
+/// <summary>One thing that describes an alert's subject, as a name and its value: a board card's
+/// Status, an issue's labels.</summary>
 public sealed record AlertField(string Name, string Value);
 
 public enum AlertSeverity

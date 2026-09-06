@@ -216,6 +216,15 @@ public sealed class BoardItemState
     /// <summary>The issue or pull request page; null for a draft, which has no page of its own.</summary>
     public string? Url { get; set; }
 
+    /// <summary>
+    /// What the issue behind the card says, as plain text and cut short, when GitHub sends it with
+    /// the item. It rides on the alert a fresh reading produces and is not kept in the state: a
+    /// thousand cards' worth of prose would make the state file heavy for nothing, since the text
+    /// is read again with every poll anyway.
+    /// </summary>
+    [JsonIgnore]
+    public string? Body { get; set; }
+
     /// <summary>The column, by the Status option's name; null when the card is in none.</summary>
     public string? Status { get; set; }
 

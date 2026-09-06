@@ -71,6 +71,13 @@ the list, with both line-number gutters and the colours GitHub uses. A single co
 diff, a push of several the net change across the range, a pull request its whole file list; a long
 list shows its first thirty files and offers the rest. Click the alert again to fold it away.
 
+**Read the issue, too**
+An issue, a comment, a release or a workflow run has no diff, so the pane shows the thing itself:
+what it says, boiled down from Markdown to plain text you can select and copy, with its labels,
+assignees and milestone under it and a button to the page on GitHub. A comment names the issue it
+was left on; a release shows its notes and its tag. The toast says the same in short — the headline,
+the title and the first line — and a batch lists what arrived, one line each.
+
 </td>
 <td width="50%" valign="top">
 
@@ -117,9 +124,9 @@ crisp at every DPI, adapts to a light or dark taskbar, and carries a badge when 
 
 <div align="center">
 
-| Light theme | A board card | Repositories and boards | Notifications |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/flyout-light.png" width="240"> | <img src="docs/screenshots/flyout-dark-board.png" width="240"> | <img src="docs/screenshots/settings-accounts.png" width="200"> | <img src="docs/screenshots/settings-notifications.png" width="200"> |
+| Light theme | An issue | A board card | Repositories and boards | Notifications |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/flyout-light.png" width="220"> | <img src="docs/screenshots/flyout-dark-issue.png" width="220"> | <img src="docs/screenshots/flyout-dark-board.png" width="220"> | <img src="docs/screenshots/settings-accounts.png" width="180"> | <img src="docs/screenshots/settings-notifications.png" width="180"> |
 
 </div>
 
@@ -330,6 +337,9 @@ for all three and publishes them as one release.
 - Diffs are fetched from GitHub the moment you select an alert, and each one costs a request against
   the hourly rate limit. They are cached for as long as the window stays open. GitHub omits the
   patch for binary files and for very large ones; the pane says so rather than showing nothing.
+- What an issue or a comment says comes with the event that announced it, cut to its first twelve
+  hundred characters, and is not read again: an edit made later is not reported, because GitHub's
+  timeline does not carry edits. A pull request's description is not shown; its files are.
 - **"Ignore activity I caused myself" is off by default**, so your own pushes are reported too.
   Turn it on under Notifications once seeing your own work echoed back stops being useful.
 - Notifications are delivered as tray balloons, which Windows renders as toasts. They carry no

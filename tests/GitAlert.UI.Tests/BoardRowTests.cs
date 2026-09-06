@@ -68,13 +68,13 @@ public class BoardRowTests
             vm.SelectAlertCommand.Execute(alert);
             Frames.Settle();
 
-            var card = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "BoardCard");
+            var card = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "AlertCard");
             Assert.True(card.IsEffectivelyVisible);
 
             var texts = card.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
             Assert.Contains("Moved to In progress", texts);
             Assert.Contains("#87 Rate limit the poller when GitHub throttles", texts);
-            Assert.Contains("acme / Roadmap", texts);
+            Assert.Contains(texts, t => t is not null && t.StartsWith("acme / Roadmap · ", StringComparison.Ordinal));
             Assert.Contains("Priority", texts);
             Assert.Contains("P1", texts);
 
