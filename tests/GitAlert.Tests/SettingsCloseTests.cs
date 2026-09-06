@@ -94,7 +94,8 @@ public class SettingsCloseTests : IDisposable
     {
         public List<string> Calls { get; } = [];
 
-        public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens) => Calls.Add("apply");
+        public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens, bool listReplaced) =>
+            Calls.Add(listReplaced ? "apply with list" : "apply");
 
         public void ResetMonitorState() => Calls.Add("reset");
 

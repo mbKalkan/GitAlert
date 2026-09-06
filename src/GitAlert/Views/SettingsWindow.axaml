@@ -803,6 +803,29 @@
 
             <Border Classes="rule" Margin="0,0,0,18" />
 
+            <TextBlock Text="BACKUP" Classes="section" />
+
+            <StackPanel Orientation="Horizontal">
+              <Button Name="ExportButton"
+                      Content="Export settings…"
+                      Theme="{StaticResource SecondaryButton}"
+                      Margin="0,0,8,0"
+                      Click="OnExportClicked"
+                      ToolTip.Tip="Write the accounts, repositories, boards, sections and every switch to a file" />
+              <Button Name="ImportButton"
+                      Content="Import settings…"
+                      Theme="{StaticResource SecondaryButton}"
+                      Click="OnImportClicked"
+                      ToolTip.Tip="Replace everything here with a file's contents; Save keeps it, Cancel undoes it" />
+            </StackPanel>
+
+            <TextBlock Classes="muted"
+                       Margin="0,10,0,20"
+                       TextWrapping="Wrap"
+                       Text="The file carries the accounts, the repositories and boards under them, the sections, the order and folds of the list, and every switch - but never a token, and not where the window stood. On the other machine, paste each account's token after importing." />
+
+            <Border Classes="rule" Margin="0,0,0,18" />
+
             <TextBlock Text="MAINTENANCE" Classes="section" />
 
             <StackPanel Orientation="Horizontal">

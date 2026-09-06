@@ -429,16 +429,16 @@ public sealed class MonitorService : IAsyncDisposable
             _state.LastSuccessfulPoll = DateTimeOffset.Now;
             _stateStore.Save(_state);
 
+            // Finished before the status says so: the diagnostics page refreshes on the status,
+            // and would otherwise read a check that had just ended as one still going.
+            MarkFinished();
+
             Publish(collected);
             SetStatus(BuildStatus(watched.Count, boards.Count, accounts.Count, failures));
         }
         finally
         {
-            lock (_sync)
-            {
-                _lastPollFinishedAt = DateTimeOffset.Now;
-            }
-
+            MarkFinished();
             _pollGate.Release();
         }
     }
@@ -551,6 +551,15 @@ public sealed class MonitorService : IAsyncDisposable
     }
 
     // ---- What the last check of each thing did, for the diagnostics page --------
+
+    /// <summary>Stamps the end of the poll in progress, once; the second call after a clean finish changes nothing.</summary>
+    private void MarkFinished()
+    {
+        lock (_sync)
+        {
+            _lastPollFinishedAt ??= DateTimeOffset.Now;
+        }
+    }
 
     /// <summary>The key an account's inbox is recorded under, beside the repositories' and the boards'.</summary>
     private static string InboxKey(string accountId) => $"{accountId}|inbox";

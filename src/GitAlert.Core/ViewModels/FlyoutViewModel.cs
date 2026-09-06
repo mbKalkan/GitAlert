@@ -1526,6 +1526,33 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Takes the shape of the list from the settings: the order, the sections, the folds, and
+    /// whether read alerts are hidden. The list normally owns these and writes them; an import
+    /// is the one time they arrive from outside, and what the list had is dropped for them.
+    /// </summary>
+    public void ApplyListPreferences(AppSettings settings)
+    {
+        _order.Clear();
+        _order.AddRange(settings.ProjectOrder);
+
+        _sections.Clear();
+        _sections.AddRange(settings.Sections.Select(section => Wrap(section.Clone())));
+
+        _projectFolds.Clear();
+
+        foreach (var (repository, folded) in settings.ProjectFolds)
+        {
+            _projectFolds[repository] = folded;
+        }
+
+        UnreadOnly = settings.UnreadOnly;
+
+        // The groups carry the old folds; rebuilt, they take the imported ones.
+        _projects.Clear();
+        ApplyFilter();
+    }
+
     /// <summary>Re-reads the store after settings changed the history size or cleared it.</summary>
     public void Reload()
     {

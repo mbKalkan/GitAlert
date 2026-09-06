@@ -76,7 +76,7 @@ internal sealed class NoShell : IShellCommands, ISettingsHost, IStartupRegistrar
     {
     }
 
-    public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
+    public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens, bool listReplaced)
     {
     }
 

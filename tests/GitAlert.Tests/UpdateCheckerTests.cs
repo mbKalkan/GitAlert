@@ -241,7 +241,7 @@ public class UpdateCheckerTests : IDisposable
 
     private sealed class SilentHost : ISettingsHost
     {
-        public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
+        public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens, bool listReplaced)
         {
         }
 

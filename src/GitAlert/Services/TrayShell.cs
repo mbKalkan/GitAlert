@@ -171,7 +171,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
 
     // ---- ISettingsHost -----------------------------------------------------
 
-    public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens)
+    public void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens, bool listReplaced)
     {
         _settings = settings;
 
@@ -180,6 +180,13 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _flyout.ApplyPreferences(settings);
         _monitor.Configure(settings, tokens);
         _updates.Configure(settings.CheckForUpdates);
+
+        // An import brought its own order, sections and folds. The list holds those itself, and
+        // would otherwise write what it had back over them at the next fold or drag.
+        if (listReplaced)
+        {
+            _flyoutViewModel.ApplyListPreferences(settings);
+        }
 
         // A repository or a board that is no longer watched takes its alerts with it. One that is
         // only switched off keeps them in the history, out of sight until it is switched back on.

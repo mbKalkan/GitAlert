@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,7 +15,12 @@ namespace GitAlert.ViewModels;
 /// <summary>What the settings window needs from the application shell.</summary>
 public interface ISettingsHost
 {
-    void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens);
+    /// <summary>
+    /// Takes the saved settings into use. With <paramref name="listReplaced"/>, an import has
+    /// replaced the shape of the list too - the order, the sections, the folds - and the list
+    /// has to take it from the settings rather than keep what it had.
+    /// </summary>
+    void ApplySettings(AppSettings settings, IReadOnlyDictionary<string, string> tokens, bool listReplaced);
 
     void ResetMonitorState();
 
@@ -47,7 +53,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly ISettingsHost _host;
     private readonly UpdateChecker? _updates;
     private readonly UiThread _ui;
-    private readonly AppSettings _settings;
+
+    /// <summary>The settings as loaded, or as imported; Save writes into this.</summary>
+    private AppSettings _settings;
 
     /// <summary>Shared by every account's validation client, so they pool one set of connections.</summary>
     private readonly HttpClient _http = new(new SocketsHttpHandler
@@ -154,31 +162,75 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _probe = new GitHubClient(_http);
 
-        _pollIntervalMinutes = _settings.PollIntervalMinutes;
-        _watchWorkflowRuns = _settings.WatchWorkflowRuns;
-        _onlyFailedWorkflowRuns = _settings.OnlyFailedWorkflowRuns;
-        _onlyStatusChangesOnBoards = _settings.OnlyStatusChangesOnBoards;
-        _ignoreOwnActivity = _settings.IgnoreOwnActivity;
-        _showToasts = _settings.ShowToasts;
-        _playSound = _settings.PlaySound;
-        _startWithWindows = startup.IsEnabled;
-        _checkForUpdates = _settings.CheckForUpdates;
-        _theme = _settings.Theme;
-        _darkPalette = _settings.DarkPalette;
-        _maxHistory = _settings.MaxHistory;
-        _autoHideWindow = _settings.AutoHideWindow;
-        _alwaysOnTop = _settings.AlwaysOnTop;
+        Kinds =
+        [
+            new KindToggleViewModel(AlertKind.Push, "Pushes", true),
+            new KindToggleViewModel(AlertKind.PullRequest, "Pull requests", true),
+            new KindToggleViewModel(AlertKind.Review, "Reviews", true),
+            new KindToggleViewModel(AlertKind.Issue, "Issues", true),
+            new KindToggleViewModel(AlertKind.Comment, "Comments", true),
+            new KindToggleViewModel(AlertKind.Mention, "Mentions", true),
+            new KindToggleViewModel(AlertKind.Workflow, "CI runs", true),
+            new KindToggleViewModel(AlertKind.Release, "Releases", true),
+            new KindToggleViewModel(AlertKind.Branch, "Branches and tags", true),
+            new KindToggleViewModel(AlertKind.Star, "Stars", true),
+            new KindToggleViewModel(AlertKind.Fork, "Forks", true),
+            new KindToggleViewModel(AlertKind.Board, "Board changes", true),
+        ];
 
-        foreach (var account in _settings.Accounts)
+        Load(_settings);
+        StartWithWindows = startup.IsEnabled;
+
+        if (_updates is not null)
         {
-            var viewModel = new AccountViewModel(account, tokenStore.Read(account.Id), _http, RemoveAccount);
+            _updates.Changed += OnUpdateChanged;
+            RefreshUpdateStatus();
+        }
+    }
 
-            foreach (var repository in _settings.RepositoriesFor(account.Id))
+    /// <summary>
+    /// Fills the window from a settings object: every switch, and one card per account with its
+    /// repositories and boards. Run once from the file when the window opens, and again from an
+    /// import, which replaces all of it.
+    /// </summary>
+    private void Load(AppSettings settings)
+    {
+        PollIntervalMinutes = settings.PollIntervalMinutes;
+        WatchWorkflowRuns = settings.WatchWorkflowRuns;
+        OnlyFailedWorkflowRuns = settings.OnlyFailedWorkflowRuns;
+        OnlyStatusChangesOnBoards = settings.OnlyStatusChangesOnBoards;
+        IgnoreOwnActivity = settings.IgnoreOwnActivity;
+        ShowToasts = settings.ShowToasts;
+        PlaySound = settings.PlaySound;
+        CheckForUpdates = settings.CheckForUpdates;
+        Theme = settings.Theme;
+        DarkPalette = settings.DarkPalette;
+        MaxHistory = settings.MaxHistory;
+        AutoHideWindow = settings.AutoHideWindow;
+        AlwaysOnTop = settings.AlwaysOnTop;
+
+        foreach (var kind in Kinds)
+        {
+            kind.IsEnabled = !settings.IsMuted(kind.Kind);
+        }
+
+        foreach (var account in Accounts)
+        {
+            account.Dispose();
+        }
+
+        Accounts.Clear();
+
+        foreach (var account in settings.Accounts)
+        {
+            var viewModel = new AccountViewModel(account, _tokenStore.Read(account.Id), _http, RemoveAccount);
+
+            foreach (var repository in settings.RepositoriesFor(account.Id))
             {
                 viewModel.Repositories.Add(new RepoItemViewModel(repository));
             }
 
-            foreach (var board in _settings.BoardsFor(account.Id))
+            foreach (var board in settings.BoardsFor(account.Id))
             {
                 viewModel.Boards.Add(new BoardItemViewModel(board));
             }
@@ -186,27 +238,134 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             Accounts.Add(viewModel);
         }
 
-        Kinds =
-        [
-            new KindToggleViewModel(AlertKind.Push, "Pushes", !_settings.IsMuted(AlertKind.Push)),
-            new KindToggleViewModel(AlertKind.PullRequest, "Pull requests", !_settings.IsMuted(AlertKind.PullRequest)),
-            new KindToggleViewModel(AlertKind.Review, "Reviews", !_settings.IsMuted(AlertKind.Review)),
-            new KindToggleViewModel(AlertKind.Issue, "Issues", !_settings.IsMuted(AlertKind.Issue)),
-            new KindToggleViewModel(AlertKind.Comment, "Comments", !_settings.IsMuted(AlertKind.Comment)),
-            new KindToggleViewModel(AlertKind.Mention, "Mentions", !_settings.IsMuted(AlertKind.Mention)),
-            new KindToggleViewModel(AlertKind.Workflow, "CI runs", !_settings.IsMuted(AlertKind.Workflow)),
-            new KindToggleViewModel(AlertKind.Release, "Releases", !_settings.IsMuted(AlertKind.Release)),
-            new KindToggleViewModel(AlertKind.Branch, "Branches and tags", !_settings.IsMuted(AlertKind.Branch)),
-            new KindToggleViewModel(AlertKind.Star, "Stars", !_settings.IsMuted(AlertKind.Star)),
-            new KindToggleViewModel(AlertKind.Fork, "Forks", !_settings.IsMuted(AlertKind.Fork)),
-            new KindToggleViewModel(AlertKind.Board, "Board changes", !_settings.IsMuted(AlertKind.Board)),
-        ];
+        OnPropertyChanged(nameof(HasNoAccounts));
+    }
 
-        if (_updates is not null)
+    // ---- Moving the settings between machines ----------------------------------
+
+    /// <summary>True once an import replaced the list's shape too, so Save tells the shell to take it.</summary>
+    private bool _imported;
+
+    /// <summary>
+    /// The settings as they stand in the window - saved or not - as a file. Everything but the
+    /// tokens and where the window stood; what this machine has is what the file says.
+    /// </summary>
+    public string BuildExport()
+    {
+        var portable = _settings.Clone();
+        Collect(portable);
+        return SettingsPortability.Export(portable, Version);
+    }
+
+    /// <summary>Writes the export to a file and says so; a file that will not take it says that instead.</summary>
+    public void ExportTo(string path)
+    {
+        try
         {
-            _updates.Changed += OnUpdateChanged;
-            RefreshUpdateStatus();
+            var portable = _settings.Clone();
+            Collect(portable);
+            SettingsPortability.ExportTo(path, portable, Version);
+            NoteExported(Path.GetFileName(path));
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Report($"Could not write {Path.GetFileName(path)}: {ex.Message}", isError: true);
+        }
+    }
+
+    public void NoteExported(string fileName) =>
+        Report($"Exported the settings to {fileName}. It holds no token; each account needs its own on the other machine.", isError: false);
+
+    public void NoteExportFailed(string fileName, string reason) =>
+        Report($"Could not write {fileName}: {reason}", isError: true);
+
+    public void NoteImportFailed(string fileName, string reason) =>
+        Report($"Could not read {fileName}: {reason}", isError: true);
+
+    /// <summary>
+    /// Replaces everything in the window with a file's contents. Nothing is written until Save,
+    /// so a wrong file is undone by Cancel. An account already here by login keeps its token.
+    /// </summary>
+    public bool Import(string json, string fileName)
+    {
+        SettingsImport import;
+
+        try
+        {
+            import = SettingsPortability.Import(json, _settings);
+        }
+        catch (SettingsImportException ex)
+        {
+            Report(ex.Message, isError: true);
+            return false;
+        }
+
+        _settings = import.Settings;
+        _removedAccountIds.Clear();
+        _imported = true;
+
+        Load(_settings);
+
+        var needing = Accounts.Count(a => !a.HasStoredToken);
+        var tokens = needing switch
+        {
+            0 => string.Empty,
+            1 => " One account needs its token: choose Replace token on its card.",
+            _ => $" {needing} accounts need their tokens: choose Replace token on each card.",
+        };
+
+        Report(
+            $"Read {Count(import.Accounts, "account")}, {Count(import.Repositories, "repository", "repositories")}, "
+            + $"{Count(import.Boards, "board")} and {Count(import.Sections, "section")} from {fileName}, written by {import.WrittenBy}. "
+            + $"Save to keep them.{tokens}",
+            isError: false);
+
+        return true;
+    }
+
+    /// <summary>Reads the file and imports it; a file that cannot be read says so.</summary>
+    public bool ImportFrom(string path)
+    {
+        string json;
+
+        try
+        {
+            json = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Report($"Could not read {Path.GetFileName(path)}: {ex.Message}", isError: true);
+            return false;
+        }
+
+        return Import(json, Path.GetFileName(path));
+    }
+
+    private static string Count(int number, string singular, string? plural = null) =>
+        number == 1 ? $"1 {singular}" : $"{number} {plural ?? singular + "s"}";
+
+    /// <summary>Copies every switch and every card into a settings object; what Save writes and what an export carries.</summary>
+    private void Collect(AppSettings target)
+    {
+        target.PollIntervalMinutes = PollIntervalMinutes;
+        target.WatchWorkflowRuns = WatchWorkflowRuns;
+        target.OnlyFailedWorkflowRuns = OnlyFailedWorkflowRuns;
+        target.OnlyStatusChangesOnBoards = OnlyStatusChangesOnBoards;
+        target.IgnoreOwnActivity = IgnoreOwnActivity;
+        target.ShowToasts = ShowToasts;
+        target.PlaySound = PlaySound;
+        target.StartWithWindows = StartWithWindows;
+        target.CheckForUpdates = CheckForUpdates;
+        target.Theme = Theme;
+        target.DarkPalette = DarkPalette;
+        target.MaxHistory = MaxHistory;
+        target.AutoHideWindow = AutoHideWindow;
+        target.AlwaysOnTop = AlwaysOnTop;
+        target.MutedKinds = [.. Kinds.Where(k => !k.IsEnabled).Select(k => k.Kind)];
+
+        target.Accounts = [.. Accounts.Select(a => a.ToAccount())];
+        target.Repositories = [.. Accounts.SelectMany(a => a.ToSubscriptions())];
+        target.Boards = [.. Accounts.SelectMany(a => a.ToBoardSubscriptions())];
     }
 
     public bool HasAvailableUpdate => AvailableUpdate.Length > 0;
@@ -416,25 +575,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Save()
     {
-        _settings.PollIntervalMinutes = PollIntervalMinutes;
-        _settings.WatchWorkflowRuns = WatchWorkflowRuns;
-        _settings.OnlyFailedWorkflowRuns = OnlyFailedWorkflowRuns;
-        _settings.OnlyStatusChangesOnBoards = OnlyStatusChangesOnBoards;
-        _settings.IgnoreOwnActivity = IgnoreOwnActivity;
-        _settings.ShowToasts = ShowToasts;
-        _settings.PlaySound = PlaySound;
-        _settings.StartWithWindows = StartWithWindows;
-        _settings.CheckForUpdates = CheckForUpdates;
-        _settings.Theme = Theme;
-        _settings.DarkPalette = DarkPalette;
-        _settings.MaxHistory = MaxHistory;
-        _settings.AutoHideWindow = AutoHideWindow;
-        _settings.AlwaysOnTop = AlwaysOnTop;
-        _settings.MutedKinds = [.. Kinds.Where(k => !k.IsEnabled).Select(k => k.Kind)];
-
-        _settings.Accounts = [.. Accounts.Select(a => a.ToAccount())];
-        _settings.Repositories = [.. Accounts.SelectMany(a => a.ToSubscriptions())];
-        _settings.Boards = [.. Accounts.SelectMany(a => a.ToBoardSubscriptions())];
+        Collect(_settings);
 
         if (!_settingsStore.Save(_settings))
         {
@@ -464,7 +605,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         var startupRefused = StartWithWindows != _startup.IsEnabled && !_startup.SetEnabled(StartWithWindows);
 
-        _host.ApplySettings(_settings, _tokenStore.ReadAll(_settings.Accounts.Select(a => a.Id)));
+        _host.ApplySettings(_settings, _tokenStore.ReadAll(_settings.Accounts.Select(a => a.Id)), listReplaced: _imported);
+        _imported = false;
 
         // Everything else is saved and applied; the window stays open only so the refusal can be
         // read. Closing it would have taken the message away before it was ever drawn.
