@@ -21,6 +21,12 @@ public sealed class AppSettings
 
     public List<RepoSubscription> Repositories { get; set; } = [];
 
+    /// <summary>
+    /// The project boards watched, each under the account whose token can read it. A board is
+    /// read the way a repository is: once per check, and only when something on it moved.
+    /// </summary>
+    public List<BoardSubscription> Boards { get; set; } = [];
+
     /// <summary>How often GitAlert asks GitHub what changed.</summary>
     public int PollIntervalMinutes { get; set; } = 2;
 
@@ -39,6 +45,12 @@ public sealed class AppSettings
 
     /// <summary>When set, only failed / cancelled CI runs raise an alert.</summary>
     public bool OnlyFailedWorkflowRuns { get; set; }
+
+    /// <summary>
+    /// On a board, only a card arriving, changing Status, being archived or going away is news.
+    /// Off, and any field on a card changing is news too: a priority, an iteration, a date.
+    /// </summary>
+    public bool OnlyStatusChangesOnBoards { get; set; } = true;
 
     /// <summary>
     /// Skip activity the signed-in account caused itself. Off by default: the first thing anyone
@@ -111,13 +123,15 @@ public sealed class AppSettings
     public bool IsMuted(AlertKind kind) => MutedKinds.Contains(kind);
 
     /// <summary>
-    /// The repositories on the watch list with their tick off. They are neither polled nor shown,
-    /// and their history waits for the tick to come back. A name watched under two accounts is
-    /// off only when it is off under both.
+    /// The repositories and boards on the watch list with their tick off, by the name the flyout
+    /// groups them under. They are neither polled nor shown, and their history waits for the tick
+    /// to come back. A name watched under two accounts is off only when it is off under both.
     /// </summary>
     public IEnumerable<string> SwitchedOffRepositories =>
         Repositories
-            .GroupBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
+            .Select(r => (Key: r.FullName, r.Enabled))
+            .Concat(Boards.Select(b => (b.Key, b.Enabled)))
+            .GroupBy(r => r.Key, StringComparer.OrdinalIgnoreCase)
             .Where(g => g.All(r => !r.Enabled))
             .Select(g => g.Key);
 
@@ -128,6 +142,14 @@ public sealed class AppSettings
     public IEnumerable<RepoSubscription> RepositoriesFor(string accountId) =>
         Repositories.Where(r => string.Equals(r.AccountId, accountId, StringComparison.Ordinal));
 
+    /// <summary>The boards watched under one account.</summary>
+    public IEnumerable<BoardSubscription> BoardsFor(string accountId) =>
+        Boards.Where(b => string.Equals(b.AccountId, accountId, StringComparison.Ordinal));
+
+    /// <summary>Every name the flyout may group under: the repositories and the boards, as watched.</summary>
+    public IEnumerable<string> WatchedNames =>
+        Repositories.Select(r => r.FullName).Concat(Boards.Select(b => b.Key));
+
     public GitHubAccount? FindAccount(string? accountId) =>
         accountId is null
             ? null
@@ -137,11 +159,13 @@ public sealed class AppSettings
     {
         Accounts = Accounts.Select(a => a.Clone()).ToList(),
         Repositories = Repositories.Select(r => r.Clone()).ToList(),
+        Boards = Boards.Select(b => b.Clone()).ToList(),
         PollIntervalMinutes = PollIntervalMinutes,
         MutedKinds = [.. MutedKinds],
         IncludeInbox = IncludeInbox,
         WatchWorkflowRuns = WatchWorkflowRuns,
         OnlyFailedWorkflowRuns = OnlyFailedWorkflowRuns,
+        OnlyStatusChangesOnBoards = OnlyStatusChangesOnBoards,
         IgnoreOwnActivity = IgnoreOwnActivity,
         ShowToasts = ShowToasts,
         PlaySound = PlaySound,
@@ -167,6 +191,7 @@ public sealed class AppSettings
         // JSON null is a valid value for every one of these, and every reader below walks them.
         Accounts ??= [];
         Repositories ??= [];
+        Boards ??= [];
         MutedKinds ??= [];
         ProjectOrder ??= [];
         ProjectOrder.RemoveAll(string.IsNullOrWhiteSpace);
@@ -218,6 +243,23 @@ public sealed class AppSettings
         foreach (var repository in Repositories)
         {
             repository.AccountId ??= string.Empty;
+        }
+
+        Boards = Boards
+            .Where(b => b is not null)
+            // The owner goes into a request path and the number is what GitHub numbers boards
+            // by, so anything that could not be either is not a board GitAlert can ask about.
+            .Where(b => RepoRef.IsValidOwner(b.Owner) && b.Number > 0)
+            // Unlike a repository, a board never came from a pre-account settings file: one
+            // without an account has nothing to read it with.
+            .Where(b => !string.IsNullOrEmpty(b.AccountId) && known.Contains(b.AccountId))
+            .GroupBy(b => $"{b.AccountId}|{b.Key}", StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+
+        foreach (var board in Boards)
+        {
+            board.Title = string.IsNullOrWhiteSpace(board.Title) ? $"#{board.Number}" : board.Title.Trim();
         }
     }
 
@@ -341,6 +383,66 @@ public sealed class RepoSubscription
         IsPrivate = IsPrivate,
     };
 }
+
+/// <summary>A project board the user asked GitAlert to watch, under a particular account.</summary>
+public sealed class BoardSubscription
+{
+    /// <summary>The <see cref="GitHubAccount.Id"/> whose token is used to read this board.</summary>
+    public string AccountId { get; set; } = string.Empty;
+
+    public required string Owner { get; set; }
+
+    /// <summary>Whether the owner is an organisation or a user: the two live on different endpoints.</summary>
+    [JsonConverter(typeof(BoardOwnerKindConverter))]
+    public BoardOwnerKind OwnerKind { get; set; }
+
+    public required int Number { get; set; }
+
+    /// <summary>The board's name as GitHub showed it when it was added; the list is named by it.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>The name the flyout groups this board's alerts under.</summary>
+    [JsonIgnore]
+    public string Key => Ref.Key;
+
+    [JsonIgnore]
+    public BoardRef Ref => new(Owner, OwnerKind, Number);
+
+    [JsonIgnore]
+    public string Url => Ref.HtmlUrl;
+
+    /// <summary>The name the status line and the failures call it by.</summary>
+    [JsonIgnore]
+    public string DisplayName => string.IsNullOrWhiteSpace(Title) ? Key : $"{Owner}/{Title}";
+
+    /// <summary>Key for per-board sync state: the same board under two accounts is two subjects.</summary>
+    [JsonIgnore]
+    public string StateKey => $"{AccountId}|{Key}";
+
+    public static BoardSubscription From(string accountId, BoardRef board, string title) => new()
+    {
+        AccountId = accountId,
+        Owner = board.Owner,
+        OwnerKind = board.OwnerKind,
+        Number = board.Number,
+        Title = title,
+    };
+
+    public BoardSubscription Clone() => new()
+    {
+        AccountId = AccountId,
+        Owner = Owner,
+        OwnerKind = OwnerKind,
+        Number = Number,
+        Title = Title,
+        Enabled = Enabled,
+    };
+}
+
+/// <summary>An owner kind this build has not heard of is asked about as a user first, like an unknown one.</summary>
+public sealed class BoardOwnerKindConverter() : TolerantEnumConverter<BoardOwnerKind>(BoardOwnerKind.Unknown);
 
 public enum AppTheme
 {

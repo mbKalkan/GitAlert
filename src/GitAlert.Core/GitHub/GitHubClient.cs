@@ -17,6 +17,15 @@ public sealed class GitHubClient : IDisposable
     private const string ApiRoot = "https://api.github.com";
     private const string ApiVersion = "2022-11-28";
 
+    /// <summary>The Projects endpoints are documented under a newer version than the rest.</summary>
+    private const string ProjectsApiVersion = "2026-03-10";
+
+    /// <summary>The most cards one request returns; a board that fits is read conditionally.</summary>
+    public const int ProjectItemsPageSize = 100;
+
+    /// <summary>The most fields an items request may name.</summary>
+    public const int MaxProjectFields = 50;
+
     /// <summary>
     /// The most one response may deserialise into. GitHub is not hostile, but a commit that
     /// rewrites a generated file returns a patch measured in megabytes, and the deserialiser holds
@@ -233,6 +242,131 @@ public sealed class GitHubClient : IDisposable
         CancellationToken ct = default) =>
         GetConditionalAsync<List<GhNotification>>("/notifications?all=false&per_page=50", etag, ct);
 
+    /// <summary>Confirms the token can read a project board, and reports what it is called.</summary>
+    public async Task<GhProject> GetProjectAsync(BoardRef board, CancellationToken ct = default)
+    {
+        var response = await SendAsync(HttpMethod.Get, board.ApiPath, etag: null, ct, ProjectsApiVersion).ConfigureAwait(false);
+
+        return await ReadJsonAsync<GhProject>(response, ct).ConfigureAwait(false)
+            ?? throw new GitHubException(GitHubErrorKind.NotFound, $"{board.Key} was not found.");
+    }
+
+    /// <summary>The boards an organisation or a user owns, open and closed alike, newest first.</summary>
+    public async Task<List<GhProject>> GetProjectsAsync(string owner, BoardOwnerKind kind, CancellationToken ct = default)
+    {
+        var path = kind == BoardOwnerKind.Organization
+            ? $"/orgs/{Uri.EscapeDataString(owner)}/projectsV2?per_page=100"
+            : $"/users/{Uri.EscapeDataString(owner)}/projectsV2?per_page=100";
+
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct, ProjectsApiVersion).ConfigureAwait(false);
+
+        return await ReadJsonAsync<List<GhProject>>(response, ct).ConfigureAwait(false) ?? [];
+    }
+
+    /// <summary>The organisations the token's user belongs to, so their boards can be listed.</summary>
+    public async Task<List<GhOrganization>> GetMyOrganizationsAsync(CancellationToken ct = default)
+    {
+        var response = await SendAsync(HttpMethod.Get, "/user/orgs?per_page=100", etag: null, ct).ConfigureAwait(false);
+
+        return await ReadJsonAsync<List<GhOrganization>>(response, ct).ConfigureAwait(false) ?? [];
+    }
+
+    /// <summary>The columns of a board, so its cards can be asked for with their values.</summary>
+    public async Task<List<GhProjectField>> GetProjectFieldsAsync(BoardRef board, CancellationToken ct = default)
+    {
+        var path = $"{board.ApiPath}/fields?per_page=100";
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct, ProjectsApiVersion).ConfigureAwait(false);
+
+        return await ReadJsonAsync<List<GhProjectField>>(response, ct).ConfigureAwait(false) ?? [];
+    }
+
+    /// <summary>
+    /// One page of a board's cards, with the fields named. Conditional like the polling reads: a
+    /// board nobody touched comes back as 304 and costs nothing. Without the fields GitHub sends
+    /// the title alone, so the ids come from <see cref="GetProjectFieldsAsync"/> first.
+    /// </summary>
+    public async Task<ConditionalResponse<GhProjectItemsPage>> GetProjectItemsAsync(
+        BoardRef board,
+        IReadOnlyList<long> fieldIds,
+        string? etag,
+        string? after = null,
+        CancellationToken ct = default)
+    {
+        var path = $"{board.ApiPath}/items?per_page={ProjectItemsPageSize}";
+
+        if (fieldIds.Count > 0)
+        {
+            path += "&fields=" + string.Join(',', fieldIds.Take(MaxProjectFields));
+        }
+
+        if (!string.IsNullOrEmpty(after))
+        {
+            path += "&after=" + Uri.EscapeDataString(after);
+        }
+
+        using var request = CreateRequest(HttpMethod.Get, path, etag, ProjectsApiVersion);
+        using var response = await ExecuteAsync(request, ct).ConfigureAwait(false);
+
+        CaptureRateLimit(response);
+
+        if (response.StatusCode == HttpStatusCode.NotModified)
+        {
+            return ConditionalResponse<GhProjectItemsPage>.Unchanged(etag);
+        }
+
+        await EnsureSuccessAsync(response, path, ct).ConfigureAwait(false);
+
+        // Read before the body: reading the body releases the response.
+        var next = NextCursor(response);
+        var newTag = response.Headers.ETag?.ToString();
+        var items = await ReadJsonAsync<List<GhProjectItem>>(response, ct).ConfigureAwait(false) ?? [];
+
+        return new ConditionalResponse<GhProjectItemsPage>
+        {
+            NotModified = false,
+            Value = new GhProjectItemsPage { Items = items, NextCursor = next },
+            ETag = newTag,
+        };
+    }
+
+    /// <summary>The <c>after</c> cursor in the <c>Link</c> header's next page, when there is one.</summary>
+    private static string? NextCursor(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Link", out var values))
+        {
+            return null;
+        }
+
+        foreach (var link in values.SelectMany(v => v.Split(',')))
+        {
+            var parts = link.Split(';');
+
+            if (parts.Length < 2 || !parts.Skip(1).Any(p => p.Trim().Equals("rel=\"next\"", StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var url = parts[0].Trim().TrimStart('<').TrimEnd('>');
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                continue;
+            }
+
+            foreach (var pair in uri.Query.TrimStart('?').Split('&'))
+            {
+                var cut = pair.IndexOf('=');
+
+                if (cut > 0 && pair[..cut] == "after")
+                {
+                    return Uri.UnescapeDataString(pair[(cut + 1)..]);
+                }
+            }
+        }
+
+        return null;
+    }
+
     private async Task<ConditionalResponse<T>> GetConditionalAsync<T>(string path, string? etag, CancellationToken ct)
     {
         using var request = CreateRequest(HttpMethod.Get, path, etag);
@@ -258,9 +392,14 @@ public sealed class GitHubClient : IDisposable
         };
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string? etag, CancellationToken ct)
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpMethod method,
+        string path,
+        string? etag,
+        CancellationToken ct,
+        string apiVersion = ApiVersion)
     {
-        using var request = CreateRequest(method, path, etag);
+        using var request = CreateRequest(method, path, etag, apiVersion);
         var response = await ExecuteAsync(request, ct).ConfigureAwait(false);
 
         try
@@ -280,14 +419,14 @@ public sealed class GitHubClient : IDisposable
         }
     }
 
-    private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? etag)
+    private HttpRequestMessage CreateRequest(HttpMethod method, string path, string? etag, string apiVersion = ApiVersion)
     {
         var request = new HttpRequestMessage(method, ApiRoot + path);
 
         // Set on the request rather than the client: one HttpClient is shared by every account.
         request.Headers.UserAgent.ParseAdd(UserAgent);
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
-        request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", ApiVersion);
+        request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", apiVersion);
 
         if (_token is not null)
         {
@@ -417,10 +556,23 @@ public sealed class GitHubClient : IDisposable
             _ => null,
         };
 
-    private static string Describe(string what) =>
-        what.StartsWith("/repos/", StringComparison.Ordinal)
-            ? string.Join('/', what[7..].Split('/').Take(2))
-            : what;
+    private static string Describe(string what)
+    {
+        if (what.StartsWith("/repos/", StringComparison.Ordinal))
+        {
+            return string.Join('/', what[7..].Split('/').Take(2));
+        }
+
+        // /orgs/acme/projectsV2/12/items -> acme/#12, the name the board is watched under.
+        var segments = what.Split('?')[0].Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (segments.Length >= 4 && segments[0] is "orgs" or "users" && segments[2] == "projectsV2")
+        {
+            return $"{segments[1]}/#{segments[3]}";
+        }
+
+        return what;
+    }
 
     private static async Task<string?> ReadApiMessageAsync(HttpResponseMessage response, CancellationToken ct)
     {

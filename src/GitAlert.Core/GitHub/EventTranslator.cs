@@ -617,6 +617,12 @@ internal static class JsonElementExtensions
             ? value.GetString()
             : null;
 
+    /// <summary>The property as a number, or null when it is absent or not one.</summary>
+    public static int? GetIntOrNull(this JsonElement element, string property) =>
+        element.TryGetChild(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+            ? number
+            : null;
+
     public static int GetIntOrDefault(this JsonElement element, string property, int fallback) =>
         element.TryGetChild(property, out var value)
         && value.ValueKind == JsonValueKind.Number

@@ -62,6 +62,18 @@ public sealed class Alert
 
     public string? Actor { get; init; }
 
+    /// <summary>
+    /// One more line for the row, where there is no actor to name: what a board card's Status
+    /// went from and to, say. Null on every other kind.
+    /// </summary>
+    public string? Note { get; init; }
+
+    /// <summary>
+    /// The board card's fields at the time, for the detail pane. Null on every other kind, and on
+    /// board alerts stored before the pane learned to show them.
+    /// </summary>
+    public List<AlertField>? Fields { get; init; }
+
     public string? Url { get; init; }
 
     public required DateTimeOffset Timestamp { get; init; }
@@ -83,6 +95,9 @@ public sealed class Alert
         Actor is not null ? $"by {Actor}" :
         Title;
 }
+
+/// <summary>One field of a board card, as a name and the value it held.</summary>
+public sealed record AlertField(string Name, string Value);
 
 public enum AlertSeverity
 {

@@ -37,6 +37,17 @@ public sealed record WatchedRepository(string AccountId, string Login, RepoRef R
     public string FullName => Repo.FullName;
 }
 
+/// <summary>A board being read, and the account whose token reaches it.</summary>
+public sealed record WatchedBoard(string AccountId, string Login, BoardSubscription Board)
+{
+    /// <summary>The name the flyout groups the board's alerts under.</summary>
+    public string Key => Board.Key;
+
+    public string Title => Board.Title;
+
+    public string Url => Board.Url;
+}
+
 /// <summary>
 /// The polling engine. Runs one background loop that walks every account, polls the repositories
 /// watched under it with that account's token, and translates whatever is new into alerts. All
@@ -76,6 +87,12 @@ public sealed class MonitorService : IAsyncDisposable
 
     /// <summary>The primary budget comes back within the hour; nothing should silence an account longer.</summary>
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// How far into a board one reading goes: a thousand cards. Past that the reading is partial,
+    /// and a card that has left the part read is not taken for gone.
+    /// </summary>
+    private const int MaxBoardPages = 10;
 
     /// <summary>Whether the poll in progress has deserialised anything. Poll thread only.</summary>
     private bool _readSomething;
@@ -140,7 +157,8 @@ public sealed class MonitorService : IAsyncDisposable
 
         _state.Prune(
             applied.Repositories.Select(r => r.StateKey),
-            applied.Accounts.Select(a => a.Id));
+            applied.Accounts.Select(a => a.Id),
+            applied.Boards.Select(b => b.StateKey));
 
         if (intervalChanged || credentialsChanged)
         {
@@ -353,8 +371,9 @@ public sealed class MonitorService : IAsyncDisposable
             }
 
             var watched = settings.Repositories.Where(r => r.Enabled).ToList();
+            var boards = settings.Boards.Where(b => b.Enabled).ToList();
 
-            if (watched.Count == 0 && !accounts.Any(a => a.IncludeInbox))
+            if (watched.Count == 0 && boards.Count == 0 && !accounts.Any(a => a.IncludeInbox))
             {
                 SetStatus(new MonitorStatus(ConnectionState.NotConfigured, "Add a repository to watch."));
                 return;
@@ -378,7 +397,7 @@ public sealed class MonitorService : IAsyncDisposable
             _stateStore.Save(_state);
 
             Publish(collected);
-            SetStatus(BuildStatus(watched.Count, accounts.Count, failures));
+            SetStatus(BuildStatus(watched.Count, boards.Count, accounts.Count, failures));
         }
         finally
         {
@@ -448,6 +467,25 @@ public sealed class MonitorService : IAsyncDisposable
             }
         }
 
+        foreach (var board in settings.BoardsFor(account.Id).Where(b => b.Enabled))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                await PollBoardAsync(client, account, board, settings, collected, ct).ConfigureAwait(false);
+            }
+            catch (GitHubException ex)
+            {
+                failures.Add((board.DisplayName, ex));
+
+                if (NoteThrottling(account, ex))
+                {
+                    return;
+                }
+            }
+        }
+
         if (account.IncludeInbox)
         {
             try
@@ -460,6 +498,105 @@ public sealed class MonitorService : IAsyncDisposable
                 NoteThrottling(account, ex);
             }
         }
+    }
+
+    /// <summary>
+    /// Reads a board and reports what moved since the last reading. GitHub keeps no timeline of a
+    /// board, so this is a comparison: every card as it stands now against every card as it stood.
+    /// </summary>
+    private async Task PollBoardAsync(
+        GitHubClient client,
+        GitHubAccount account,
+        BoardSubscription board,
+        AppSettings settings,
+        List<Alert> collected,
+        CancellationToken ct)
+    {
+        var state = _state.BoardFor(board.StateKey);
+        var reference = board.Ref;
+
+        // Without naming the fields GitHub sends the title alone, and the column a card is in is
+        // a field like any other. Learned once; a board that gains a column is picked up by
+        // clearing the sync state.
+        if (state.FieldIds.Count == 0)
+        {
+            var fields = await client.GetProjectFieldsAsync(reference, ct).ConfigureAwait(false);
+            _readSomething = true;
+
+            state.FieldIds = fields.Select(f => f.Id).Take(GitHubClient.MaxProjectFields).ToList();
+            state.StatusFieldId = BoardTranslator.StatusFieldOf(fields)?.Id;
+        }
+
+        // A board that fits on one page is read conditionally, and an untouched one costs nothing.
+        // A bigger one is read page by page every time: the first page's tag says nothing about
+        // a card moved on the second.
+        var conditional = state.Items.Count < GitHubClient.ProjectItemsPageSize;
+        var first = Noted(await client
+            .GetProjectItemsAsync(reference, state.FieldIds, conditional ? state.ETag : null, after: null, ct)
+            .ConfigureAwait(false));
+
+        if (first.NotModified || first.Value is not { } page)
+        {
+            return;
+        }
+
+        var items = new List<GhProjectItem>(page.Items);
+        var cursor = page.NextCursor;
+        var pages = 1;
+
+        while (cursor is not null && pages < MaxBoardPages)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var next = Noted(await client
+                .GetProjectItemsAsync(reference, state.FieldIds, etag: null, cursor, ct)
+                .ConfigureAwait(false));
+
+            if (next.Value is not { } more)
+            {
+                break;
+            }
+
+            items.AddRange(more.Items);
+            cursor = more.NextCursor;
+            pages++;
+        }
+
+        var complete = cursor is null;
+        var after = items
+            .GroupBy(i => i.Id)
+            .ToDictionary(g => g.Key.ToString(), g => BoardTranslator.Snapshot(g.First(), state.StatusFieldId), StringComparer.Ordinal);
+
+        state.ETag = first.ETag;
+
+        // The first reading only records where the cards stand.
+        if (!state.Initialised)
+        {
+            state.Items = after;
+            state.Initialised = true;
+            return;
+        }
+
+        var changes = BoardTranslator.Diff(board, state.Items, after, settings.OnlyStatusChangesOnBoards, complete, DateTimeOffset.Now);
+
+        foreach (var alert in changes)
+        {
+            if (ShouldDeliver(alert, account, settings))
+            {
+                collected.Add(Stamp(alert, account));
+            }
+        }
+
+        // A card that left a partial reading stays remembered, so its return is not an arrival.
+        if (!complete)
+        {
+            foreach (var (id, item) in state.Items.Where(pair => !after.ContainsKey(pair.Key)))
+            {
+                after[id] = item;
+            }
+        }
+
+        state.Items = after;
     }
 
     /// <summary>When an account is still inside a rate limit, the moment it may be polled again.</summary>
@@ -824,6 +961,8 @@ public sealed class MonitorService : IAsyncDisposable
         Account = LoginFor(account.Id) ?? account.Login,
         AccountId = account.Id,
         Actor = alert.Actor,
+        Note = alert.Note,
+        Fields = alert.Fields,
         Url = alert.Url,
         Timestamp = alert.Timestamp,
         Severity = alert.Severity,
@@ -864,17 +1003,30 @@ public sealed class MonitorService : IAsyncDisposable
     /// </summary>
     public IReadOnlyList<WatchedRepository> Watched { get; private set; } = [];
 
+    /// <summary>The boards being read, with the names the list shows them under.</summary>
+    public IReadOnlyList<WatchedBoard> WatchedBoards { get; private set; } = [];
+
     /// <summary>Callers hold <see cref="_sync"/>.</summary>
-    private void RefreshWatchedList() =>
+    private void RefreshWatchedList()
+    {
         Watched =
         [
             .. _settings.Repositories
                 .Where(r => r.Enabled)
-                .Select(r => new WatchedRepository(
-                    r.AccountId,
-                    _logins.GetValueOrDefault(r.AccountId, _settings.FindAccount(r.AccountId)?.Login ?? string.Empty),
-                    new RepoRef(r.Owner, r.Name)))
+                .Select(r => new WatchedRepository(r.AccountId, LoginOf(r.AccountId), new RepoRef(r.Owner, r.Name)))
         ];
+
+        WatchedBoards =
+        [
+            .. _settings.Boards
+                .Where(b => b.Enabled)
+                .Select(b => new WatchedBoard(b.AccountId, LoginOf(b.AccountId), b.Clone()))
+        ];
+    }
+
+    /// <summary>Callers hold <see cref="_sync"/>.</summary>
+    private string LoginOf(string accountId) =>
+        _logins.GetValueOrDefault(accountId, _settings.FindAccount(accountId)?.Login ?? string.Empty);
 
     private bool ShouldDeliver(Alert alert, GitHubAccount account, AppSettings settings)
     {
@@ -926,6 +1078,7 @@ public sealed class MonitorService : IAsyncDisposable
 
     private MonitorStatus BuildStatus(
         int watchedCount,
+        int boardCount,
         int accountCount,
         List<(string Subject, GitHubException Error)> failures)
     {
@@ -934,11 +1087,17 @@ public sealed class MonitorService : IAsyncDisposable
 
         if (failures.Count == 0)
         {
-            var repositories = watchedCount switch
+            var repositories = (watchedCount, boardCount) switch
             {
-                0 => "Watching your inbox",
-                1 => "Watching 1 repository",
-                _ => $"Watching {watchedCount} repositories",
+                (0, 0) => "Watching your inbox",
+                (0, 1) => "Watching 1 board",
+                (0, _) => $"Watching {boardCount} boards",
+                (1, 0) => "Watching 1 repository",
+                (_, 0) => $"Watching {watchedCount} repositories",
+                (1, 1) => "Watching 1 repository and 1 board",
+                (1, _) => $"Watching 1 repository and {boardCount} boards",
+                (_, 1) => $"Watching {watchedCount} repositories and 1 board",
+                _ => $"Watching {watchedCount} repositories and {boardCount} boards",
             };
 
             var message = accountCount > 1 ? $"{repositories} across {accountCount} accounts" : repositories;

@@ -21,6 +21,10 @@ public sealed class GhUser
 
     [JsonPropertyName("html_url")]
     public string? HtmlUrl { get; set; }
+
+    /// <summary>User or Organization, the way GitHub tags an owner.</summary>
+    [JsonPropertyName("type")]
+    public string? Type { get; set; }
 }
 
 public sealed class GhRepository
@@ -319,6 +323,129 @@ public sealed class GhNotification
 
     [JsonPropertyName("repository")]
     public GhRepository? Repository { get; set; }
+}
+
+/// <summary>A project board, from <c>/orgs/{org}/projectsV2/{n}</c> or <c>/users/{user}/projectsV2/{n}</c>.</summary>
+public sealed class GhProject
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("number")]
+    public int Number { get; set; }
+
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("short_description")]
+    public string? ShortDescription { get; set; }
+
+    [JsonPropertyName("public")]
+    public bool IsPublic { get; set; }
+
+    /// <summary>open | closed</summary>
+    [JsonPropertyName("state")]
+    public string? State { get; set; }
+
+    [JsonPropertyName("owner")]
+    public GhUser? Owner { get; set; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    [JsonIgnore]
+    public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>One column of a board: a field, with its options when it is a single select.</summary>
+public sealed class GhProjectField
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>title | single_select | text | number | date | iteration | assignees | labels | ...</summary>
+    [JsonPropertyName("data_type")]
+    public string? DataType { get; set; }
+
+    [JsonPropertyName("options")]
+    public List<GhProjectFieldOption>? Options { get; set; }
+
+    [JsonIgnore]
+    public bool IsSingleSelect => string.Equals(DataType, "single_select", StringComparison.OrdinalIgnoreCase);
+}
+
+public sealed class GhProjectFieldOption
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    /// <summary>GitHub sends the name twice, raw and as HTML; only the raw text is read.</summary>
+    [JsonPropertyName("name")]
+    public JsonElement Name { get; set; }
+}
+
+/// <summary>
+/// A card on a board, from the board's <c>/items</c>. The content is the issue or pull request
+/// behind it - or a draft - and stays raw because its shape depends on the type; the fields are
+/// whichever the request asked for, each with a value shaped by its type.
+/// </summary>
+public sealed class GhProjectItem
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    /// <summary>Issue | PullRequest | DraftIssue</summary>
+    [JsonPropertyName("content_type")]
+    public string? ContentType { get; set; }
+
+    [JsonPropertyName("content")]
+    public JsonElement Content { get; set; }
+
+    [JsonPropertyName("created_at")]
+    public DateTimeOffset CreatedAt { get; set; }
+
+    [JsonPropertyName("updated_at")]
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    [JsonPropertyName("archived_at")]
+    public DateTimeOffset? ArchivedAt { get; set; }
+
+    [JsonPropertyName("fields")]
+    public List<GhProjectItemField> Fields { get; set; } = [];
+}
+
+public sealed class GhProjectItemField
+{
+    [JsonPropertyName("id")]
+    public long Id { get; set; }
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("data_type")]
+    public string? DataType { get; set; }
+
+    [JsonPropertyName("value")]
+    public JsonElement Value { get; set; }
+}
+
+/// <summary>One page of a board's items, and where the next page starts when there is one.</summary>
+public sealed class GhProjectItemsPage
+{
+    public List<GhProjectItem> Items { get; init; } = [];
+
+    /// <summary>The <c>after</c> cursor of the next page, from the <c>Link</c> header; null on the last.</summary>
+    public string? NextCursor { get; init; }
+}
+
+/// <summary>An organisation the token's user belongs to, from <c>/user/orgs</c>.</summary>
+public sealed class GhOrganization
+{
+    [JsonPropertyName("login")]
+    public string Login { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -17,6 +17,10 @@ public enum AlertKind
     Star,
     Fork,
     Mention,
+
+    /// <summary>A card on a project board arrived, moved column, was archived or went away.</summary>
+    Board,
+
     Other,
 }
 
@@ -35,6 +39,7 @@ public static class AlertKindInfo
         AlertKind.Star => "Star",
         AlertKind.Fork => "Fork",
         AlertKind.Mention => "Mention",
+        AlertKind.Board => "Board change",
         _ => "Other",
     };
 }
