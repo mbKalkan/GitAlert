@@ -264,29 +264,43 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// A section is a name and a membership list, both of which a hand-edited file can break: a
-    /// blank name gets a placeholder, and a project listed under two sections stays in the first.
+    /// A section is a name, a membership list and the sections inside it, all of which a
+    /// hand-edited file can break: a blank name gets a placeholder, a null entry goes, and a
+    /// project listed under two sections - at any depth - stays in the first one read.
     /// </summary>
-    private void NormaliseSections()
+    private void NormaliseSections() =>
+        Sections = Tidy(Sections, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    private static List<ProjectSection> Tidy(List<ProjectSection>? sections, HashSet<string> claimed)
     {
-        Sections ??= [];
-        Sections = Sections.Where(s => s is not null).ToList();
+        var kept = new List<ProjectSection>();
 
-        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var section in Sections)
+        foreach (var section in sections ?? [])
         {
+            if (section is null)
+            {
+                continue;
+            }
+
             section.Name = string.IsNullOrWhiteSpace(section.Name) ? ProjectSection.DefaultName : section.Name.Trim();
             section.Repositories ??= [];
             section.Repositories = section.Repositories
                 .Where(r => !string.IsNullOrWhiteSpace(r))
                 .Where(claimed.Add)
                 .ToList();
+            section.Sections = Tidy(section.Sections, claimed);
+
+            kept.Add(section);
         }
+
+        return kept;
     }
 }
 
-/// <summary>A named group of projects in the flyout list, folded and unfolded as one.</summary>
+/// <summary>
+/// A named group in the flyout list, folded and unfolded as one: its own projects, then the
+/// sections inside it, each with theirs, as deep as the user cares to go.
+/// </summary>
 public sealed class ProjectSection
 {
     /// <summary>What a section is called until the user types a name.</summary>
@@ -294,20 +308,39 @@ public sealed class ProjectSection
 
     public string Name { get; set; } = DefaultName;
 
-    /// <summary>Folded: the header shows, the projects under it do not.</summary>
+    /// <summary>Folded: the header shows, nothing under it does.</summary>
     public bool IsCollapsed { get; set; }
 
-    /// <summary>The projects grouped here, by full name. Their order comes from the project order.</summary>
+    /// <summary>The projects grouped directly here, by full name. Their order comes from the project order.</summary>
     public List<string> Repositories { get; set; } = [];
 
+    /// <summary>The sections inside this one, in the order they are shown, after its projects.</summary>
+    public List<ProjectSection> Sections { get; set; } = [];
+
+    /// <summary>Whether the project is directly in this section, not in one inside it.</summary>
     public bool Contains(string repository) =>
         Repositories.Contains(repository, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>This section and every one inside it, top to bottom, the way the list shows them.</summary>
+    public IEnumerable<ProjectSection> SelfAndDescendants()
+    {
+        yield return this;
+
+        foreach (var child in Sections)
+        {
+            foreach (var section in child.SelfAndDescendants())
+            {
+                yield return section;
+            }
+        }
+    }
 
     public ProjectSection Clone() => new()
     {
         Name = Name,
         IsCollapsed = IsCollapsed,
         Repositories = [.. Repositories],
+        Sections = Sections.Select(s => s.Clone()).ToList(),
     };
 }
 

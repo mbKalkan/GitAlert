@@ -25,6 +25,22 @@ public sealed class EqualsConverter : IValueConverter
 }
 
 /// <summary>
+/// A depth in the list - how many sections a row sits inside - to the margin that steps it in,
+/// so the list reads as a tree however deep the sections go.
+/// </summary>
+public sealed class IndentConverter : IValueConverter
+{
+    /// <summary>One step in, per section, in layout pixels.</summary>
+    public const double Step = 14;
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        new Thickness(value is int depth && depth > 0 ? depth * Step : 0, 0, 0, 0);
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
 /// The first value while the second is true, nothing otherwise. Lets a list bind its items only
 /// while the card above it is the open one, so folded cards hold no row containers.
 /// </summary>

@@ -60,6 +60,10 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     [ObservableProperty]
     private bool _isInSection;
 
+    /// <summary>How many sections deep the project sits: none for a loose one, one step in per section.</summary>
+    [ObservableProperty]
+    private int _depth;
+
     /// <summary>False at the top and bottom of the list, so the arrows can grey out there.</summary>
     [ObservableProperty]
     private bool _canMoveUp;

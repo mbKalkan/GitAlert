@@ -535,10 +535,15 @@ public partial class FlyoutWindow : Window
         }
 
         if (dragged is ProjectSectionViewModel section
-            && SectionTargetUnder(point) is (ProjectSectionViewModel beside, var above)
-            && !ReferenceEquals(beside, section))
+            && SectionDropUnder(point) is (ProjectSectionViewModel against, var where)
+            && !against.IsWithin(section))
         {
-            return () => _viewModel.PlaceSection(section, beside, above);
+            return where switch
+            {
+                SectionDrop.Before => () => _viewModel.PlaceSection(section, against, above: true),
+                SectionDrop.After => () => _viewModel.PlaceSection(section, against, above: false),
+                _ => () => _viewModel.NestSection(section, against),
+            };
         }
 
         return null;
@@ -567,17 +572,22 @@ public partial class FlyoutWindow : Window
             ? header
             : null;
 
+    /// <summary>Where a dragged section would go relative to another: in front of it, inside it, or after everything it holds.</summary>
+    private enum SectionDrop
+    {
+        Before,
+        Into,
+        After,
+    }
+
     /// <summary>
     /// Lights the place a dragged section would land: a line above the section it would go in
-    /// front of, or under the last row when it would go last. Nothing when that is where it is.
+    /// front of, the header of the one it would go inside, or a line under the last row of the
+    /// one it would follow. Nothing when that is where it already is, or when the target is the
+    /// dragged section itself or one inside it.
     /// </summary>
     private void UpdateSectionDropMarkers(ProjectSectionViewModel dragged, Point point)
     {
-        var shown = _viewModel.Rows.OfType<ProjectSectionViewModel>().ToList();
-        var (target, above) = SectionTargetUnder(point);
-        var from = shown.IndexOf(dragged);
-        var to = target is null ? -1 : shown.IndexOf(target) + (above ? 0 : 1);
-
         foreach (var row in _viewModel.Rows)
         {
             switch (row)
@@ -591,43 +601,102 @@ public partial class FlyoutWindow : Window
             }
         }
 
-        // Its own place, or the slot right after itself: the same place.
-        if (target is null || to == from || to == from + 1)
+        if (SectionDropUnder(point) is not (ProjectSectionViewModel target, var where) || target.IsWithin(dragged))
         {
             return;
         }
 
-        if (to < shown.Count)
-        {
-            shown[to].DropMarker = DropMarker.Above;
-            return;
-        }
+        var siblings = _viewModel.Rows.OfType<ProjectSectionViewModel>().Where(s => ReferenceEquals(s.Parent, target.Parent)).ToList();
+        var at = siblings.IndexOf(dragged);
 
-        // After the last section: under whatever the last row is.
-        switch (_viewModel.Rows[^1])
+        switch (where)
         {
-            case ProjectGroupViewModel group:
-                group.DropMarker = DropMarker.Below;
+            case SectionDrop.Before:
+                // The slot right after itself is its own place.
+                if (at < 0 || siblings.IndexOf(target) != at + 1)
+                {
+                    target.DropMarker = DropMarker.Above;
+                }
+
                 break;
-            case ProjectSectionViewModel section:
-                section.DropMarker = DropMarker.Below;
+
+            case SectionDrop.Into:
+                if (!ReferenceEquals(dragged.Parent, target) || !ReferenceEquals(target.Children[^1], dragged))
+                {
+                    target.DropMarker = DropMarker.Into;
+                }
+
+                break;
+
+            case SectionDrop.After:
+                if (at < 0 || siblings.IndexOf(target) != at - 1)
+                {
+                    switch (LastRowOf(target))
+                    {
+                        case ProjectGroupViewModel group:
+                            group.DropMarker = DropMarker.Below;
+                            break;
+                        case ProjectSectionViewModel section:
+                            section.DropMarker = DropMarker.Below;
+                            break;
+                    }
+                }
+
                 break;
         }
     }
 
+    /// <summary>The last row on screen that belongs to a section: the header itself when it is folded.</summary>
+    private object LastRowOf(ProjectSectionViewModel section)
+    {
+        object last = section;
+        var inside = false;
+
+        foreach (var row in _viewModel.Rows)
+        {
+            if (ReferenceEquals(row, section))
+            {
+                inside = true;
+                continue;
+            }
+
+            if (!inside)
+            {
+                continue;
+            }
+
+            var belongs = row switch
+            {
+                ProjectSectionViewModel other => other.IsWithin(section),
+                ProjectGroupViewModel group => section.Holds(group.Repository),
+                _ => false,
+            };
+
+            if (!belongs)
+            {
+                break;
+            }
+
+            last = row;
+        }
+
+        return last;
+    }
+
     /// <summary>
-    /// The section a dragged section would be placed against at a point, and on which side. The
-    /// rows are read as blocks: a section header and the projects under it are one place, so a
-    /// point anywhere in a block below the top half of its header means "after this section". The
-    /// loose projects above the sections mean "before the first section".
+    /// The section a dragged section would be placed against at a point, and how. On a section
+    /// header the top third means "in front of it", the middle "inside it", the bottom "after it".
+    /// Elsewhere the rows are read as blocks: a section and everything under it are one place, so
+    /// a point on a project inside a section means "after that section" - the innermost one the
+    /// project is in. The loose projects above the sections mean "before the first section".
     /// </summary>
-    private (ProjectSectionViewModel? Section, bool Above) SectionTargetUnder(Point point)
+    private (ProjectSectionViewModel? Section, SectionDrop Where) SectionDropUnder(Point point)
     {
         var shown = _viewModel.Rows.OfType<ProjectSectionViewModel>().ToList();
 
         if (shown.Count == 0)
         {
-            return (null, false);
+            return (null, SectionDrop.Before);
         }
 
         ProjectSectionViewModel? block = null;
@@ -646,13 +715,13 @@ public partial class FlyoutWindow : Window
             // In the gap above this row: still in whatever block came before.
             if (point.Y < top)
             {
-                return block is null ? (shown[0], true) : (block, false);
+                return block is null ? (shown[0], SectionDrop.Before) : (block, SectionDrop.After);
             }
 
             block = row switch
             {
                 ProjectSectionViewModel section => section,
-                ProjectGroupViewModel { IsInSection: false } => null,
+                ProjectGroupViewModel group => shown.FirstOrDefault(s => s.Contains(group.Repository)),
                 _ => block,
             };
 
@@ -663,16 +732,19 @@ public partial class FlyoutWindow : Window
                     var header = container.FindDescendantOfType<Button>();
                     var headerTop = header?.TranslatePoint(new Point(0, 0), GroupList)?.Y ?? top;
                     var headerHeight = header?.Bounds.Height ?? container.Bounds.Height;
+                    var third = headerHeight / 3;
 
-                    return (section, point.Y < headerTop + headerHeight / 2);
+                    return point.Y < headerTop + third ? (section, SectionDrop.Before)
+                        : point.Y < headerTop + 2 * third ? (section, SectionDrop.Into)
+                        : (section, SectionDrop.After);
                 }
 
-                return block is null ? (shown[0], true) : (block, false);
+                return block is null ? (shown[0], SectionDrop.Before) : (block, SectionDrop.After);
             }
         }
 
         // Below everything: after the last block.
-        return block is null ? (shown[0], true) : (block, false);
+        return block is null ? (shown[0], SectionDrop.Before) : (block, SectionDrop.After);
     }
 
     private void UpdateDropMarkers(ProjectGroupViewModel dragged, Point point)

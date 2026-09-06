@@ -11,6 +11,7 @@
     <ResourceDictionary>
 
       <conv:EqualsConverter x:Key="Equals" />
+      <conv:IndentConverter x:Key="Indent" />
       <conv:WhenTrueConverter x:Key="WhenTrue" />
       <conv:KindToGlyphConverter x:Key="KindToGlyph" />
       <conv:ThemeBrushConverter x:Key="ThemeBrush" />

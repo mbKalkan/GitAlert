@@ -99,8 +99,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private readonly List<string> _order;
 
     /// <summary>
-    /// The user's sections, in the order they are shown. Kept for the life of the window like the
-    /// project groups, so a fold or a half-typed name survives the poll that lands during it.
+    /// The user's top-level sections, in the order they are shown; the ones inside them hang off
+    /// their <see cref="ProjectSectionViewModel.Children"/>. Kept for the life of the window like
+    /// the project groups, so a fold or a half-typed name survives the poll that lands during it.
     /// </summary>
     private readonly List<ProjectSectionViewModel> _sections;
 
@@ -406,9 +407,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// </summary>
     private void MarkProjectRead(ProjectGroupViewModel group) => MarkRead([group]);
 
-    /// <summary>The tick on a section header: every project under it, in one go.</summary>
+    /// <summary>The tick on a section header: every project under it, its subsections' included, in one go.</summary>
     private void MarkSectionRead(ProjectSectionViewModel section) =>
-        MarkRead(Groups.Where(g => section.Contains(g.Repository)));
+        MarkRead(Groups.Where(g => section.Holds(g.Repository)));
 
     private void MarkRead(IEnumerable<ProjectGroupViewModel> groups)
     {
@@ -543,10 +544,10 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             group.Recount();
         }
 
-        // A section's number is its projects' put together.
-        foreach (var section in _sections)
+        // A section's number is its projects' put together, the ones in its subsections included.
+        foreach (var section in AllSections())
         {
-            section.UnreadCount = Groups.Where(g => section.Contains(g.Repository)).Sum(g => g.UnreadCount);
+            section.UnreadCount = Groups.Where(g => section.Holds(g.Repository)).Sum(g => g.UnreadCount);
         }
 
         _shell.UnreadChanged();
@@ -668,11 +669,13 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Drops a project on a section header: into the section, at its top, unfolding it if it was
     /// folded so the drop can be seen landing. Dropped just above the header instead, the project
-    /// goes to the end of whatever is above the section - the previous one, or the loose projects.
+    /// goes to the end of whatever area is above the section - the section before it, the last
+    /// one inside that, the section it sits in, or the loose projects.
     /// </summary>
     public void PlaceProject(ProjectGroupViewModel moved, ProjectSectionViewModel section, bool above)
     {
-        var index = _sections.IndexOf(section);
+        var areas = Areas();
+        var index = areas.IndexOf(section);
 
         if (index < 0)
         {
@@ -682,9 +685,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         // Every known project gets a rank first, so "first" and "last" below mean what they say.
         NormaliseOrder();
 
-        var area = above
-            ? index > 0 ? _sections[index - 1] : null
-            : section;
+        var area = above ? areas[index - 1] : section;
 
         Assign(moved.Repository, area);
 
@@ -716,7 +717,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             group.IsBeingDragged = false;
         }
 
-        foreach (var section in _sections)
+        foreach (var section in AllSections())
         {
             section.DropMarker = DropMarker.None;
             section.IsBeingDragged = false;
@@ -727,7 +728,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Adds a section at the end of the list and opens its name for typing. Projects get into it
-    /// by being dragged onto its header, or walked in with the arrows.
+    /// by being dragged onto its header, or walked in with the arrows; sections get into it by
+    /// being dragged onto its header, or born there with the tool on it.
     /// </summary>
     [RelayCommand]
     private void AddSection()
@@ -740,6 +742,47 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         section.Rename();
     }
+
+    /// <summary>
+    /// Adds a section inside another, at its end, and opens its name for typing. The parent
+    /// unfolds if it was folded, or the new section would be born out of sight.
+    /// </summary>
+    private void AddChildSection(ProjectSectionViewModel parent)
+    {
+        var child = Wrap(new ProjectSection());
+        parent.Adopt(child);
+        parent.IsExpanded = true;
+
+        Persist();
+        ApplyFilter();
+
+        child.Rename();
+    }
+
+    /// <summary>Every section, top to bottom, the way the list shows them: each one before the ones inside it.</summary>
+    private IEnumerable<ProjectSectionViewModel> AllSections() => _sections.SelectMany(s => s.SelfAndDescendants());
+
+    /// <summary>
+    /// The areas a project can stand in, top to bottom: the loose projects, as null, then every
+    /// section in the order the list shows them.
+    /// </summary>
+    private List<ProjectSectionViewModel?> Areas() => [null, .. AllSections()];
+
+    /// <summary>Takes a section out of wherever it sits - the top level or its parent - without placing it anywhere.</summary>
+    private void Detach(ProjectSectionViewModel section)
+    {
+        if (section.Parent is { } parent)
+        {
+            parent.Disown(section);
+        }
+        else
+        {
+            _sections.Remove(section);
+        }
+    }
+
+    /// <summary>The list a section is ordered in: its parent's children, or the top level.</summary>
+    private List<ProjectSectionViewModel> SiblingsOf(ProjectSectionViewModel section) => section.Parent?.Children ?? _sections;
 
     /// <summary>
     /// Unfolds every section and every project. Nothing is fetched for it: a project with no
@@ -761,7 +804,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         var foldsChanged = false;
 
-        foreach (var section in _sections.Where(s => s.IsExpanded != expanded))
+        foreach (var section in AllSections().Where(s => s.IsExpanded != expanded))
         {
             section.IsExpanded = expanded;
             foldsChanged = true;
@@ -776,8 +819,18 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ApplyFilter();
     }
 
-    private ProjectSectionViewModel Wrap(ProjectSection model) =>
-        new(model, OnSectionChanged, MoveSection, RemoveSection, MarkSectionRead);
+    /// <summary>Wraps a section and, inside it, every section it holds.</summary>
+    private ProjectSectionViewModel Wrap(ProjectSection model)
+    {
+        var section = new ProjectSectionViewModel(model, OnSectionChanged, MoveSection, RemoveSection, MarkSectionRead, AddChildSection);
+
+        foreach (var child in model.Sections)
+        {
+            section.Adopt(Wrap(child));
+        }
+
+        return section;
+    }
 
     /// <summary>A fold or a new name: worth saving, and a fold changes which rows show.</summary>
     private void OnSectionChanged(ProjectSectionViewModel section)
@@ -786,17 +839,19 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ApplyFilter();
     }
 
+    /// <summary>The arrows move a section one step among its siblings; dragging is what changes its parent.</summary>
     private void MoveSection(ProjectSectionViewModel section, int delta)
     {
-        var from = _sections.IndexOf(section);
+        var siblings = SiblingsOf(section);
+        var from = siblings.IndexOf(section);
         var to = from + delta;
 
-        if (from < 0 || to < 0 || to >= _sections.Count)
+        if (from < 0 || to < 0 || to >= siblings.Count)
         {
             return;
         }
 
-        (_sections[from], _sections[to]) = (_sections[to], _sections[from]);
+        (siblings[from], siblings[to]) = (siblings[to], siblings[from]);
 
         NormaliseOrder();
         Persist();
@@ -804,30 +859,34 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Puts one section directly above or below another, with its projects. This is what dropping
-    /// a dragged section header does; the arrows still move a section one step at a time.
+    /// Puts one section directly above or below another, beside it in whatever the other sits in,
+    /// with everything it holds. This is what dropping a dragged section header does; the arrows
+    /// still move a section one step at a time. A section cannot be placed beside one inside it.
     /// </summary>
     public void PlaceSection(ProjectSectionViewModel moved, ProjectSectionViewModel target, bool above)
     {
-        var from = _sections.IndexOf(moved);
-
-        if (from < 0 || ReferenceEquals(moved, target) || !_sections.Contains(target))
+        if (ReferenceEquals(moved, target) || target.IsWithin(moved) || !AllSections().Contains(moved))
         {
             return;
         }
 
-        _sections.RemoveAt(from);
+        var fromSiblings = SiblingsOf(moved);
+        var from = fromSiblings.IndexOf(moved);
+        var parent = target.Parent;
 
-        var to = _sections.IndexOf(target) + (above ? 0 : 1);
+        Detach(moved);
+
+        var toSiblings = parent?.Children ?? _sections;
+        var to = toSiblings.IndexOf(target) + (above ? 0 : 1);
 
         // Back where it came from: nothing to save and nothing to redraw.
-        if (to == from)
+        if (ReferenceEquals(fromSiblings, toSiblings) && to == from)
         {
-            _sections.Insert(from, moved);
+            Restore(moved, parent, from);
             return;
         }
 
-        _sections.Insert(to, moved);
+        Restore(moved, parent, to);
 
         NormaliseOrder();
         Persist();
@@ -835,14 +894,72 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Dissolves a section. Its projects stay, loose, after the other loose ones - which is where
-    /// the loose area ends - and in the order they had.
+    /// Puts one section inside another, last among the ones already there, with everything it
+    /// holds; the other unfolds so the drop can be seen landing. A section cannot go inside itself
+    /// or inside one it holds.
+    /// </summary>
+    public void NestSection(ProjectSectionViewModel moved, ProjectSectionViewModel into)
+    {
+        if (ReferenceEquals(moved, into) || into.IsWithin(moved) || !AllSections().Contains(moved))
+        {
+            return;
+        }
+
+        // Already the last one inside: nothing to save and nothing to redraw.
+        if (ReferenceEquals(moved.Parent, into) && ReferenceEquals(into.Children[^1], moved))
+        {
+            return;
+        }
+
+        Detach(moved);
+        into.Adopt(moved);
+        into.IsExpanded = true;
+
+        NormaliseOrder();
+        Persist();
+        ApplyFilter();
+    }
+
+    /// <summary>Puts a section at a place among a parent's children, or among the top-level sections.</summary>
+    private void Restore(ProjectSectionViewModel section, ProjectSectionViewModel? parent, int index)
+    {
+        if (parent is null)
+        {
+            _sections.Insert(Math.Clamp(index, 0, _sections.Count), section);
+        }
+        else
+        {
+            parent.Adopt(section, index);
+        }
+    }
+
+    /// <summary>
+    /// Dissolves a section. What it held moves up a level: its projects into the section it sat
+    /// in, or loose, after the ones already there and in the order they had; the sections inside
+    /// it take its place, in their order.
     /// </summary>
     private void RemoveSection(ProjectSectionViewModel section)
     {
-        if (!_sections.Remove(section))
+        var siblings = SiblingsOf(section);
+        var at = siblings.IndexOf(section);
+
+        if (at < 0)
         {
             return;
+        }
+
+        var parent = section.Parent;
+        Detach(section);
+
+        foreach (var repository in section.Model.Repositories.ToList())
+        {
+            Assign(repository, parent);
+        }
+
+        foreach (var child in section.Children.ToList())
+        {
+            section.Disown(child);
+            Restore(child, parent, at++);
         }
 
         NormaliseOrder();
@@ -850,14 +967,14 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ApplyFilter();
     }
 
-    /// <summary>The section a project is in, or null for a loose one.</summary>
+    /// <summary>The section a project is directly in, or null for a loose one.</summary>
     private ProjectSectionViewModel? SectionOf(string repository) =>
-        _sections.FirstOrDefault(s => s.Contains(repository));
+        AllSections().FirstOrDefault(s => s.Contains(repository));
 
     /// <summary>Puts a project in a section, or out of every section when given none.</summary>
     private void Assign(string repository, ProjectSectionViewModel? section)
     {
-        foreach (var other in _sections)
+        foreach (var other in AllSections())
         {
             other.Remove(repository);
         }
@@ -877,7 +994,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         List<string> order =
         [
             .. ranked.Where(r => SectionOf(r) is null),
-            .. _sections.SelectMany(s => ranked.Where(r => ReferenceEquals(SectionOf(r), s))),
+            .. AllSections().SelectMany(s => ranked.Where(r => ReferenceEquals(SectionOf(r), s))),
         ];
 
         _order.Clear();
@@ -908,7 +1025,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         slots.AddRange(loose.Select(g => new Slot(null, g)));
 
-        foreach (var section in _sections)
+        foreach (var section in AllSections())
         {
             var projects = Groups.Where(g => section.Contains(g.Repository)).ToList();
 
@@ -929,8 +1046,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         return slots;
     }
 
-    private void Persist() =>
+    private void Persist()
+    {
+        // The sections inside a section live on the view models until now; the models are what is saved.
+        foreach (var section in _sections)
+        {
+            section.SyncModel();
+        }
+
         _shell.SaveListPreferences(new ListPreferences(_order, _sections.Select(s => s.Model).ToList(), UnreadOnly));
+    }
 
     private void RebuildGroups()
     {
@@ -938,17 +1063,25 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             .GroupBy(a => a.Repository, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
+        // How far in each section sits, parents before their children, so a project can take its
+        // section's depth plus one.
+        foreach (var section in AllSections())
+        {
+            section.Depth = section.Parent is null ? 0 : section.Parent.Depth + 1;
+        }
+
         // Every project in view, laid out the way the list shows them: loose first, then section
-        // by section.
+        // by section, each section's own projects before the sections inside it.
         var inView = ProjectsInView();
         var groups = new List<ProjectGroupViewModel>();
 
-        foreach (var section in (ProjectSectionViewModel?[])[null, .. _sections])
+        foreach (var section in Areas())
         {
             foreach (var repository in inView.Where(r => ReferenceEquals(SectionOf(r), section)))
             {
                 var group = GroupFor(repository, byRepository.GetValueOrDefault(repository, []));
                 group.IsInSection = section is not null;
+                group.Depth = section is null ? 0 : section.Depth + 1;
                 groups.Add(group);
             }
         }
@@ -956,32 +1089,20 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         Sync(Groups, groups);
         PruneProjects();
 
-        // What is on screen. A folded section keeps its projects out of the rows, and while
-        // showing unread only a section with nothing to show stays out of the way, like its projects.
+        // What is on screen. A folded section keeps everything under it out of the rows, and
+        // while showing unread only a section with nothing to show stays out of the way, like its
+        // projects.
         var rows = new List<object>();
         rows.AddRange(groups.Where(g => !g.IsInSection));
 
         foreach (var section in _sections)
         {
-            var projects = groups.Where(g => section.Contains(g.Repository)).ToList();
-            section.ProjectCount = projects.Count;
-
-            if (UnreadOnly && projects.Count == 0)
-            {
-                continue;
-            }
-
-            rows.Add(section);
-
-            if (section.IsExpanded)
-            {
-                rows.AddRange(projects);
-            }
+            AddRows(section, rows, groups, shown: true);
         }
 
         Sync(Rows, rows);
 
-        // The arrows: a project may walk anywhere along the places, a section anywhere among the sections.
+        // The arrows: a project may walk anywhere along the places, a section anywhere among its siblings.
         var slots = Slots();
 
         for (var i = 0; i < slots.Count; i++)
@@ -993,10 +1114,42 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             }
         }
 
-        for (var i = 0; i < _sections.Count; i++)
+        foreach (var section in AllSections())
         {
-            _sections[i].CanMoveUp = i > 0;
-            _sections[i].CanMoveDown = i < _sections.Count - 1;
+            var siblings = SiblingsOf(section);
+            var i = siblings.IndexOf(section);
+            section.CanMoveUp = i > 0;
+            section.CanMoveDown = i < siblings.Count - 1;
+        }
+    }
+
+    /// <summary>
+    /// The rows a section puts on screen: its header, then while it is unfolded its own projects
+    /// and, in turn, the sections inside it. A section inside a folded one is counted and
+    /// measured like any other; it is only kept off the screen.
+    /// </summary>
+    private void AddRows(ProjectSectionViewModel section, List<object> rows, List<ProjectGroupViewModel> groups, bool shown)
+    {
+        var own = groups.Where(g => section.Contains(g.Repository)).ToList();
+        section.ProjectCount = groups.Count(g => section.Holds(g.Repository));
+
+        var hidden = UnreadOnly && section.ProjectCount == 0;
+
+        if (shown && !hidden)
+        {
+            rows.Add(section);
+        }
+
+        var open = shown && !hidden && section.IsExpanded;
+
+        if (open)
+        {
+            rows.AddRange(own);
+        }
+
+        foreach (var child in section.Children)
+        {
+            AddRows(child, rows, groups, open);
         }
     }
 

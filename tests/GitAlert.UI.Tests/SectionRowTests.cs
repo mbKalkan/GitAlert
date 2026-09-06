@@ -239,6 +239,62 @@ public class SectionRowTests
         }
     }
 
+    [AvaloniaFact]
+    public void Dragging_a_section_header_onto_the_middle_of_another_puts_it_inside_a_step_in()
+    {
+        var (window, vm, dispose) = Build(settings => settings.Sections =
+        [
+            new ProjectSection { Name = "Work", Repositories = ["acme/api-gateway"] },
+            new ProjectSection { Name = "Personal", Repositories = ["mbKalkan/GitAlert"] },
+        ]);
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var work = vm.Rows.OfType<ProjectSectionViewModel>().First(s => s.Name == "Work");
+            var personal = vm.Rows.OfType<ProjectSectionViewModel>().First(s => s.Name == "Personal");
+            var inside = vm.Groups.Single(g => g.Repository == "mbKalkan/GitAlert");
+
+            var grip = Centre(SectionHeaderOf(window, personal), window);
+            var target = SectionHeaderOf(window, work);
+            var drop = target.TranslatePoint(new Point(target.Bounds.Width / 2, target.Bounds.Height / 2), window)!.Value;
+
+            window.MouseDown(grip, MouseButton.Left);
+            window.MouseMove(grip + new Vector(0, -8), RawInputModifiers.LeftMouseButton);
+            window.MouseMove(drop, RawInputModifiers.LeftMouseButton);
+            Frames.Settle();
+
+            Assert.Equal(DropMarker.Into, work.DropMarker);
+
+            window.MouseUp(drop, MouseButton.Left);
+            Frames.Settle();
+
+            Assert.Same(work, personal.Parent);
+            Assert.Equal([work, vm.Groups.Single(g => g.Repository == "acme/api-gateway"), personal, inside], vm.Rows);
+            Assert.Equal(1, personal.Depth);
+            Assert.Equal(2, inside.Depth);
+            Assert.Equal(DropMarker.None, work.DropMarker);
+
+            // On screen the nested header and its project sit a step further in than the outer one.
+            Assert.Equal(0, RowOf(window, work).Margin.Left);
+            Assert.Equal(14, RowOf(window, personal).Margin.Left);
+            Assert.Equal(28, RowOf(window, inside).Margin.Left);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
+    /// <summary>The outermost panel of a row, whose margin steps it in.</summary>
+    private static StackPanel RowOf(FlyoutWindow window, object row) =>
+        window.GetVisualDescendants().OfType<StackPanel>()
+            .Where(p => ReferenceEquals(p.DataContext, row))
+            .OrderBy(p => p.GetVisualAncestors().Count())
+            .First();
+
     private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build(Action<AppSettings>? shape = null)
     {
         var work = SampleData.NewWorkDir();

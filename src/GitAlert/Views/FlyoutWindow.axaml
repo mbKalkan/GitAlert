@@ -237,7 +237,8 @@
   <Window.DataTemplates>
 
     <DataTemplate x:DataType="vm:ProjectGroupViewModel">
-      <StackPanel Classes.expanded="{Binding IsExpanded}"
+      <StackPanel Margin="{Binding Depth, Converter={StaticResource Indent}}"
+                  Classes.expanded="{Binding IsExpanded}"
                   Classes.nested="{Binding IsInSection}"
                   Classes.dragging="{Binding IsBeingDragged}"
                   Classes.unread="{Binding HasUnread}"
@@ -355,12 +356,14 @@
       </StackPanel>
     </DataTemplate>
 
-    <!-- A section header. Clicking it folds the projects under it, dragging it moves the section
-         with them; the tools on it rename, read, order and dissolve it. While the name is being
-         typed the header gives way to the box, so a click in the box is a click in the box and not
-         on the header under it. -->
+    <!-- A section header. Clicking it folds everything under it, dragging it moves the section
+         with all of that; the tools on it rename, read, order and dissolve it, and start a section
+         inside it. A section inside another sits a step in, like a project does. While the name is
+         being typed the header gives way to the box, so a click in the box is a click in the box
+         and not on the header under it. -->
     <DataTemplate x:DataType="vm:ProjectSectionViewModel">
-      <StackPanel Classes.expanded="{Binding IsExpanded}"
+      <StackPanel Margin="{Binding Depth, Converter={StaticResource Indent}}"
+                  Classes.expanded="{Binding IsExpanded}"
                   Classes.unread="{Binding HasUnread}"
                   Classes.dragging="{Binding IsBeingDragged}"
                   Classes.dropAbove="{Binding DropMarker, Converter={StaticResource Equals}, ConverterParameter=Above}"
@@ -410,6 +413,14 @@
                         StrokeThickness="1.4"
                         StrokeLineCap="Round"
                         StrokeJoin="Round" />
+                </Button>
+                <Button Theme="{StaticResource HeaderToolButton}"
+                        Command="{Binding AddChildCommand}"
+                        ToolTip.Tip="Add a section inside this one">
+                  <Path Data="M6.5,2.5 L6.5,10.5 M2.5,6.5 L10.5,6.5"
+                        Stroke="{Binding $parent[Button].Foreground}"
+                        StrokeThickness="1.6"
+                        StrokeLineCap="Round" />
                 </Button>
                 <Button Theme="{StaticResource HeaderToolButton}"
                         Command="{Binding MarkReadCommand}"
@@ -595,11 +606,6 @@
     </Style>
     <Style Selector="StackPanel.unread TextBlock#SectionCount">
       <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
-    </Style>
-
-    <!-- A project under a section sits a step in, so the list reads as a tree. -->
-    <Style Selector="StackPanel.nested">
-      <Setter Property="Margin" Value="14,0,0,0" />
     </Style>
 
     <!-- Dropped on a section header, a project goes into the section rather than beside it, so the
