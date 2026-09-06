@@ -21,6 +21,7 @@ public partial class App : Application
     private MonitorService? _monitor;
     private TrayShell? _shell;
     private AlertStore? _alerts;
+    private UpdateChecker? _updates;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -93,9 +94,11 @@ public partial class App : Application
         _monitor = new MonitorService(_alerts, new StateStore());
         _monitor.Configure(settings, tokenStore.ReadAll(settings.Accounts.Select(a => a.Id)));
 
-        _shell = new TrayShell(settingsStore, tokenStore, _alerts, _monitor, settings, platform, theme);
+        _updates = new UpdateChecker();
+        _shell = new TrayShell(settingsStore, tokenStore, _alerts, _monitor, settings, platform, theme, _updates);
 
         _monitor.Start();
+        _updates.Configure(settings.CheckForUpdates);
 
         // A first run has nothing to show, so take the user straight to setup - unless the system
         // started us at sign-in, where popping a window would be rude.
@@ -113,6 +116,7 @@ public partial class App : Application
     private void TearDown()
     {
         _shell?.Dispose();
+        _updates?.Dispose();
 
         if (_monitor is not null)
         {

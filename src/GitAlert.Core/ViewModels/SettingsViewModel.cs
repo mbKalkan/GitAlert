@@ -7,6 +7,7 @@ using GitAlert.Configuration;
 using GitAlert.Core;
 using GitAlert.GitHub;
 using GitAlert.Platform;
+using GitAlert.Services;
 
 namespace GitAlert.ViewModels;
 
@@ -44,6 +45,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     private readonly ISecretStore _tokenStore;
     private readonly IStartupRegistrar _startup;
     private readonly ISettingsHost _host;
+    private readonly UpdateChecker? _updates;
+    private readonly UiThread _ui;
     private readonly AppSettings _settings;
 
     /// <summary>Shared by every account's validation client, so they pool one set of connections.</summary>
@@ -88,6 +91,22 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _startWithWindows;
 
+    /// <summary>Ask GitHub once a day whether a newer GitAlert is out.</summary>
+    [ObservableProperty]
+    private bool _checkForUpdates = true;
+
+    /// <summary>What the About page says about the newest version: checked when, found what.</summary>
+    [ObservableProperty]
+    private string _updateStatus = string.Empty;
+
+    /// <summary>"2.7.0", once a newer release is known; the button that names it opens the release.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAvailableUpdate))]
+    private string _availableUpdate = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCheckingForUpdates;
+
     [ObservableProperty]
     private AppTheme _theme = AppTheme.System;
 
@@ -117,12 +136,15 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         SettingsStore settingsStore,
         ISecretStore tokenStore,
         ISettingsHost host,
-        IStartupRegistrar startup)
+        IStartupRegistrar startup,
+        UpdateChecker? updates = null)
     {
         _settingsStore = settingsStore;
         _tokenStore = tokenStore;
         _host = host;
         _startup = startup;
+        _updates = updates;
+        _ui = UiThread.Capture();
 
         _settings = settingsStore.Load();
         SettingsMigration.Apply(_settings, tokenStore);
@@ -137,6 +159,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _showToasts = _settings.ShowToasts;
         _playSound = _settings.PlaySound;
         _startWithWindows = startup.IsEnabled;
+        _checkForUpdates = _settings.CheckForUpdates;
         _theme = _settings.Theme;
         _darkPalette = _settings.DarkPalette;
         _maxHistory = _settings.MaxHistory;
@@ -175,7 +198,67 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new KindToggleViewModel(AlertKind.Fork, "Forks", !_settings.IsMuted(AlertKind.Fork)),
             new KindToggleViewModel(AlertKind.Board, "Board changes", !_settings.IsMuted(AlertKind.Board)),
         ];
+
+        if (_updates is not null)
+        {
+            _updates.Changed += OnUpdateChanged;
+            RefreshUpdateStatus();
+        }
     }
+
+    public bool HasAvailableUpdate => AvailableUpdate.Length > 0;
+
+    private void OnUpdateChanged(object? sender, EventArgs e) => _ui.Post(RefreshUpdateStatus);
+
+    /// <summary>
+    /// One line for the About page, in order of what matters: a check under way, a newer version,
+    /// a check that failed, and failing all of those, when the last one was.
+    /// </summary>
+    private void RefreshUpdateStatus()
+    {
+        if (_updates is null)
+        {
+            return;
+        }
+
+        AvailableUpdate = _updates.Available?.Version.ToString(3) ?? string.Empty;
+
+        UpdateStatus = _updates switch
+        {
+            { IsChecking: true } => "Asking GitHub for the newest release…",
+            { Available: { } found } => $"{found.Version.ToString(3)} is out; you have {_updates.Current.ToString(3)}.",
+            { LastError: { } error } => $"Could not check: {error}",
+            { LastCheckedAt: { } at } => $"You have the newest version. Checked {RelativeTime.Format(at)} ago.",
+            { IsEnabled: true } => "Not checked yet.",
+            _ => "Checks are off; ask with the button.",
+        };
+    }
+
+    /// <summary>The button on the About page: ask now, whatever the daily switch says.</summary>
+    [RelayCommand]
+    private async Task CheckForUpdatesNowAsync()
+    {
+        if (_updates is null || IsCheckingForUpdates)
+        {
+            return;
+        }
+
+        IsCheckingForUpdates = true;
+        RefreshUpdateStatus();
+
+        try
+        {
+            await _updates.CheckAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsCheckingForUpdates = false;
+            RefreshUpdateStatus();
+        }
+    }
+
+    [RelayCommand]
+    private void OpenReleasePage() => Browser.Open(_updates?.Available?.Url ?? UpdateChecker.ReleasesUrl);
 
     public ObservableCollection<AccountViewModel> Accounts { get; } = [];
 
@@ -335,6 +418,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings.ShowToasts = ShowToasts;
         _settings.PlaySound = PlaySound;
         _settings.StartWithWindows = StartWithWindows;
+        _settings.CheckForUpdates = CheckForUpdates;
         _settings.Theme = Theme;
         _settings.DarkPalette = DarkPalette;
         _settings.MaxHistory = MaxHistory;
@@ -398,6 +482,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_updates is not null)
+        {
+            _updates.Changed -= OnUpdateChanged;
+        }
+
         foreach (var account in Accounts)
         {
             account.Dispose();

@@ -1141,6 +1141,14 @@
           </StackPanel>
 
           <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <!-- Only once the daily check has found a newer GitAlert; opens the release page. -->
+            <Button Name="UpdateLink"
+                    Content="{Binding UpdateText}"
+                    Theme="{StaticResource GhostButton}"
+                    Foreground="{DynamicResource Accent}"
+                    Command="{Binding OpenUpdateCommand}"
+                    IsVisible="{Binding HasUpdate}"
+                    ToolTip.Tip="Open the release on GitHub" />
             <Button Content="Mark all read"
                     Theme="{StaticResource GhostButton}"
                     Command="{Binding MarkAllReadCommand}"

@@ -21,6 +21,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
     private readonly MonitorService _monitor;
     private readonly IPlatform _platform;
     private readonly ThemeService _theme;
+    private readonly UpdateChecker _updates;
 
     private readonly ITrayHost _tray;
     private readonly TrayMenu _menu;
@@ -43,7 +44,8 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         MonitorService monitor,
         AppSettings settings,
         IPlatform platform,
-        ThemeService theme)
+        ThemeService theme,
+        UpdateChecker updates)
     {
         _settingsStore = settingsStore;
         _tokenStore = tokenStore;
@@ -52,13 +54,14 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _settings = settings;
         _platform = platform;
         _theme = theme;
+        _updates = updates;
 
         _tray = platform.CreateTray();
         _tray.Activated += OnTrayActivated;
         _tray.ContextMenuRequested += OnTrayContextMenu;
         _tray.NotificationClicked += OnNotificationClicked;
 
-        _flyoutViewModel = new FlyoutViewModel(_alerts, _monitor, this, settings);
+        _flyoutViewModel = new FlyoutViewModel(_alerts, _monitor, this, settings, updates);
         _flyout = new FlyoutWindow(_flyoutViewModel, platform);
         _flyout.ApplyPreferences(settings);
         _flyout.PlacementChanged += OnPlacementChanged;
@@ -113,7 +116,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
             return;
         }
 
-        var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this, _platform.Startup);
+        var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this, _platform.Startup, _updates);
 
         _settingsViewModel = viewModel;
         _settingsWindow = new SettingsWindow(viewModel, _platform, _theme);
@@ -176,6 +179,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _alerts.MaxHistory = settings.MaxHistory;
         _flyout.ApplyPreferences(settings);
         _monitor.Configure(settings, tokens);
+        _updates.Configure(settings.CheckForUpdates);
 
         // A repository or a board that is no longer watched takes its alerts with it. One that is
         // only switched off keeps them in the history, out of sight until it is switched back on.

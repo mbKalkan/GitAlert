@@ -56,6 +56,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private readonly AlertStore _store;
     private readonly MonitorService _monitor;
     private readonly IShellCommands _shell;
+    private readonly UpdateChecker? _updates;
     private readonly UiThread _ui;
     private readonly Timer _ageTimer;
     private readonly List<AlertViewModel> _all = [];
@@ -71,6 +72,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _rateLimitText = string.Empty;
+
+    /// <summary>"Version 2.7.0 is out", once the daily check has found a newer GitAlert; empty until then.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpdate))]
+    private string _updateText = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUnread))]
@@ -146,11 +152,17 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// </remarks>
     private readonly Dictionary<string, ProjectGroupViewModel> _projects = new(StringComparer.OrdinalIgnoreCase);
 
-    public FlyoutViewModel(AlertStore store, MonitorService monitor, IShellCommands shell, AppSettings settings)
+    public FlyoutViewModel(
+        AlertStore store,
+        MonitorService monitor,
+        IShellCommands shell,
+        AppSettings settings,
+        UpdateChecker? updates = null)
     {
         _store = store;
         _monitor = monitor;
         _shell = shell;
+        _updates = updates;
         _ui = UiThread.Capture();
 
         _order = [.. settings.ProjectOrder];
@@ -179,10 +191,27 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _monitor.StatusChanged += OnStatusChanged;
         ApplyStatus(_monitor.Status);
 
+        if (_updates is not null)
+        {
+            _updates.Changed += OnUpdateChanged;
+            RefreshUpdate();
+        }
+
         // Relative timestamps drift; refresh them while the flyout is on screen. The timer fires on
         // the pool, so the refresh is handed back to the UI thread.
         _ageTimer = new Timer(_ => _ui.Post(RefreshAges), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
+
+    public bool HasUpdate => UpdateText.Length > 0;
+
+    private void OnUpdateChanged(object? sender, EventArgs e) => _ui.Post(RefreshUpdate);
+
+    private void RefreshUpdate() =>
+        UpdateText = _updates?.Available is { } update ? $"Version {update.Version.ToString(3)} is out" : string.Empty;
+
+    /// <summary>The line in the footer: the release page, where the new version and its notes are.</summary>
+    [RelayCommand]
+    private void OpenUpdate() => Browser.Open(_updates?.Available?.Url ?? UpdateChecker.ReleasesUrl);
 
     /// <summary>The filtered alerts, flat. The list on screen renders <see cref="Groups"/>.</summary>
     public ObservableCollection<AlertViewModel> Alerts { get; } = [];
@@ -1520,6 +1549,12 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         _monitor.AlertsReceived -= OnAlertsReceived;
         _monitor.StatusChanged -= OnStatusChanged;
+
+        if (_updates is not null)
+        {
+            _updates.Changed -= OnUpdateChanged;
+        }
+
         _ageTimer.Dispose();
         Detail.Dispose();
     }

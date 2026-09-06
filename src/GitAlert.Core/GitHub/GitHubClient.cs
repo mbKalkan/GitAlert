@@ -263,6 +263,20 @@ public sealed class GitHubClient : IDisposable
         return await ReadJsonAsync<List<GhProject>>(response, ct).ConfigureAwait(false) ?? [];
     }
 
+    /// <summary>
+    /// The newest release of a repository that is neither a draft nor a pre-release. Read without
+    /// a token when asking after GitAlert's own: the repository is public, and the question
+    /// carries nothing about who is asking.
+    /// </summary>
+    public async Task<GhRelease> GetLatestReleaseAsync(RepoRef repo, CancellationToken ct = default)
+    {
+        var path = $"{RepoPath(repo)}/releases/latest";
+        var response = await SendAsync(HttpMethod.Get, path, etag: null, ct).ConfigureAwait(false);
+
+        return await ReadJsonAsync<GhRelease>(response, ct).ConfigureAwait(false)
+            ?? throw new GitHubException(GitHubErrorKind.NotFound, $"{repo.FullName} has no release yet.");
+    }
+
     /// <summary>The organisations the token's user belongs to, so their boards can be listed.</summary>
     public async Task<List<GhOrganization>> GetMyOrganizationsAsync(CancellationToken ct = default)
     {

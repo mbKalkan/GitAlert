@@ -65,6 +65,12 @@ public sealed class AppSettings
 
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Ask GitHub once a day whether a newer GitAlert is out. One unauthenticated request for the
+    /// latest release, to the host the alerts already come from; nothing about the user is in it.
+    /// </summary>
+    public bool CheckForUpdates { get; set; } = true;
+
     [JsonConverter(typeof(AppThemeConverter))]
     public AppTheme Theme { get; set; } = AppTheme.System;
 
@@ -176,6 +182,7 @@ public sealed class AppSettings
         ShowToasts = ShowToasts,
         PlaySound = PlaySound,
         StartWithWindows = StartWithWindows,
+        CheckForUpdates = CheckForUpdates,
         Theme = Theme,
         DarkPalette = DarkPalette,
         MaxHistory = MaxHistory,

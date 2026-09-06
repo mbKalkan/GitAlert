@@ -690,7 +690,7 @@
             <TextBlock Classes="pageSubtitle"
                        Text="How often GitAlert checks, how it looks, and how much history it keeps." />
 
-            <TextBlock Text="Check for updates" Classes="fieldLabel" />
+            <TextBlock Text="Check GitHub" Classes="fieldLabel" />
             <ComboBox Classes="modern"
                       Width="260"
                       HorizontalAlignment="Left"
@@ -830,6 +830,37 @@
               <TextBlock Classes="muted" TextWrapping="Wrap" Text="GitAlert talks to api.github.com and nowhere else." />
             </StackPanel>
           </Border>
+
+          <!-- The newest release, as GitHub last said: asked once a day when the switch is on,
+               and whenever the button is pressed. -->
+          <TextBlock Text="UPDATES" Classes="section" Margin="0,22,0,0" />
+
+          <CheckBox Theme="{StaticResource ModernCheckBox}"
+                    Margin="0,0,0,4"
+                    IsChecked="{Binding CheckForUpdates}"
+                    Content="Tell me when a new version is out" />
+
+          <TextBlock Classes="muted"
+                     TextWrapping="Wrap"
+                     Margin="26,0,0,12"
+                     Text="Once a day GitAlert asks api.github.com for its own latest release, without a token. Nothing about you is sent, and nothing is downloaded: a newer version is only named, here and in the window's footer." />
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Check now"
+                    Theme="{StaticResource SecondaryButton}"
+                    Command="{Binding CheckForUpdatesNowCommand}"
+                    IsEnabled="{Binding !IsCheckingForUpdates}" />
+            <Button Content="{Binding AvailableUpdate, StringFormat='Get {0} on GitHub'}"
+                    Theme="{StaticResource PrimaryButton}"
+                    Command="{Binding OpenReleasePageCommand}"
+                    IsVisible="{Binding HasAvailableUpdate}" />
+          </StackPanel>
+
+          <TextBlock Classes="muted"
+                     TextWrapping="Wrap"
+                     Margin="0,10,0,0"
+                     Text="{Binding UpdateStatus}"
+                     IsVisible="{Binding UpdateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
 
       </Panel>

@@ -448,6 +448,29 @@ public sealed class GhOrganization
     public string Login { get; set; } = string.Empty;
 }
 
+/// <summary>A release, from <c>/repos/{owner}/{repo}/releases/latest</c>: what GitAlert's own newest version is.</summary>
+public sealed class GhRelease
+{
+    /// <summary>The tag the release was cut from, <c>v2.6.0</c> for GitAlert's own.</summary>
+    [JsonPropertyName("tag_name")]
+    public string TagName { get; set; } = string.Empty;
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("html_url")]
+    public string? HtmlUrl { get; set; }
+
+    [JsonPropertyName("prerelease")]
+    public bool Prerelease { get; set; }
+
+    [JsonPropertyName("draft")]
+    public bool Draft { get; set; }
+
+    [JsonPropertyName("published_at")]
+    public DateTimeOffset? PublishedAt { get; set; }
+}
+
 /// <summary>
 /// The result of a conditional GET. A <see cref="NotModified"/> response costs no rate-limit
 /// budget on GitHub, which is why every poll sends the previous ETag.
