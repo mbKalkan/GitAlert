@@ -672,23 +672,31 @@ public sealed class MonitorService : IAsyncDisposable
         // read off the inbox, which most accounts do not poll at all.
         NoteServerInterval(events.PollInterval);
 
+        var now = DateTimeOffset.Now;
+
         if (!events.NotModified && events.Value is { } timeline)
         {
             state.EventsETag = events.ETag;
 
             var isBaseline = !state.Initialised;
-            var highWater = state.LastEventId;
+
+            // State written before ids were remembered has no baseline moment of its own; the
+            // last poll of that version is the nearest thing, so what it had already handled -
+            // or dropped - stays history rather than arriving as fifty alerts after an upgrade.
+            state.BaselineAt ??= isBaseline ? now : _state.LastSuccessfulPoll ?? now;
+
+            var seen = new HashSet<long>(state.SeenEventIds);
 
             foreach (var item in timeline)
             {
-                if (!long.TryParse(item.Id, out var id))
+                if (!long.TryParse(item.Id, out var id) || !seen.Add(id))
                 {
                     continue;
                 }
 
-                highWater = Math.Max(highWater, id);
+                state.SeenEventIds.Add(id);
 
-                if (isBaseline || id <= state.LastEventId)
+                if (isBaseline || item.CreatedAt <= state.BaselineAt)
                 {
                     continue;
                 }
@@ -699,11 +707,15 @@ public sealed class MonitorService : IAsyncDisposable
                     && !IsDefaultBranchEcho(item, state, settings)
                     && ShouldDeliver(alert, account, settings))
                 {
-                    collected.Add(Stamp(alert, account));
+                    collected.Add(Stamp(alert, account, state.LastPolledAt, now));
                 }
             }
 
-            state.LastEventId = highWater;
+            if (state.SeenEventIds.Count > RepoState.MaxSeenEventIds)
+            {
+                state.SeenEventIds.RemoveRange(0, state.SeenEventIds.Count - RepoState.MaxSeenEventIds);
+            }
+
             state.Initialised = true;
         }
 
@@ -712,13 +724,15 @@ public sealed class MonitorService : IAsyncDisposable
         // Polling commits directly is what makes a push show up promptly.
         if (!settings.IsMuted(AlertKind.Push))
         {
-            await PollCommitsAsync(client, account, reference, state, settings, collected, ct).ConfigureAwait(false);
+            await PollCommitsAsync(client, account, reference, state, settings, collected, now, ct).ConfigureAwait(false);
         }
 
         if (settings.WatchWorkflowRuns && !settings.IsMuted(AlertKind.Workflow))
         {
-            await PollWorkflowRunsAsync(client, account, reference, state, settings, collected, ct).ConfigureAwait(false);
+            await PollWorkflowRunsAsync(client, account, reference, state, settings, collected, now, ct).ConfigureAwait(false);
         }
+
+        state.LastPolledAt = now;
     }
 
     /// <summary>
@@ -745,6 +759,7 @@ public sealed class MonitorService : IAsyncDisposable
         RepoState state,
         AppSettings settings,
         List<Alert> collected,
+        DateTimeOffset now,
         CancellationToken ct)
     {
         ConditionalResponse<List<GhCommit>> response;
@@ -819,7 +834,8 @@ public sealed class MonitorService : IAsyncDisposable
 
         if (ShouldDeliver(alert, account, settings))
         {
-            collected.Add(Stamp(alert, account));
+            // The commits endpoint says when a commit was made, not when it was pushed.
+            collected.Add(Stamp(alert, account, state.LastPolledAt, now, happened: "Committed"));
         }
     }
 
@@ -830,6 +846,7 @@ public sealed class MonitorService : IAsyncDisposable
         RepoState state,
         AppSettings settings,
         List<Alert> collected,
+        DateTimeOffset now,
         CancellationToken ct)
     {
         var runs = Noted(await client.GetWorkflowRunsAsync(reference, state.RunsETag, ct).ConfigureAwait(false));
@@ -891,7 +908,7 @@ public sealed class MonitorService : IAsyncDisposable
 
             if (ShouldDeliver(alert, account, settings))
             {
-                collected.Add(Stamp(alert, account));
+                collected.Add(Stamp(alert, account, state.LastPolledAt, now));
             }
         }
 
@@ -951,26 +968,68 @@ public sealed class MonitorService : IAsyncDisposable
     /// Records which account saw the alert, and makes the id unique per account so the same event
     /// watched under two accounts is not silently swallowed by de-duplication.
     /// </summary>
-    private Alert Stamp(Alert alert, GitHubAccount account) => new()
+    private Alert Stamp(
+        Alert alert,
+        GitHubAccount account,
+        DateTimeOffset? since = null,
+        DateTimeOffset? now = null,
+        string? happened = null)
     {
-        Id = $"{account.Id}|{alert.Id}",
-        Kind = alert.Kind,
-        Title = alert.Title,
-        Detail = alert.Detail,
-        Repository = alert.Repository,
-        Account = LoginFor(account.Id) ?? account.Login,
-        AccountId = account.Id,
-        Actor = alert.Actor,
-        Note = alert.Note,
-        Fields = alert.Fields,
-        Body = alert.Body,
-        Url = alert.Url,
-        Timestamp = alert.Timestamp,
-        Severity = alert.Severity,
-        DiffHead = alert.DiffHead,
-        DiffBase = alert.DiffBase,
-        PullRequestNumber = alert.PullRequestNumber,
-    };
+        var (timestamp, note) = Dated(alert, since, now ?? DateTimeOffset.Now, happened);
+
+        return new()
+        {
+            Id = $"{account.Id}|{alert.Id}",
+            Kind = alert.Kind,
+            Title = alert.Title,
+            Detail = alert.Detail,
+            Repository = alert.Repository,
+            Account = LoginFor(account.Id) ?? account.Login,
+            AccountId = account.Id,
+            Actor = alert.Actor,
+            Note = note ?? alert.Note,
+            Fields = alert.Fields,
+            Body = alert.Body,
+            Url = alert.Url,
+            Timestamp = timestamp,
+            Severity = alert.Severity,
+            DiffHead = alert.DiffHead,
+            DiffBase = alert.DiffBase,
+            PullRequestNumber = alert.PullRequestNumber,
+        };
+    }
+
+    /// <summary>An alert dated this long before the poll that found it says so on its row.</summary>
+    private static readonly TimeSpan WorthMentioning = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// When an alert happened, as far as the user is concerned. Something dated before the previous
+    /// poll was not there to be found then - GitHub publishes events late, and a commit is pushed
+    /// long after it is made - so the news is now, sorted and shown as now, and the row says when
+    /// it actually happened. A two-day-old toast with the card buried two days down the list was
+    /// the alternative.
+    /// </summary>
+    private static (DateTimeOffset Timestamp, string? Note) Dated(Alert alert, DateTimeOffset? since, DateTimeOffset now, string? happened)
+    {
+        if (since is not { } previous || alert.Timestamp >= previous)
+        {
+            return (alert.Timestamp, null);
+        }
+
+        if (now - alert.Timestamp < WorthMentioning)
+        {
+            return (now, null);
+        }
+
+        var verb = happened ?? alert.Kind switch
+        {
+            AlertKind.Push => "Pushed",
+            AlertKind.Workflow => "Finished",
+            _ => "Happened",
+        };
+
+        return (now, $"{verb} {RelativeTime.Format(alert.Timestamp, now)} ago");
+    }
 
     /// <summary>
     /// The client an account polls with, lent to the detail pane so fetching a diff reuses the

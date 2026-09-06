@@ -99,8 +99,115 @@ public class MonitorServiceTests : IDisposable
     }
 
     /// <summary>
+    /// GitHub's event ids are not one sequence: pushes and branches come from one range, issues,
+    /// releases and comments from another about a third the size. "Everything below the highest
+    /// id has been seen" dropped every release and issue after the first branch event.
+    /// </summary>
+    [Fact]
+    public async Task An_event_with_a_lower_id_than_one_already_seen_is_still_news()
+    {
+        var github = new FakeGitHub { Events = Events(Push("20000000000", "abc1234")) };
+        await using var harness = NewHarness(github);
+
+        await harness.PollAsync();
+
+        github.Events = Events(Release("14000000000", "v2.2.0"), Push("20000000000", "abc1234"));
+        await harness.PollAsync();
+
+        var alert = Assert.Single(harness.Delivered);
+        Assert.Equal(AlertKind.Release, alert.Kind);
+        Assert.Equal("Release v2.2.0 published", alert.Title);
+
+        // Seen once is seen; the page keeps carrying it.
+        await harness.PollAsync();
+        Assert.Single(harness.Delivered);
+    }
+
+    /// <summary>
+    /// GitHub publishes an event to the timeline some time after it happened - days, on a private
+    /// repository. One from before the repository was added is history arriving late, not news.
+    /// </summary>
+    [Fact]
+    public async Task An_event_published_late_from_before_the_repository_was_added_is_history()
+    {
+        var github = new FakeGitHub { Events = Events(Push("1001", "abc1234")) };
+        await using var harness = NewHarness(github);
+
+        await harness.PollAsync();
+
+        github.Events = Events(Push("1002", "bbb2222", createdAt: Recent(TimeSpan.FromDays(2))), Push("1001", "abc1234"));
+        await harness.PollAsync();
+
+        Assert.Empty(harness.Delivered);
+    }
+
+    /// <summary>
+    /// An event dated two days ago that only turns up now was not there to be found two days ago.
+    /// It is news now: sorted and shown as now, with the row saying when it actually happened.
+    /// The alternative was a toast about something two days old, and the card two days down.
+    /// </summary>
+    [Fact]
+    public async Task An_event_dated_before_the_previous_poll_is_news_now_and_says_when_it_happened()
+    {
+        var account = GitHubAccount.Create("octocat");
+        var statePath = NewFile();
+        var seeded = new MonitorState();
+        var repository = seeded.For(RepoSubscription.From(account.Id, RepoRef.Parse(Repository)).StateKey);
+        repository.Initialised = true;
+        repository.BaselineAt = DateTimeOffset.Now - TimeSpan.FromDays(7);
+        repository.LastPolledAt = DateTimeOffset.Now - TimeSpan.FromHours(1);
+        repository.SeenEventIds.Add(1001);
+        new StateStore(statePath).Save(seeded);
+
+        var github = new FakeGitHub
+        {
+            Events = Events(Push("1002", "bbb2222", createdAt: Recent(TimeSpan.FromDays(2))), Push("1001", "abc1234")),
+        };
+
+        await using var harness = NewHarness(github, statePath, account: account);
+        await harness.PollAsync();
+
+        var alert = Assert.Single(harness.Delivered);
+        Assert.Equal("commit:bbb2222", Unstamped(alert.Id));
+        Assert.InRange(DateTimeOffset.Now - alert.Timestamp, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        Assert.Equal("Pushed 2d ago", alert.Note);
+    }
+
+    /// <summary>
+    /// State written by a version that kept one high-water mark has no baseline moment of its
+    /// own. The last poll of that version stands in: what it had already handled, or dropped,
+    /// stays history rather than arriving as a page of alerts after the upgrade.
+    /// </summary>
+    [Fact]
+    public async Task State_from_before_ids_were_remembered_takes_the_last_poll_of_that_version_as_its_baseline()
+    {
+        var account = GitHubAccount.Create("octocat");
+        var statePath = NewFile();
+        var key = RepoSubscription.From(account.Id, RepoRef.Parse(Repository)).StateKey;
+        var lastPoll = (DateTimeOffset.UtcNow - TimeSpan.FromHours(1)).ToString("o");
+
+        File.WriteAllText(
+            statePath,
+            $$$"""{"repositories":{"{{{key}}}":{"lastEventId":20000000000,"initialised":true}},"lastSuccessfulPoll":"{{{lastPoll}}}"}""");
+
+        var github = new FakeGitHub
+        {
+            Events = Events(
+                Release("14000000001", "v2.2.0"),
+                Release("14000000000", "v2.1.0", createdAt: Recent(TimeSpan.FromHours(2))),
+                Push("20000000000", "abc1234", createdAt: Recent(TimeSpan.FromHours(3)))),
+        };
+
+        await using var harness = NewHarness(github, statePath, account: account);
+        await harness.PollAsync();
+
+        var alert = Assert.Single(harness.Delivered);
+        Assert.Equal("Release v2.2.0 published", alert.Title);
+    }
+
+    /// <summary>
     /// Event ids are strings in the payload and numbers in meaning. Anything that is not a number
-    /// cannot be compared against the high-water mark, so it is skipped rather than guessed at.
+    /// cannot be remembered as seen, so it is skipped rather than guessed at.
     /// </summary>
     [Fact]
     public async Task An_event_id_that_is_not_a_number_is_skipped_rather_than_throwing()
@@ -136,13 +243,13 @@ public class MonitorServiceTests : IDisposable
     [Fact]
     public async Task A_malformed_event_does_not_take_the_rest_of_the_poll_with_it()
     {
-        const string Broken = """
+        var broken = $$"""
         {
           "id": "1500",
           "type": "PushEvent",
           "actor": { "login": "someone" },
           "repo": { "name": "acme/api-gateway" },
-          "created_at": "2026-01-01T10:00:00Z",
+          "created_at": "{{Recent()}}",
           "payload": null
         }
         """;
@@ -158,7 +265,7 @@ public class MonitorServiceTests : IDisposable
         Assert.Equal(ConnectionState.Connected, first.State);
 
         // Now the broken one turns up, ahead of the mark, on the repository polled first.
-        github.EventsFor["acme/api-gateway"] = "[" + Broken + "," + Push("1000", "aaa1111") + "]";
+        github.EventsFor["acme/api-gateway"] = "[" + broken + "," + Push("1000", "aaa1111") + "]";
 
         github.EventsFor["acme/other"] = Events(
             Push("1002", "bbb2222", repository: "acme/other"),
@@ -715,26 +822,63 @@ public class MonitorServiceTests : IDisposable
     /// <summary>
     /// A rebase, a squash or a cherry-pick gives a commit a new committer date and keeps the
     /// author date. Stamped with the author date, a branch rebased and pushed today was filed
-    /// under the week it was started and shown as days old.
+    /// under the week it was started and shown as days old. Now the push is the news, dated by
+    /// the poll that found it, and the row names the committer date, not the author's.
     /// </summary>
     [Fact]
     public async Task A_rebased_commit_is_dated_by_when_it_landed_rather_than_when_it_was_written()
     {
         var github = new FakeGitHub
         {
-            Commits = CommitsAt(("aaa1111", "Baseline", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z")),
+            Commits = CommitsAt(("aaa1111", "Baseline", Recent(TimeSpan.FromDays(9)), Recent(TimeSpan.FromDays(9)))),
         };
 
         await using var harness = NewHarness(github);
         await harness.PollAsync();
 
         github.Commits = CommitsAt(
-            ("bbb2222", "Written last week, rebased today", "2026-01-01T09:00:00Z", "2026-01-08T15:00:00Z"),
-            ("aaa1111", "Baseline", "2026-01-01T10:00:00Z", "2026-01-01T10:00:00Z"));
+            ("bbb2222", "Written last week, rebased three hours ago", Recent(TimeSpan.FromDays(8)), Recent(TimeSpan.FromHours(3))),
+            ("aaa1111", "Baseline", Recent(TimeSpan.FromDays(9)), Recent(TimeSpan.FromDays(9))));
         await harness.PollAsync();
 
         var alert = Assert.Single(harness.Delivered);
-        Assert.Equal(DateTimeOffset.Parse("2026-01-08T15:00:00Z"), alert.Timestamp);
+        Assert.InRange(DateTimeOffset.Now - alert.Timestamp, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        Assert.Equal("Committed 3h ago", alert.Note);
+    }
+
+    /// <summary>
+    /// A commit made on Tuesday and pushed on Thursday is Thursday's news. Dated by the commit it
+    /// was a two-day-old toast with the card filed two days down the list, under everything since.
+    /// </summary>
+    [Fact]
+    public async Task A_commit_pushed_long_after_it_was_made_is_news_now_and_says_when_it_was_committed()
+    {
+        var github = new FakeGitHub
+        {
+            Commits = CommitsAt(("aaa1111", "Baseline", Recent(TimeSpan.FromDays(3)), Recent(TimeSpan.FromDays(3)))),
+        };
+
+        await using var harness = NewHarness(github);
+        await harness.PollAsync();
+
+        github.Commits = CommitsAt(
+            ("bbb2222", "Made on Tuesday", Recent(TimeSpan.FromDays(2)), Recent(TimeSpan.FromDays(2))),
+            ("aaa1111", "Baseline", Recent(TimeSpan.FromDays(3)), Recent(TimeSpan.FromDays(3))));
+        await harness.PollAsync();
+
+        var alert = Assert.Single(harness.Delivered);
+        Assert.InRange(DateTimeOffset.Now - alert.Timestamp, TimeSpan.Zero, TimeSpan.FromMinutes(1));
+        Assert.Equal("Committed 2d ago", alert.Note);
+
+        // A commit made since the previous poll is dated by itself: the push was moments later.
+        github.Commits = CommitsAt(
+            ("ccc3333", "Made just now", Recent(), Recent()),
+            ("bbb2222", "Made on Tuesday", Recent(TimeSpan.FromDays(2)), Recent(TimeSpan.FromDays(2))),
+            ("aaa1111", "Baseline", Recent(TimeSpan.FromDays(3)), Recent(TimeSpan.FromDays(3))));
+        await harness.PollAsync();
+
+        Assert.Equal(2, harness.Delivered.Count);
+        Assert.Null(harness.Delivered[1].Note);
     }
 
     /// <summary>
@@ -963,19 +1107,28 @@ public class MonitorServiceTests : IDisposable
 
     private static string Events(params string[] events) => "[" + string.Join(",", events) + "]";
 
+    /// <summary>
+    /// When the events below happened. With no age given, a minute ahead of the clock: a poll
+    /// that baselined a moment earlier files everything dated up to that moment as history, and
+    /// whole-second dates round the wrong way. Fixed dates in the past read as history.
+    /// </summary>
+    private static string Recent(TimeSpan? ago = null) =>
+        (DateTimeOffset.UtcNow - (ago ?? TimeSpan.FromMinutes(-1))).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+
     private static string Push(
         string id,
         string head,
         string actor = "someone",
         string repository = "acme/api-gateway",
-        string gitRef = "refs/heads/main") =>
+        string gitRef = "refs/heads/main",
+        string? createdAt = null) =>
         $$"""
         {
           "id": "{{id}}",
           "type": "PushEvent",
           "actor": { "login": "{{actor}}", "display_login": "{{actor}}" },
           "repo": { "name": "{{repository}}" },
-          "created_at": "2026-01-01T10:00:00Z",
+          "created_at": "{{createdAt ?? Recent()}}",
           "payload": {
             "ref": "{{gitRef}}",
             "size": 1,
@@ -983,6 +1136,21 @@ public class MonitorServiceTests : IDisposable
             "head": "{{head}}",
             "before": "0000000",
             "commits": [ { "message": "A commit message" } ]
+          }
+        }
+        """;
+
+    private static string Release(string id, string tag, string? createdAt = null) =>
+        $$"""
+        {
+          "id": "{{id}}",
+          "type": "ReleaseEvent",
+          "actor": { "login": "github-actions[bot]", "display_login": "github-actions" },
+          "repo": { "name": "acme/api-gateway" },
+          "created_at": "{{createdAt ?? Recent()}}",
+          "payload": {
+            "action": "published",
+            "release": { "tag_name": "{{tag}}", "name": "{{tag}}", "html_url": "https://github.com/acme/api-gateway/releases/tag/{{tag}}" }
           }
         }
         """;

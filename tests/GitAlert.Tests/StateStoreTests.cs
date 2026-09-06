@@ -17,12 +17,13 @@ public class StateStoreTests : IDisposable
     {
         File.WriteAllText(
             _path,
-            """{"repositories":{"acc|acme/api":null,"acc|acme/web":{"lastEventId":5}},"inboxes":null}""");
+            """{"repositories":{"acc|acme/api":null,"acc|acme/web":{"seenEventIds":[5],"pendingWorkflowRunIds":null}},"inboxes":null}""");
 
         var state = new StateStore(_path).Load();
 
-        Assert.Equal(5, state.For("acc|acme/web").LastEventId);
-        Assert.Equal(0, state.For("acc|acme/api").LastEventId);
+        Assert.Equal([5], state.For("acc|acme/web").SeenEventIds);
+        Assert.Empty(state.For("acc|acme/web").PendingWorkflowRunIds);
+        Assert.Empty(state.For("acc|acme/api").SeenEventIds);
         Assert.Null(state.InboxFor("acc").HighWater);
     }
 
@@ -36,12 +37,12 @@ public class StateStoreTests : IDisposable
     {
         var store = new StateStore(_path);
         var state = new MonitorState();
-        state.For("acc|Acme/API").LastEventId = 7;
+        state.For("acc|Acme/API").SeenEventIds.Add(7);
         store.Save(state);
 
         var loaded = store.Load();
 
-        Assert.Equal(7, loaded.For("acc|acme/api").LastEventId);
+        Assert.Equal([7], loaded.For("acc|acme/api").SeenEventIds);
         Assert.Single(loaded.Repositories);
     }
 

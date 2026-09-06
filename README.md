@@ -328,7 +328,10 @@ for all three and publishes them as one release.
 - GitHub's events timeline is served from a cache. On public repositories it is near real time; on
   private ones it can lag by hours or days, which is why pushes are read from the commits endpoint
   instead. Pull requests, issues and comments on a private repository still arrive on the
-  timeline's schedule.
+  timeline's schedule. Whatever arrives late is news when it arrives: the alert is dated by the
+  poll that found it and its row says when it actually happened ("Happened 2d ago"), the same way
+  a commit made on Tuesday and pushed on Thursday reads "Committed 2d ago". Something from before
+  the repository was added stays history, however late GitHub publishes it.
 - Commit polling follows the default branch. A push to another branch is reported when the events
   timeline catches up.
 - A board is compared reading to reading, because GitHub keeps no history of one for the API to

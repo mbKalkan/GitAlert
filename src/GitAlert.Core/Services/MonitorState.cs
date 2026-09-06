@@ -107,6 +107,7 @@ public sealed class MonitorState
             foreach (var repository in Repositories.Values)
             {
                 repository.PendingWorkflowRunIds ??= [];
+                repository.SeenEventIds ??= [];
             }
 
             foreach (var board in Boards.Values)
@@ -247,10 +248,36 @@ public sealed class InboxState
 
 public sealed class RepoState
 {
+    /// <summary>How many timeline event ids are remembered; the page holds fifty.</summary>
+    public const int MaxSeenEventIds = 400;
+
     public string? EventsETag { get; set; }
 
-    /// <summary>Numeric GitHub event id; everything at or below this has been seen.</summary>
-    public long LastEventId { get; set; }
+    /// <summary>
+    /// The timeline events already handled, by id, oldest first.
+    /// </summary>
+    /// <remarks>
+    /// This used to be one number, "everything at or below this id has been seen". GitHub's event
+    /// ids are not one sequence: pushes, branches and tags come from one range, issues, pull
+    /// requests, comments and releases from another about a third the size, and neither follows
+    /// the clock closely. Once a branch event had set the mark, every release and issue after it
+    /// sat below the mark and was dropped without a word - a user watching their own repository
+    /// went from 1.11 to 2.2 without one "Release published".
+    /// </remarks>
+    public List<long> SeenEventIds { get; set; } = [];
+
+    /// <summary>
+    /// Events created before this are history, not news: the moment the repository was first
+    /// read. GitHub publishes an event to the timeline some time after it happened - hours or
+    /// days on a private repository - so an unseen id alone does not make an event new.
+    /// </summary>
+    public DateTimeOffset? BaselineAt { get; set; }
+
+    /// <summary>
+    /// When the repository was last read. What arrives dated earlier than this was reported late,
+    /// by GitHub or by whoever pushed an old commit, and is news now rather than then.
+    /// </summary>
+    public DateTimeOffset? LastPolledAt { get; set; }
 
     /// <summary>Learned once from the repository, so commit alerts can name the branch.</summary>
     public string? DefaultBranch { get; set; }
