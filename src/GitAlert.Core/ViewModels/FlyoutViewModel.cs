@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using GitAlert.Configuration;
@@ -36,7 +37,8 @@ public interface IShellCommands
 public sealed record ListPreferences(
     IReadOnlyList<string> ProjectOrder,
     IReadOnlyList<ProjectSection> Sections,
-    bool UnreadOnly);
+    bool UnreadOnly,
+    IReadOnlyDictionary<string, bool> ProjectFolds);
 
 /// <summary>
 /// Drives the tray flyout: the alert list, the filter chips and the connection status line.
@@ -105,6 +107,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     /// </summary>
     private readonly List<ProjectSectionViewModel> _sections;
 
+    /// <summary>
+    /// The fold each project was last left in by hand, by name: true for folded. A project absent
+    /// here opens or not by what it has to show. Written down as it changes, so the shape the user
+    /// gave the list is the shape it has after a restart.
+    /// </summary>
+    private readonly Dictionary<string, bool> _projectFolds;
+
+    /// <summary>True while every project's fold is being set at once, so the one save waits for the last.</summary>
+    private bool _foldingEverything;
+
     /// <summary>Drives whether the cards name the account the alert arrived through.</summary>
     private bool _showAccounts;
 
@@ -128,6 +140,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         _order = [.. settings.ProjectOrder];
         _sections = settings.Sections.Select(section => Wrap(section.Clone())).ToList();
+        _projectFolds = new Dictionary<string, bool>(settings.ProjectFolds, StringComparer.OrdinalIgnoreCase);
         _unreadOnly = settings.UnreadOnly;
 
         Filters =
@@ -785,23 +798,75 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private List<ProjectSectionViewModel> SiblingsOf(ProjectSectionViewModel section) => section.Parent?.Children ?? _sections;
 
     /// <summary>
-    /// Unfolds every section and every project. Nothing is fetched for it: a project with no
-    /// alerts opens onto its "load earlier commits" button, as it does when opened by hand.
+    /// Unfolds in two steps: first every section that is folded, so the shape of the list comes
+    /// back with the projects as they were, then every project. Whichever step is due is the one
+    /// taken, so a second press finishes what the first began; with no section folded, one press
+    /// opens the projects. Nothing is fetched for it: a project with no alerts opens onto its
+    /// "load earlier commits" button, as it does when opened by hand.
+    /// </summary>
+    /// <remarks>
+    /// One press used to open everything at once, and the list was then longer than anyone wanted;
+    /// folding it back and reopening the few projects that mattered was the chore this replaces.
+    /// </remarks>
+    [RelayCommand]
+    private void ExpandAll()
+    {
+        if (AllSections().Any(s => !s.IsExpanded))
+        {
+            SetSectionsExpanded(true);
+        }
+        else
+        {
+            SetProjectsExpanded(true);
+        }
+    }
+
+    /// <summary>
+    /// Folds in two steps: first every project, leaving the sections open as an outline of the
+    /// list, then the sections too, down to a list of headers. Which step is due is read off the
+    /// screen: while any project on it is open, the projects; otherwise the sections.
     /// </summary>
     [RelayCommand]
-    private void ExpandAll() => SetEverythingExpanded(true);
-
-    /// <summary>Folds every project and every section, down to a list of headers.</summary>
-    [RelayCommand]
-    private void CollapseAll() => SetEverythingExpanded(false);
-
-    private void SetEverythingExpanded(bool expanded)
+    private void CollapseAll()
     {
-        foreach (var project in _projects.Values)
+        if (Rows.OfType<ProjectGroupViewModel>().Any(g => g.IsExpanded))
         {
-            project.IsExpanded = expanded;
+            SetProjectsExpanded(false);
+        }
+        else
+        {
+            SetSectionsExpanded(false);
+            SetProjectsExpanded(false);
+        }
+    }
+
+    /// <summary>Folds or unfolds every project, and writes the folds down once rather than once per project.</summary>
+    private void SetProjectsExpanded(bool expanded)
+    {
+        var foldsChanged = false;
+        _foldingEverything = true;
+
+        try
+        {
+            foreach (var project in _projects.Values.Where(p => p.IsExpanded != expanded))
+            {
+                project.IsExpanded = expanded;
+                foldsChanged = true;
+            }
+        }
+        finally
+        {
+            _foldingEverything = false;
         }
 
+        if (foldsChanged)
+        {
+            Persist();
+        }
+    }
+
+    private void SetSectionsExpanded(bool expanded)
+    {
         var foldsChanged = false;
 
         foreach (var section in AllSections().Where(s => s.IsExpanded != expanded))
@@ -810,13 +875,27 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             foldsChanged = true;
         }
 
-        // The sections' folds are saved; the projects' are not, as before.
         if (foldsChanged)
         {
             Persist();
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>A project folded or unfolded by hand is remembered that way, across restarts.</summary>
+    private void OnProjectFoldChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ProjectGroupViewModel.IsExpanded) || sender is not ProjectGroupViewModel group)
+        {
+            return;
         }
 
-        ApplyFilter();
+        _projectFolds[group.Repository] = !group.IsExpanded;
+
+        if (!_foldingEverything)
+        {
+            Persist();
+        }
     }
 
     /// <summary>Wraps a section and, inside it, every section it holds.</summary>
@@ -1054,7 +1133,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             section.SyncModel();
         }
 
-        _shell.SaveListPreferences(new ListPreferences(_order, _sections.Select(s => s.Model).ToList(), UnreadOnly));
+        _shell.SaveListPreferences(new ListPreferences(_order, _sections.Select(s => s.Model).ToList(), UnreadOnly, _projectFolds));
     }
 
     private void RebuildGroups()
@@ -1185,9 +1264,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
             group.SetAlerts(alerts);
 
-            // First sight of a project: open when it has something to say, folded otherwise.
-            // After that it is the user's own choice, held on the group itself.
-            group.IsExpanded = group.Items.Count > 0;
+            // First sight of a project: the fold the user last left it in, or failing that open
+            // when it has something to say, folded otherwise. After that it is the user's own
+            // choice, held on the group itself and written down as it changes.
+            group.IsExpanded = _projectFolds.TryGetValue(repository, out var folded) ? !folded : group.Items.Count > 0;
+            group.PropertyChanged += OnProjectFoldChanged;
         }
         else
         {

@@ -89,6 +89,12 @@ public sealed class AppSettings
     /// </summary>
     public List<ProjectSection> Sections { get; set; } = [];
 
+    /// <summary>
+    /// The fold each project was last left in by hand, by full name: true for folded. A project
+    /// not listed opens when it has something to show and stays folded otherwise.
+    /// </summary>
+    public Dictionary<string, bool> ProjectFolds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Hide alerts that have already been read.</summary>
     public bool UnreadOnly { get; set; }
 
@@ -175,6 +181,7 @@ public sealed class AppSettings
         MaxHistory = MaxHistory,
         ProjectOrder = [.. ProjectOrder],
         Sections = Sections.Select(s => s.Clone()).ToList(),
+        ProjectFolds = new Dictionary<string, bool>(ProjectFolds, StringComparer.OrdinalIgnoreCase),
         UnreadOnly = UnreadOnly,
         AutoHideWindow = AutoHideWindow,
         AlwaysOnTop = AlwaysOnTop,
@@ -196,6 +203,7 @@ public sealed class AppSettings
         ProjectOrder ??= [];
         ProjectOrder.RemoveAll(string.IsNullOrWhiteSpace);
         NormaliseSections();
+        NormaliseFolds();
 
         PollIntervalMinutes = Math.Clamp(PollIntervalMinutes, MinimumPollMinutes, MaximumPollMinutes);
         MaxHistory = Math.Clamp(MaxHistory, 20, 2000);
@@ -270,6 +278,27 @@ public sealed class AppSettings
     /// </summary>
     private void NormaliseSections() =>
         Sections = Tidy(Sections, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The deserialiser builds the folds with the default comparer, whatever the property was
+    /// declared with, so <c>Acme/API</c> would not find the fold written for <c>acme/api</c>.
+    /// Rebuilt case-insensitively; a blank name goes, and two names that differ only by case keep
+    /// the first.
+    /// </summary>
+    private void NormaliseFolds()
+    {
+        var folds = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (repository, folded) in ProjectFolds ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(repository))
+            {
+                folds.TryAdd(repository, folded);
+            }
+        }
+
+        ProjectFolds = folds;
+    }
 
     private static List<ProjectSection> Tidy(List<ProjectSection>? sections, HashSet<string> claimed)
     {

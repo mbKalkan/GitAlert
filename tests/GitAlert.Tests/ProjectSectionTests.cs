@@ -74,7 +74,7 @@ public class ProjectSectionTests : IDisposable
     }
 
     [Fact]
-    public void Collapse_all_folds_every_project_and_section_and_expand_all_undoes_it()
+    public void Collapse_all_folds_the_projects_then_the_sections_and_expand_all_opens_them_the_other_way_round()
     {
         StaThread.Run(() =>
         {
@@ -83,18 +83,30 @@ public class ProjectSectionTests : IDisposable
 
             Assert.All(flyout.Groups, g => Assert.True(g.IsExpanded));
 
+            // First the projects, leaving the sections as an outline.
             flyout.CollapseAllCommand.Execute(null);
 
             Assert.All(flyout.Groups, g => Assert.False(g.IsExpanded));
+            Assert.True(Section(flyout, "Work").IsExpanded);
+            Assert.Equal(["acme/alpha", "acme/beta", "#Work", "acme/gamma", "acme/delta"], Rows(flyout));
+
+            // Then the sections.
+            flyout.CollapseAllCommand.Execute(null);
+
             Assert.False(Section(flyout, "Work").IsExpanded);
             Assert.Equal(["acme/alpha", "acme/beta", "#Work"], Rows(flyout));
             Assert.True(Assert.Single(shell.SavedSections!).IsCollapsed);
 
+            // Opening goes the other way: the sections come back with the projects as they were.
+            flyout.ExpandAllCommand.Execute(null);
+
+            Assert.True(Section(flyout, "Work").IsExpanded);
+            Assert.All(flyout.Groups, g => Assert.False(g.IsExpanded));
+            Assert.Equal(["acme/alpha", "acme/beta", "#Work", "acme/gamma", "acme/delta"], Rows(flyout));
+
             flyout.ExpandAllCommand.Execute(null);
 
             Assert.All(flyout.Groups, g => Assert.True(g.IsExpanded));
-            Assert.True(Section(flyout, "Work").IsExpanded);
-            Assert.Equal(["acme/alpha", "acme/beta", "#Work", "acme/gamma", "acme/delta"], Rows(flyout));
         });
     }
 

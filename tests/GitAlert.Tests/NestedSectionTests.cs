@@ -79,6 +79,8 @@ public class NestedSectionTests : IDisposable
         {
             var flyout = Build(new RecordingShell(), Settings(Work(Inner())), FourAlerts());
 
+            // The first press folds the projects; the second the sections, the nested one included.
+            flyout.CollapseAllCommand.Execute(null);
             flyout.CollapseAllCommand.Execute(null);
 
             Assert.Equal(["acme/alpha", "acme/beta", "#Work"], Rows(flyout));
@@ -87,6 +89,7 @@ public class NestedSectionTests : IDisposable
             flyout.ExpandAllCommand.Execute(null);
 
             Assert.Equal(["acme/alpha", "acme/beta", "#Work", "acme/gamma", "#Inner", "acme/delta"], Rows(flyout));
+            Assert.True(Section(flyout, "Inner").IsExpanded);
         });
     }
 

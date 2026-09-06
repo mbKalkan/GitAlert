@@ -148,6 +148,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
     {
         _settings.ProjectOrder = [.. preferences.ProjectOrder];
         _settings.Sections = preferences.Sections.Select(s => s.Clone()).ToList();
+        _settings.ProjectFolds = new Dictionary<string, bool>(preferences.ProjectFolds, StringComparer.OrdinalIgnoreCase);
         _settings.UnreadOnly = preferences.UnreadOnly;
         _settingsStore.Save(_settings);
     }

@@ -101,7 +101,9 @@ headers; a section folds and unfolds as one, has its own count and tick, remembe
 is dragged into place like a project. Sections nest: drop a section onto another's header, or
 start one inside it with the "+" on the header, and it sits a step further in with its own
 projects and sections, folding, counting and moving with the one around it.
-"Expand all" and "Collapse all" above the list do every fold at once. One
+"Collapse all" above the list folds in two steps — the projects first, leaving the sections as an
+outline, then the sections — and "Expand all" opens in two, the sections first; the fold you leave
+a project in is remembered across restarts. One
 switch turns the list back into just what needs attention: unread alerts only, and only the
 projects and sections that have some.
 

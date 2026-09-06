@@ -176,16 +176,26 @@ public class SectionRowTests
 
             var work = vm.Rows.OfType<ProjectSectionViewModel>().Single();
 
+            // One click folds the projects and leaves the section as an outline; the next folds it too.
             Click(window, ToolbarButton(window, "Collapse all"));
 
             Assert.All(vm.Groups, g => Assert.False(g.IsExpanded));
-            Assert.False(work.IsExpanded);
+            Assert.True(work.IsExpanded);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.DataContext is AlertViewModel && b.IsEffectivelyVisible);
+
+            Click(window, ToolbarButton(window, "Collapse all"));
+
+            Assert.False(work.IsExpanded);
+
+            // Opening goes the other way round: the section first, then the projects.
+            Click(window, ToolbarButton(window, "Expand all"));
+
+            Assert.True(work.IsExpanded);
+            Assert.All(vm.Groups, g => Assert.False(g.IsExpanded));
 
             Click(window, ToolbarButton(window, "Expand all"));
 
             Assert.All(vm.Groups, g => Assert.True(g.IsExpanded));
-            Assert.True(work.IsExpanded);
             Assert.Equal(3, window.GetVisualDescendants().OfType<Button>().Count(b => b.DataContext is AlertViewModel && b.IsEffectivelyVisible));
         }
         finally
