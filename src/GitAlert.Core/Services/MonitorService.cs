@@ -97,6 +97,19 @@ public sealed class MonitorService : IAsyncDisposable
     /// <summary>Whether the poll in progress has deserialised anything. Poll thread only.</summary>
     private bool _readSomething;
 
+    /// <summary>How many bodies have been read since the start, so a subject's check can tell "read" from "unchanged".</summary>
+    private int _bodiesRead;
+
+    /// <summary>
+    /// How the last check of each repository, board and inbox went, by state key, for the
+    /// diagnostics page. Guarded by <see cref="_sync"/>: written by the poll loop, read from the UI.
+    /// </summary>
+    private readonly Dictionary<string, SubjectRecord> _records = new(StringComparer.OrdinalIgnoreCase);
+
+    private DateTimeOffset? _lastPollStartedAt;
+    private DateTimeOffset? _lastPollFinishedAt;
+    private DateTimeOffset? _nextPollAt;
+
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private AppSettings _settings = new();
@@ -267,9 +280,16 @@ public sealed class MonitorService : IAsyncDisposable
                 SettleBeforeIdling();
             }
 
+            var delay = NextDelay();
+
+            lock (_sync)
+            {
+                _nextPollAt = DateTimeOffset.Now + delay;
+            }
+
             try
             {
-                await _refreshSignal.WaitAsync(NextDelay(), ct).ConfigureAwait(false);
+                await _refreshSignal.WaitAsync(delay, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -300,10 +320,17 @@ public sealed class MonitorService : IAsyncDisposable
     {
         if (!response.NotModified)
         {
-            _readSomething = true;
+            NoteBodyRead();
         }
 
         return response;
+    }
+
+    /// <summary>Something was deserialised: worth a collection before idling, and "read" on the diagnostics page.</summary>
+    private void NoteBodyRead()
+    {
+        _readSomething = true;
+        _bodiesRead++;
     }
 
     /// <summary>Keeps the most recent interval GitHub asked for. Poll thread only.</summary>
@@ -336,6 +363,12 @@ public sealed class MonitorService : IAsyncDisposable
     private async Task PollAsync(CancellationToken ct)
     {
         await _pollGate.WaitAsync(ct).ConfigureAwait(false);
+
+        lock (_sync)
+        {
+            _lastPollStartedAt = DateTimeOffset.Now;
+            _lastPollFinishedAt = null;
+        }
 
         try
         {
@@ -401,6 +434,11 @@ public sealed class MonitorService : IAsyncDisposable
         }
         finally
         {
+            lock (_sync)
+            {
+                _lastPollFinishedAt = DateTimeOffset.Now;
+            }
+
             _pollGate.Release();
         }
     }
@@ -450,12 +488,16 @@ public sealed class MonitorService : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
 
+            var check = Begin(client, collected);
+
             try
             {
                 await PollRepositoryAsync(client, account, repository, settings, collected, ct).ConfigureAwait(false);
+                Finish(repository.StateKey, check, client, collected, error: null);
             }
             catch (GitHubException ex)
             {
+                Finish(repository.StateKey, check, client, collected, ex.UserMessage);
                 failures.Add((repository.FullName, ex));
 
                 // Every further request with this token is refused the same way, and each one
@@ -471,12 +513,16 @@ public sealed class MonitorService : IAsyncDisposable
         {
             ct.ThrowIfCancellationRequested();
 
+            var check = Begin(client, collected);
+
             try
             {
                 await PollBoardAsync(client, account, board, settings, collected, ct).ConfigureAwait(false);
+                Finish(board.StateKey, check, client, collected, error: null);
             }
             catch (GitHubException ex)
             {
+                Finish(board.StateKey, check, client, collected, ex.UserMessage);
                 failures.Add((board.DisplayName, ex));
 
                 if (NoteThrottling(account, ex))
@@ -488,17 +534,178 @@ public sealed class MonitorService : IAsyncDisposable
 
         if (account.IncludeInbox)
         {
+            var check = Begin(client, collected);
+
             try
             {
                 await PollInboxAsync(client, account, settings, collected, ct).ConfigureAwait(false);
+                Finish(InboxKey(account.Id), check, client, collected, error: null);
             }
             catch (GitHubException ex)
             {
+                Finish(InboxKey(account.Id), check, client, collected, ex.UserMessage);
                 failures.Add(($"{Describe(account)} inbox", ex));
                 NoteThrottling(account, ex);
             }
         }
     }
+
+    // ---- What the last check of each thing did, for the diagnostics page --------
+
+    /// <summary>The key an account's inbox is recorded under, beside the repositories' and the boards'.</summary>
+    private static string InboxKey(string accountId) => $"{accountId}|inbox";
+
+    /// <summary>Where the counters stood when a subject's check began. Poll thread only.</summary>
+    private readonly record struct CheckStart(long Requests, int BodiesRead, int Alerts);
+
+    private CheckStart Begin(GitHubClient client, List<Alert> collected) =>
+        new(client.Requests, _bodiesRead, collected.Count);
+
+    /// <summary>Writes down how a subject's check went: how many requests, whether anything came back, what it made.</summary>
+    private void Finish(string key, CheckStart start, GitHubClient client, List<Alert> collected, string? error)
+    {
+        var now = DateTimeOffset.Now;
+        var found = collected.Count - start.Alerts;
+
+        var outcome = error is not null
+            ? PollOutcome.Failed
+            : _bodiesRead > start.BodiesRead ? PollOutcome.Read : PollOutcome.Unchanged;
+
+        lock (_sync)
+        {
+            if (!_records.TryGetValue(key, out var record))
+            {
+                record = new SubjectRecord { FirstPolledAt = now };
+                _records[key] = record;
+            }
+
+            record.LastPolledAt = now;
+            record.Outcome = outcome;
+            record.Error = error;
+            record.Requests = (int)(client.Requests - start.Requests);
+            record.AlertsFound = found;
+            record.AlertsTotal += found;
+        }
+    }
+
+    /// <summary>How the last check of one subject went. Guarded by <see cref="_sync"/>.</summary>
+    private sealed class SubjectRecord
+    {
+        public DateTimeOffset FirstPolledAt { get; init; }
+
+        public DateTimeOffset LastPolledAt { get; set; }
+
+        public PollOutcome Outcome { get; set; }
+
+        public string? Error { get; set; }
+
+        public int Requests { get; set; }
+
+        public int AlertsFound { get; set; }
+
+        public int AlertsTotal { get; set; }
+    }
+
+    /// <summary>
+    /// Everything the diagnostics page shows, as of now: the timing of the checks, each account's
+    /// budget, and the last check of every repository, board and inbox in the order the settings
+    /// list them. A subject not checked yet says so rather than being left out.
+    /// </summary>
+    public MonitorDiagnostics Diagnose()
+    {
+        var interval = NextDelay();
+        var status = Status;
+
+        lock (_sync)
+        {
+            var now = DateTimeOffset.Now;
+            var utcNow = DateTimeOffset.UtcNow;
+
+            var accounts = _settings.Accounts
+                .Select(account =>
+                {
+                    var client = _clients.GetValueOrDefault(account.Id);
+
+                    return new AccountDiagnostics(
+                        LabelOf(account),
+                        account.Enabled,
+                        _tokens.ContainsKey(account.Id),
+                        client?.RateLimit ?? RateLimitStatus.Unknown,
+                        _backoff.TryGetValue(account.Id, out var until) && until > utcNow ? until : null,
+                        client?.Requests ?? 0,
+                        client?.NotModified ?? 0);
+                })
+                .ToList();
+
+            var subjects = new List<SubjectDiagnostics>();
+
+            foreach (var account in _settings.Accounts)
+            {
+                var label = LabelOf(account);
+
+                foreach (var repository in _settings.RepositoriesFor(account.Id))
+                {
+                    subjects.Add(Subject(repository.StateKey, repository.FullName, "Repository", label, repository.Enabled, BaselineOf(repository.StateKey)));
+                }
+
+                foreach (var board in _settings.BoardsFor(account.Id))
+                {
+                    subjects.Add(Subject(board.StateKey, board.DisplayName, "Board", label, board.Enabled, since: null));
+                }
+
+                if (account.IncludeInbox)
+                {
+                    subjects.Add(Subject(InboxKey(account.Id), $"{label} inbox", "Inbox", label, account.Enabled, since: null));
+                }
+            }
+
+            return new MonitorDiagnostics(
+                now,
+                status.State,
+                status.Message,
+                _lastPollStartedAt,
+                _lastPollFinishedAt,
+                _lastSuccess,
+                _nextPollAt,
+                interval,
+                _serverRequestedInterval,
+                accounts,
+                subjects);
+        }
+    }
+
+    /// <summary>Callers hold <see cref="_sync"/>.</summary>
+    private SubjectDiagnostics Subject(string key, string name, string kind, string account, bool enabled, DateTimeOffset? since)
+    {
+        var record = _records.GetValueOrDefault(key);
+
+        return new SubjectDiagnostics(
+            key,
+            name,
+            kind,
+            account,
+            enabled,
+            record?.LastPolledAt,
+            record?.Outcome ?? PollOutcome.NotYet,
+            record?.Error,
+            record?.Requests ?? 0,
+            record?.AlertsFound ?? 0,
+            record?.AlertsTotal ?? 0,
+            since ?? record?.FirstPolledAt);
+    }
+
+    /// <summary>When a repository was first read, which is where its alerts begin.</summary>
+    private DateTimeOffset? BaselineOf(string stateKey)
+    {
+        lock (_state.SyncRoot)
+        {
+            return _state.Repositories.GetValueOrDefault(stateKey)?.BaselineAt;
+        }
+    }
+
+    /// <summary>"@login", or what the settings call an account whose login is not known yet. Callers hold <see cref="_sync"/>.</summary>
+    private string LabelOf(GitHubAccount account) =>
+        LoginOf(account.Id) is { Length: > 0 } login ? $"@{login}" : account.DisplayName;
 
     /// <summary>
     /// Reads a board and reports what moved since the last reading. GitHub keeps no timeline of a
@@ -521,7 +728,7 @@ public sealed class MonitorService : IAsyncDisposable
         if (state.FieldIds.Count == 0)
         {
             var fields = await client.GetProjectFieldsAsync(reference, ct).ConfigureAwait(false);
-            _readSomething = true;
+            NoteBodyRead();
 
             state.FieldIds = fields.Select(f => f.Id).Take(GitHubClient.MaxProjectFields).ToList();
             state.StatusFieldId = BoardTranslator.StatusFieldOf(fields)?.Id;

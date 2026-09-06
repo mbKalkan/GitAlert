@@ -61,6 +61,15 @@ public sealed class GitHubClient : IDisposable
 
     public RateLimitStatus RateLimit { get; private set; } = RateLimitStatus.Unknown;
 
+    private long _requests;
+    private long _notModified;
+
+    /// <summary>How many requests this client has sent since it was made, for the diagnostics page.</summary>
+    public long Requests => Interlocked.Read(ref _requests);
+
+    /// <summary>How many of those GitHub answered "not modified", which cost nothing against the budget.</summary>
+    public long NotModified => Interlocked.Read(ref _notModified);
+
     /// <summary>
     /// How long a body may take once its headers have arrived.
     /// </summary>
@@ -458,9 +467,18 @@ public sealed class GitHubClient : IDisposable
 
     private async Task<HttpResponseMessage> ExecuteAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        Interlocked.Increment(ref _requests);
+
         try
         {
-            return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.NotModified)
+            {
+                Interlocked.Increment(ref _notModified);
+            }
+
+            return response;
         }
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {

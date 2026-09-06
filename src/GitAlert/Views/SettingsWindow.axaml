@@ -477,6 +477,30 @@
       <Setter Property="Height" Value="1" />
       <Setter Property="Background" Value="{DynamicResource BorderSubtle}" />
     </Style>
+
+    <!-- The chip at the end of a diagnostics row: quiet for "unchanged", the accent for a check
+         that read something, red for one that failed, dimmed for one still waiting. -->
+    <Style Selector="Border#Outcome">
+      <Setter Property="Background" Value="{DynamicResource ChipBackground}" />
+    </Style>
+    <Style Selector="TextBlock#OutcomeText">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+    </Style>
+    <Style Selector="Border#Outcome.read">
+      <Setter Property="Background" Value="{DynamicResource AccentSubtle}" />
+    </Style>
+    <Style Selector="Border#Outcome.read TextBlock#OutcomeText">
+      <Setter Property="Foreground" Value="{DynamicResource Accent}" />
+    </Style>
+    <Style Selector="Border#Outcome.failed">
+      <Setter Property="Background" Value="{DynamicResource Danger}" />
+    </Style>
+    <Style Selector="Border#Outcome.failed TextBlock#OutcomeText">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccent}" />
+    </Style>
+    <Style Selector="Border#Outcome.idle">
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
   </Window.Styles>
 
   <Grid ColumnDefinitions="196,*">
@@ -503,6 +527,7 @@
           <ListBoxItem Content="Accounts" />
           <ListBoxItem Content="Notifications" />
           <ListBoxItem Content="General" />
+          <ListBoxItem Content="Diagnostics" />
           <ListBoxItem Content="About" />
         </ListBox>
 
@@ -801,9 +826,139 @@
           </StackPanel>
         </ScrollViewer>
 
+        <!-- ========== Diagnostics ========== -->
+        <ScrollViewer IsVisible="{Binding #Navigation.SelectedIndex, Converter={StaticResource Equals}, ConverterParameter=3}">
+          <StackPanel Margin="28,26,28,20"
+                      DataContext="{Binding Diagnostics}"
+                      x:DataType="vm:DiagnosticsViewModel">
+            <TextBlock Text="Diagnostics" Classes="pageTitle" />
+            <TextBlock Classes="pageSubtitle"
+                       Text="What GitAlert last did with GitHub, for when an alert seems late or missing. Nothing here leaves this machine unless you copy it." />
+
+            <Border Background="{DynamicResource SurfaceElevated}"
+                    BorderBrush="{DynamicResource BorderSubtle}"
+                    BorderThickness="1"
+                    CornerRadius="9"
+                    Padding="16,13">
+              <StackPanel>
+                <TextBlock Text="{Binding StatusText}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding LastCheckText}" Classes="secondary" Margin="0,6,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding NextCheckText}" Classes="secondary" Margin="0,3,0,0" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <TextBlock Text="ACCOUNTS" Classes="section" Margin="0,20,0,8" />
+
+            <ItemsControl ItemsSource="{Binding Accounts}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AccountRowViewModel">
+                  <StackPanel Margin="0,0,0,10">
+                    <TextBlock Text="{Binding Login}" FontSize="13" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding BudgetText}" Classes="secondary" Margin="0,2,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding RequestsText}" Classes="muted" Margin="0,2,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding ProblemText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource Danger}"
+                               Margin="0,2,0,0"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding HasProblem}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="No account yet."
+                       Classes="muted"
+                       IsVisible="{Binding Accounts.Count, Converter={StaticResource Equals}, ConverterParameter=0}" />
+
+            <TextBlock Text="WHAT IS WATCHED" Classes="section" Margin="0,14,0,4" />
+
+            <!-- One row per repository, board and inbox: the name, when it was last checked, and
+                 what came of it. A failure says why on the line under it. -->
+            <ItemsControl ItemsSource="{Binding Subjects}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SubjectRowViewModel">
+                  <Border BorderBrush="{DynamicResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="0,8">
+                    <StackPanel>
+                      <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBlock Grid.Column="0"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"><Run Text="{Binding Name}" FontSize="12.5" Foreground="{DynamicResource TextPrimary}" /><Run Text="  " /><Run Text="{Binding Tag}" FontSize="10.5" Foreground="{DynamicResource TextMuted}" /></TextBlock>
+
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding CheckedText}"
+                                   Classes="muted"
+                                   Margin="12,0,10,0"
+                                   VerticalAlignment="Center" />
+
+                        <Border Grid.Column="2"
+                                Name="Outcome"
+                                Classes.read="{Binding IsRead}"
+                                Classes.failed="{Binding IsFailed}"
+                                Classes.idle="{Binding IsIdle}"
+                                MinWidth="64"
+                                CornerRadius="9"
+                                Padding="8,2"
+                                VerticalAlignment="Center">
+                          <TextBlock Name="OutcomeText"
+                                     Text="{Binding OutcomeText}"
+                                     FontSize="10.5"
+                                     FontWeight="SemiBold"
+                                     HorizontalAlignment="Center" />
+                        </Border>
+                      </Grid>
+
+                      <TextBlock Classes="muted"
+                                 Margin="0,3,0,0"
+                                 TextWrapping="Wrap"
+                                 IsVisible="{Binding ShowAccount}"
+                                 Text="{Binding Account, StringFormat='Through {0}'}" />
+
+                      <TextBlock Text="{Binding DetailText}"
+                                 Classes="muted"
+                                 Margin="0,3,0,0"
+                                 TextWrapping="Wrap"
+                                 IsVisible="{Binding DetailText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                      <TextBlock Text="{Binding Error}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource Danger}"
+                                 Margin="0,3,0,0"
+                                 TextWrapping="Wrap"
+                                 IsVisible="{Binding HasError}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Nothing is being watched yet."
+                       Classes="muted"
+                       Margin="0,4,0,0"
+                       IsVisible="{Binding !HasSubjects}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,18,0,0">
+              <Button Content="Refresh"
+                      Theme="{StaticResource SecondaryButton}"
+                      Command="{Binding RefreshCommand}" />
+              <Button Name="CopyReportButton"
+                      Content="Copy report"
+                      Theme="{StaticResource SecondaryButton}"
+                      Click="OnCopyReportClicked"
+                      ToolTip.Tip="Copy this page as text, for an issue" />
+            </StackPanel>
+
+            <TextBlock Text="{Binding Message}"
+                       Classes="muted"
+                       Margin="0,10,0,0"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasMessage}" />
+          </StackPanel>
+        </ScrollViewer>
+
         <!-- ========== About ========== -->
         <StackPanel Margin="28,26,28,20"
-                    IsVisible="{Binding #Navigation.SelectedIndex, Converter={StaticResource Equals}, ConverterParameter=3}">
+                    IsVisible="{Binding #Navigation.SelectedIndex, Converter={StaticResource Equals}, ConverterParameter=4}">
           <TextBlock Text="About GitAlert" Classes="pageTitle" />
           <TextBlock Classes="pageSubtitle"
                      Text="A small tray app that keeps an eye on the repositories you care about." />

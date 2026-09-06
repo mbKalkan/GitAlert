@@ -137,7 +137,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         ISecretStore tokenStore,
         ISettingsHost host,
         IStartupRegistrar startup,
-        UpdateChecker? updates = null)
+        UpdateChecker? updates = null,
+        MonitorService? monitor = null)
     {
         _settingsStore = settingsStore;
         _tokenStore = tokenStore;
@@ -145,6 +146,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _startup = startup;
         _updates = updates;
         _ui = UiThread.Capture();
+
+        Diagnostics = new DiagnosticsViewModel(monitor);
 
         _settings = settingsStore.Load();
         SettingsMigration.Apply(_settings, tokenStore);
@@ -263,6 +266,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
     public ObservableCollection<AccountViewModel> Accounts { get; } = [];
 
     public ObservableCollection<KindToggleViewModel> Kinds { get; }
+
+    /// <summary>The Diagnostics page: what the monitor last did, read from it rather than from any copy.</summary>
+    public DiagnosticsViewModel Diagnostics { get; }
 
     public IReadOnlyList<int> PollIntervalOptions { get; } = [1, 2, 5, 10, 15, 30, 60];
 
@@ -486,6 +492,8 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         {
             _updates.Changed -= OnUpdateChanged;
         }
+
+        Diagnostics.Dispose();
 
         foreach (var account in Accounts)
         {

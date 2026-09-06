@@ -116,7 +116,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
             return;
         }
 
-        var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this, _platform.Startup, _updates);
+        var viewModel = new SettingsViewModel(_settingsStore, _tokenStore, this, _platform.Startup, _updates, _monitor);
 
         _settingsViewModel = viewModel;
         _settingsWindow = new SettingsWindow(viewModel, _platform, _theme);

@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -129,34 +130,77 @@ public class SettingsWindowTests
         }
     }
 
+    /// <summary>The Diagnostics page lists what is watched, one row each, with clean bindings.</summary>
+    [AvaloniaFact]
+    public void The_diagnostics_page_lists_what_is_watched()
+    {
+        using var errors = new BindingErrors();
+        var (window, vm, dispose) = Build(withMonitor: true);
+
+        try
+        {
+            window.Show();
+            window.FindControl<ListBox>("Navigation")!.SelectedIndex = 3;
+            Frames.Settle();
+
+            // Two repositories and the account's inbox.
+            Assert.True(IsShown(window, "Diagnostics"));
+            Assert.Equal(3, vm.Diagnostics.Subjects.Count);
+
+            var rows = window.GetVisualDescendants().OfType<Border>().Count(b => b.Name == "Outcome" && b.IsEffectivelyVisible);
+            Assert.Equal(3, rows);
+
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Not checked yet");
+            Assert.Empty(errors.Messages);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
     private static bool IsShown(SettingsWindow window, string pageTitle) =>
         window.GetVisualDescendants()
             .OfType<TextBlock>()
             .Any(t => t.Text == pageTitle && t.Classes.Contains("pageTitle") && t.IsEffectivelyVisible);
 
-    private static (SettingsWindow Window, SettingsViewModel ViewModel, Action Dispose) Build()
+    private static (SettingsWindow Window, SettingsViewModel ViewModel, Action Dispose) Build(bool withMonitor = false)
     {
-        var (window, vm, _, dispose) = BuildWithStore();
+        var (window, vm, _, dispose) = BuildWithStore(withMonitor);
         return (window, vm, dispose);
     }
 
-    private static (SettingsWindow Window, SettingsViewModel ViewModel, SettingsStore Store, Action Dispose) BuildWithStore()
+    private static (SettingsWindow Window, SettingsViewModel ViewModel, SettingsStore Store, Action Dispose) BuildWithStore(bool withMonitor = false)
     {
         var work = SampleData.NewWorkDir();
         var account = GitHubAccount.Create("mbKalkan");
+        var settings = SampleData.Settings(account);
         var settingsStore = new SettingsStore(Path.Combine(work, "settings.json"));
-        settingsStore.Save(SampleData.Settings(account));
+        settingsStore.Save(settings);
 
         var tokens = new SecureTokenStore(new PlainProtector(), work);
         tokens.Write(account.Id, "ghp_sample");
 
-        var vm = new SettingsViewModel(settingsStore, tokens, new NoShell(), new NoShell());
+        // The diagnostics page reads the monitor; one that has never polled lists what it would check.
+        MonitorService? monitor = null;
+
+        if (withMonitor)
+        {
+            monitor = new MonitorService(
+                new AlertStore(Path.Combine(work, "history.json")),
+                new StateStore(Path.Combine(work, "state.json")),
+                new HttpClient(new DiffHandler()));
+            monitor.Configure(settings, new Dictionary<string, string> { [account.Id] = "ghp_sample" });
+        }
+
+        var vm = new SettingsViewModel(settingsStore, tokens, new NoShell(), new NoShell(), monitor: monitor);
         var window = new SettingsWindow(vm, new HeadlessPlatform(), new ThemeService(Avalonia.Application.Current!));
 
         return (window, vm, settingsStore, () =>
         {
             window.Close();
             vm.Dispose();
+            monitor?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         });
     }
 }
