@@ -83,7 +83,7 @@ public partial class App : Application
         // history file. Reconcile before anything has a chance to count them or list the project.
         // A repository that is merely switched off keeps its history, out of sight: pausing is
         // not removing.
-        if (_alerts.RemoveUnwatched(settings.Repositories.Select(r => r.FullName)) > 0)
+        if (_alerts.RemoveUnwatched(settings.WatchedNames) > 0)
         {
             _alerts.Save();
         }

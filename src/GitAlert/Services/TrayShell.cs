@@ -176,9 +176,9 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _flyout.ApplyPreferences(settings);
         _monitor.Configure(settings, tokens);
 
-        // A repository that is no longer watched takes its alerts with it. One that is only
-        // switched off keeps them in the history, out of sight until it is switched back on.
-        if (_alerts.RemoveUnwatched(settings.Repositories.Select(r => r.FullName)) > 0)
+        // A repository or a board that is no longer watched takes its alerts with it. One that is
+        // only switched off keeps them in the history, out of sight until it is switched back on.
+        if (_alerts.RemoveUnwatched(settings.WatchedNames) > 0)
         {
             _alerts.Save();
         }
@@ -295,7 +295,7 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _lastToastAlert = alerts.Count == 1 ? newest : null;
 
         var (title, body) = alerts.Count == 1
-            ? (newest.ToastTitle, newest.ToastBody)
+            ? ($"{DisplayNameOf(newest.Repository)} - {newest.Title}", newest.ToastBody)
             : ($"{alerts.Count} new alerts", Summarise(alerts));
 
         var kind = alerts.Any(a => a.Severity == AlertSeverity.Error)
@@ -305,13 +305,14 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
         _tray.ShowNotification(title, body, kind, _settings.PlaySound);
     }
 
-    private static string Summarise(IReadOnlyList<Alert> alerts)
+    private string Summarise(IReadOnlyList<Alert> alerts)
     {
         var repositories = alerts
             .Select(a => a.Repository)
             .Where(r => !string.IsNullOrEmpty(r))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(3)
+            .Select(DisplayNameOf)
             .ToList();
 
         var lead = alerts[0].Title;
@@ -322,6 +323,18 @@ public sealed class TrayShell : IShellCommands, ISettingsHost, IDisposable
             1 => $"{lead} — {repositories[0]}",
             _ => $"{lead} — {string.Join(", ", repositories)}",
         };
+    }
+
+    /// <summary>A board's alerts are grouped under its key; a notification calls it by its title.</summary>
+    private string DisplayNameOf(string repository)
+    {
+        if (!BoardRef.IsKey(repository))
+        {
+            return repository;
+        }
+
+        var board = _settings.Boards.FirstOrDefault(b => string.Equals(b.Key, repository, StringComparison.OrdinalIgnoreCase));
+        return board is null ? repository : $"{board.Owner} / {board.Title}";
     }
 
     private void OnNotificationClicked(object? sender, EventArgs e) =>
