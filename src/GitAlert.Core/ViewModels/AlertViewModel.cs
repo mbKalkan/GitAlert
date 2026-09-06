@@ -137,6 +137,41 @@ public sealed partial class AlertViewModel : ObservableObject
         }
     }
 
+    private string? _searchText;
+
+    /// <summary>
+    /// Everything on the alert a search may match, in one string: the headline, the message, the
+    /// repository, who caused it, the note, what was said, and the fields. Built once, since the
+    /// model never changes under the row; the read state is not part of it.
+    /// </summary>
+    public string SearchText => _searchText ??= string.Join(
+        '\n',
+        new[]
+        {
+            Model.Title,
+            Model.Detail,
+            Model.Repository,
+            Model.Actor,
+            Model.Note,
+            Model.Body,
+            Model.Account,
+            Model.Fields is { Count: > 0 } fields ? string.Join('\n', fields.Select(f => $"{f.Name} {f.Value}")) : null,
+        }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    /// <summary>Whether every word of a search is found somewhere on the alert, in any case.</summary>
+    public bool Matches(IReadOnlyList<string> terms)
+    {
+        foreach (var term in terms)
+        {
+            if (!SearchText.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public void MarkRead()
     {
         Model.IsRead = true;

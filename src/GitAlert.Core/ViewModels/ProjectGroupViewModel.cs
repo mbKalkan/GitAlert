@@ -46,7 +46,17 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     private readonly List<AlertViewModel> _commits = [];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOpen))]
     private bool _isExpanded;
+
+    /// <summary>
+    /// Opened by a search rather than by hand: the rows show whatever the fold says, so a match
+    /// inside a folded project is not a match nobody can see. The fold itself is untouched, and
+    /// comes back when the search is cleared.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOpen))]
+    private bool _isRevealed;
 
     /// <summary>Where a dragged project would land relative to this one, while one hovers over it.</summary>
     [ObservableProperty]
@@ -135,6 +145,9 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
 
     public bool HasUnread => UnreadCount > 0;
 
+    /// <summary>Whether the rows show: unfolded by hand, or held open by a search.</summary>
+    public bool IsOpen => IsExpanded || IsRevealed;
+
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
     /// <summary>Unread if there is any, otherwise how much is in the group at all.</summary>
@@ -221,6 +234,15 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     [RelayCommand]
     private async Task ToggleAsync()
     {
+        // Held open by a search, a click folds it for the rest of that search - and remembers
+        // the fold, since folding is what the click asked for.
+        if (IsRevealed)
+        {
+            IsRevealed = false;
+            IsExpanded = false;
+            return;
+        }
+
         IsExpanded = !IsExpanded;
 
         // Commits are fetched when someone opens a project and not before. A project that came

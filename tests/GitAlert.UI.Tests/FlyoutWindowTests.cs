@@ -403,6 +403,64 @@ public class FlyoutWindowTests
         }
     }
 
+    /// <summary>
+    /// The search box narrows the list to what it finds and opens the projects it leaves, so a
+    /// match in a folded project is on screen; Escape clears it before it closes anything.
+    /// </summary>
+    [AvaloniaFact]
+    public void Typing_a_search_narrows_the_list_and_escape_clears_it()
+    {
+        using var errors = new BindingErrors();
+        var (window, vm, dispose) = Build();
+
+        try
+        {
+            window.Show();
+            Frames.Settle();
+
+            var gitalert = vm.Groups.First(g => g.Repository == "mbKalkan/GitAlert");
+            var gateway = vm.Groups.First(g => g.Repository == "acme/api-gateway");
+            gitalert.IsExpanded = false;
+            Frames.Settle();
+
+            var box = window.FindControl<TextBox>("SearchBox")!;
+
+            // Ctrl+F puts the caret in the box from anywhere in the window.
+            window.KeyPress(Key.F, RawInputModifiers.Control, PhysicalKey.F, null);
+            Frames.Settle();
+
+            Assert.True(box.IsFocused);
+
+            window.KeyTextInput("failed");
+            Frames.Settle();
+
+            Assert.Equal("failed", vm.SearchText);
+            Assert.Equal([gitalert], vm.Groups);
+            Assert.True(gitalert.IsOpen, "the search opens the project it found the alert in");
+            Assert.Single(Cards(window, gitalert));
+
+            // The first Escape clears the search; the window stays.
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Frames.Settle();
+
+            Assert.Equal(string.Empty, vm.SearchText);
+            Assert.True(window.IsVisible);
+            Assert.Contains(gateway, vm.Groups);
+            Assert.False(gitalert.IsOpen, "the fold comes back with the box cleared");
+
+            // The next one closes it, as before.
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Frames.Settle();
+
+            Assert.False(window.IsVisible);
+            Assert.Empty(errors.Messages);
+        }
+        finally
+        {
+            dispose();
+        }
+    }
+
     private static (FlyoutWindow Window, FlyoutViewModel ViewModel, Action Dispose) Build(HeadlessPlatform? platform = null)
     {
         var work = SampleData.NewWorkDir();

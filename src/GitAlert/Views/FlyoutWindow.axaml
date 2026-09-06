@@ -238,7 +238,7 @@
 
     <DataTemplate x:DataType="vm:ProjectGroupViewModel">
       <StackPanel Margin="{Binding Depth, Converter={StaticResource Indent}}"
-                  Classes.expanded="{Binding IsExpanded}"
+                  Classes.expanded="{Binding IsOpen}"
                   Classes.nested="{Binding IsInSection}"
                   Classes.dragging="{Binding IsBeingDragged}"
                   Classes.unread="{Binding HasUnread}"
@@ -769,8 +769,9 @@
 
       <!-- ==================== Filters ==================== -->
 
-      <!-- Both filters on one row: what kind, and whether read alerts count. -->
-      <Grid Grid.Row="1" Margin="16,0,14,8" ColumnDefinitions="*,Auto">
+      <!-- Every way of narrowing the list on one row: what kind, what words, and whether read
+           alerts count. -->
+      <Grid Grid.Row="1" Margin="16,0,14,8" ColumnDefinitions="*,Auto,Auto">
 
         <ItemsControl Grid.Column="0" ItemsSource="{Binding Filters}">
           <ItemsControl.ItemsPanel>
@@ -813,7 +814,47 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Border Grid.Column="1"
+        <!-- The search box, with its glass at the left and, once there is something to clear, a
+             cross at the right. Ctrl+F puts the caret here from anywhere in the window. -->
+        <Grid Grid.Column="1" Width="200" Margin="8,0,0,5" VerticalAlignment="Top">
+          <TextBox Name="SearchBox"
+                   Theme="{StaticResource ModernTextBox}"
+                   Text="{Binding SearchText}"
+                   PlaceholderText="Search alerts"
+                   MinHeight="26"
+                   Padding="27,3,26,3"
+                   FontSize="12"
+                   CornerRadius="13"
+                   KeyDown="OnSearchKeyDown"
+                   ToolTip.Tip="Show only the alerts that contain every word typed here: in the title, the message, the repository, who did it, or what was said" />
+
+          <Path Data="M6,1.5 A4.5,4.5 0 1 1 6,10.5 A4.5,4.5 0 1 1 6,1.5 Z M9.3,9.3 L13.5,13.5"
+                Stroke="{DynamicResource TextMuted}"
+                StrokeThickness="1.5"
+                StrokeLineCap="Round"
+                Width="12"
+                Height="12"
+                Stretch="Uniform"
+                Margin="10,0,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                IsHitTestVisible="False" />
+
+          <Button Theme="{StaticResource HeaderToolButton}"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Center"
+                  Margin="0,0,4,0"
+                  Command="{Binding ClearSearchCommand}"
+                  IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                  ToolTip.Tip="Clear the search">
+            <Path Data="M3,3 L10,10 M10,3 L3,10"
+                  Stroke="{Binding $parent[Button].Foreground}"
+                  StrokeThickness="1.6"
+                  StrokeLineCap="Round" />
+          </Button>
+        </Grid>
+
+        <Border Grid.Column="2"
                 CornerRadius="13"
                 Padding="2"
                 Margin="8,0,0,5"

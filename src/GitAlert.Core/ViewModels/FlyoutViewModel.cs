@@ -97,6 +97,21 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _unreadOnly;
 
+    /// <summary>
+    /// What is typed in the search box. Every word of it has to be found somewhere on an alert -
+    /// the headline, the message, the repository, who caused it, what was said - for the alert to
+    /// show; a project with no such alert drops out of the list until the box is cleared.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSearching))]
+    private string _searchText = string.Empty;
+
+    /// <summary>The words of the search, ready to match against.</summary>
+    private string[] _terms = [];
+
+    /// <summary>True from a change of search until the groups have been told to reveal or fold.</summary>
+    private bool _searchChanged;
+
     /// <summary>The order the user put the projects in. Anything absent follows alphabetically.</summary>
     private readonly List<string> _order;
 
@@ -229,6 +244,39 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         ActiveFilter = chip.Filter;
         ApplyFilter();
+    }
+
+    partial void OnSearchTextChanged(string value)
+    {
+        _terms = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        _searchChanged = true;
+        ApplyFilter();
+    }
+
+    /// <summary>True while the box holds at least one word to look for.</summary>
+    public bool IsSearching => _terms.Length > 0;
+
+    /// <summary>Whether the list shows a selection rather than everything: unread only, or a search.</summary>
+    private bool IsNarrowed => UnreadOnly || IsSearching;
+
+    [RelayCommand]
+    private void ClearSearch() => SearchText = string.Empty;
+
+    /// <summary>
+    /// Whether the search finds the alert: every word on the alert itself, or on the name of the
+    /// board it is about. A board's alerts are grouped under its key, "acme/#12", while what the
+    /// header shows and the user types is the board's title.
+    /// </summary>
+    private bool Matches(AlertViewModel alert)
+    {
+        if (!IsSearching || alert.Matches(_terms))
+        {
+            return true;
+        }
+
+        return BoardOf(alert.Repository)?.Title is { } title
+            && _terms.All(term => title.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || alert.SearchText.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -501,6 +549,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     private void UpdateEmptyMessage(MonitorStatus status) =>
         EmptyMessage = status.State switch
         {
+            // Whatever the connection is doing, an empty list under a search is the search's doing.
+            _ when IsSearching => $"Nothing matches “{SearchText.Trim()}”. Try fewer words, or clear the search.",
             ConnectionState.NotConfigured => "Add your access token and a repository to get started.",
             ConnectionState.Error => status.Message,
             _ => ActiveFilter == AlertFilter.All
@@ -545,11 +595,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         UnreadCount = _store.UnreadCount;
 
-        // Each chip counts against the other axis rather than against the whole history, so it
-        // says what picking it would leave.
+        // Each chip counts against the other axes rather than against the whole history, so it
+        // says what picking it would leave: what is unread, among what the search finds.
         foreach (var chip in Filters)
         {
-            chip.Count = _all.Count(a => !a.IsRead && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
+            chip.Count = _all.Count(a => !a.IsRead && Matches(a) && (chip.Filter == AlertFilter.All || a.Group == chip.Filter));
         }
 
         foreach (var group in Groups)
@@ -568,7 +618,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
     private bool OfKind(AlertViewModel alert) => ActiveFilter == AlertFilter.All || alert.Group == ActiveFilter;
 
-    private bool IsShown(AlertViewModel alert) => !UnreadOnly || !alert.IsRead;
+    private bool IsShown(AlertViewModel alert) => (!UnreadOnly || !alert.IsRead) && Matches(alert);
 
     [RelayCommand]
     private void ToggleUnreadOnly()
@@ -1110,8 +1160,8 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
             if (projects.Count == 0)
             {
-                // Out of sight while showing unread only, so not a place to walk a project into.
-                if (!UnreadOnly)
+                // Out of sight while showing unread only or a search, so not a place to walk a project into.
+                if (!IsNarrowed)
                 {
                     slots.Add(new Slot(section, null));
                 }
@@ -1168,6 +1218,18 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         Sync(Groups, groups);
         PruneProjects();
 
+        // A search opens every project it leaves in the list, and clearing it gives the folds
+        // back; a project folded by hand in between stays folded until the search changes again.
+        if (_searchChanged)
+        {
+            foreach (var project in _projects.Values)
+            {
+                project.IsRevealed = IsSearching;
+            }
+
+            _searchChanged = false;
+        }
+
         // What is on screen. A folded section keeps everything under it out of the rows, and
         // while showing unread only a section with nothing to show stays out of the way, like its
         // projects.
@@ -1212,14 +1274,16 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         var own = groups.Where(g => section.Contains(g.Repository)).ToList();
         section.ProjectCount = groups.Count(g => section.Holds(g.Repository));
 
-        var hidden = UnreadOnly && section.ProjectCount == 0;
+        var hidden = IsNarrowed && section.ProjectCount == 0;
 
         if (shown && !hidden)
         {
             rows.Add(section);
         }
 
-        var open = shown && !hidden && section.IsExpanded;
+        // A search looks through folded sections too, or a match under one would be a match
+        // nobody can see; the fold itself is left as it was.
+        var open = shown && !hidden && (section.IsExpanded || IsSearching);
 
         if (open)
         {
@@ -1268,6 +1332,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             // when it has something to say, folded otherwise. After that it is the user's own
             // choice, held on the group itself and written down as it changes.
             group.IsExpanded = _projectFolds.TryGetValue(repository, out var folded) ? !folded : group.Items.Count > 0;
+            group.IsRevealed = IsSearching;
             group.PropertyChanged += OnProjectFoldChanged;
         }
         else
@@ -1374,8 +1439,9 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         // Every project stays reachable, because the list is also where you go looking for what
         // happened before GitAlert was watching. Asking for unread only turns it back into a
-        // list of what needs attention, and a project with nothing unread drops out of it.
-        if (UnreadOnly)
+        // list of what needs attention, and a project with nothing unread drops out of it; a
+        // search does the same with what it finds.
+        if (IsNarrowed)
         {
             var withUnread = Alerts
                 .Select(a => a.Repository)

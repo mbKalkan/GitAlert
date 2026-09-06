@@ -362,6 +362,15 @@ public partial class FlyoutWindow : Window
             return;
         }
 
+        // Ctrl+F - Cmd+F on a Mac - puts the caret in the search box, the way it does in a browser.
+        if (e.Key == Key.F && e.KeyModifiers is KeyModifiers.Control or KeyModifiers.Meta)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
         // Alt with an arrow moves the row whose header holds the focus: the keyboard's way to
         // reorder, now that the headers carry no arrows of their own.
         if (e.KeyModifiers == KeyModifiers.Alt && e.Key is Key.Up or Key.Down && MoveFocusedRow(e.Key == Key.Up ? -1 : 1))
@@ -927,6 +936,28 @@ public partial class FlyoutWindow : Window
             case Key.Escape:
                 // Handled here, or the window takes the same key as "close".
                 section.CancelRenameCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Escape in the search box clears it first; only an empty box lets the key reach the window,
+    /// where it closes it. Enter moves on to the list, so a search can be typed and read from the
+    /// keyboard alone.
+    /// </summary>
+    private void OnSearchKeyDown(object? sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape when !string.IsNullOrEmpty(_viewModel.SearchText):
+                _viewModel.ClearSearchCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.Enter:
+                (GroupList.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.Name is "Header" or "SectionHeader") as IInputElement
+                    ?? GroupList).Focus();
                 e.Handled = true;
                 break;
         }
