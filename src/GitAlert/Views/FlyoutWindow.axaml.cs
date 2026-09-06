@@ -362,7 +362,38 @@ public partial class FlyoutWindow : Window
             return;
         }
 
+        // Alt with an arrow moves the row whose header holds the focus: the keyboard's way to
+        // reorder, now that the headers carry no arrows of their own.
+        if (e.KeyModifiers == KeyModifiers.Alt && e.Key is Key.Up or Key.Down && MoveFocusedRow(e.Key == Key.Up ? -1 : 1))
+        {
+            e.Handled = true;
+            return;
+        }
+
         base.OnKeyDown(e);
+    }
+
+    /// <summary>Moves the project or section whose header has the focus one step, and says whether there was one.</summary>
+    private bool MoveFocusedRow(int delta)
+    {
+        if (FocusManager?.GetFocusedElement() is not { } focused || HeaderUnder(focused) is not { DataContext: { } row })
+        {
+            return false;
+        }
+
+        switch (row)
+        {
+            case ProjectGroupViewModel project:
+                (delta < 0 ? project.MoveUpCommand : project.MoveDownCommand).Execute(null);
+                return true;
+
+            case ProjectSectionViewModel section:
+                (delta < 0 ? section.MoveUpCommand : section.MoveDownCommand).Execute(null);
+                return true;
+
+            default:
+                return false;
+        }
     }
 
     // ---- Dragging a project or a section to a new place in the list ----------

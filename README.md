@@ -93,9 +93,10 @@ event and share an identity, so the merge collapses the duplicate instead of sho
 Nothing is fetched until you ask, so the list itself costs nothing.
 
 **A group per project, in your order, under your sections**
-Each project is a collapsible group with its own count. Drag its header to wherever it belongs,
-or nudge it with the arrows — so the most important repository sits at the top and stays there
-across restarts. One tick on the header reads the whole project. Once the list grows, add
+Each project is a collapsible group with its own count. Drag its header to wherever it belongs —
+or, from the keyboard, focus the header and press Alt with an arrow — so the most important
+repository sits at the top and stays there across restarts. One double tick on the header reads
+the whole project. Once the list grows, add
 sections — "Work", "Open source", whatever the day is made of — and drop projects onto their
 headers; a section folds and unfolds as one, has its own count and tick, remembers its fold, and
 is dragged into place like a project. Sections nest: drop a section onto another's header, or

@@ -153,8 +153,12 @@ public class FlyoutWindowTests
         }
     }
 
+    /// <summary>
+    /// The headers carry no arrows any more - they were taken for the tick beside them - so the
+    /// keyboard's way to reorder is Alt with an arrow while a header holds the focus.
+    /// </summary>
     [AvaloniaFact]
-    public void The_arrows_on_a_header_move_the_project_without_folding_it()
+    public void Alt_with_an_arrow_moves_the_focused_project_without_folding_it()
     {
         var (window, vm, dispose) = Build();
 
@@ -167,18 +171,21 @@ public class FlyoutWindowTests
             var second = vm.Groups[1];
             var (firstOpen, secondOpen) = (first.IsExpanded, second.IsExpanded);
 
-            // The tools only show while the pointer is over the header, as they do for the user.
-            window.MouseMove(Centre(HeaderOf(window, second), window));
-            Frames.Settle();
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => ToolTip.GetTip(b) as string == "Move this project up");
 
-            var at = Centre(ToolOf(window, second, "Move this project up"), window);
-            window.MouseDown(at, MouseButton.Left);
-            window.MouseUp(at, MouseButton.Left);
+            HeaderOf(window, second).Focus(NavigationMethod.Tab);
+            window.KeyPress(Key.Up, RawInputModifiers.Alt, PhysicalKey.ArrowUp, null);
             Frames.Settle();
 
             Assert.Equal([second.Repository, first.Repository], vm.Groups.Select(g => g.Repository));
             Assert.Equal(firstOpen, first.IsExpanded);
             Assert.Equal(secondOpen, second.IsExpanded);
+
+            // A plain arrow is not a move; it is left to whatever the focus does with it.
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
+            Frames.Settle();
+
+            Assert.Equal([second.Repository, first.Repository], vm.Groups.Select(g => g.Repository));
         }
         finally
         {
@@ -377,14 +384,15 @@ public class FlyoutWindowTests
             window.Show();
             Frames.Settle();
 
-            var first = vm.Groups[0];
+            // The tick is the one tool, and only a project with something unread has it enabled to take the focus.
+            var first = vm.Groups.First(g => g.HasUnread);
             var tools = window.GetVisualDescendants()
                 .OfType<StackPanel>()
                 .First(p => p.Name == "HeaderTools" && ReferenceEquals(p.DataContext, first));
 
             Assert.Equal(0, tools.Opacity);
 
-            ToolOf(window, first, "Move this project down").Focus(NavigationMethod.Tab);
+            ToolOf(window, first, "Mark everything in this project read").Focus(NavigationMethod.Tab);
             Frames.Settle();
 
             Assert.Equal(1, tools.Opacity);

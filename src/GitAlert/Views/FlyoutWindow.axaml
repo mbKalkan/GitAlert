@@ -279,35 +279,19 @@
                         Orientation="Horizontal"
                         Margin="0,0,6,0"
                         VerticalAlignment="Center">
-              <!-- One tick reads the whole project, so a busy repository need not be read row by row. -->
+              <!-- One double tick reads the whole project, so a busy repository need not be read
+                   row by row. Ordering is by dragging the header, or Alt with an arrow key while
+                   it holds the focus; the arrows that used to sit here were taken for this tick. -->
               <Button Theme="{StaticResource HeaderToolButton}"
                       Command="{Binding MarkReadCommand}"
                       IsEnabled="{Binding HasUnread}"
                       Margin="0,0,4,0"
                       ToolTip.Tip="Mark everything in this project read">
-                <Path Data="M2,7.2 L5.6,10.6 L11.6,3.6"
+                <Path Data="M1.5,7.3 L4.6,10.3 L9.6,4.3 M6.3,10.3 L11.5,4.3"
                       Stroke="{Binding $parent[Button].Foreground}"
                       StrokeThickness="1.6"
                       StrokeLineCap="Round"
                       StrokeJoin="Round" />
-              </Button>
-              <Button Theme="{StaticResource HeaderToolButton}"
-                      Command="{Binding MoveUpCommand}"
-                      IsEnabled="{Binding CanMoveUp}"
-                      ToolTip.Tip="Move this project up">
-                <Path Data="M2,7 L6.5,2.5 L11,7"
-                      Stroke="{Binding $parent[Button].Foreground}"
-                      StrokeThickness="1.6"
-                      StrokeLineCap="Round" />
-              </Button>
-              <Button Theme="{StaticResource HeaderToolButton}"
-                      Command="{Binding MoveDownCommand}"
-                      IsEnabled="{Binding CanMoveDown}"
-                      ToolTip.Tip="Move this project down">
-                <Path Data="M2,2.5 L6.5,7 L11,2.5"
-                      Stroke="{Binding $parent[Button].Foreground}"
-                      StrokeThickness="1.6"
-                      StrokeLineCap="Round" />
               </Button>
             </StackPanel>
 
@@ -426,29 +410,11 @@
                         Command="{Binding MarkReadCommand}"
                         IsEnabled="{Binding HasUnread}"
                         ToolTip.Tip="Mark everything in this section read">
-                  <Path Data="M2,7.2 L5.6,10.6 L11.6,3.6"
+                  <Path Data="M1.5,7.3 L4.6,10.3 L9.6,4.3 M6.3,10.3 L11.5,4.3"
                         Stroke="{Binding $parent[Button].Foreground}"
                         StrokeThickness="1.6"
                         StrokeLineCap="Round"
                         StrokeJoin="Round" />
-                </Button>
-                <Button Theme="{StaticResource HeaderToolButton}"
-                        Command="{Binding MoveUpCommand}"
-                        IsEnabled="{Binding CanMoveUp}"
-                        ToolTip.Tip="Move this section up">
-                  <Path Data="M2,7 L6.5,2.5 L11,7"
-                        Stroke="{Binding $parent[Button].Foreground}"
-                        StrokeThickness="1.6"
-                        StrokeLineCap="Round" />
-                </Button>
-                <Button Theme="{StaticResource HeaderToolButton}"
-                        Command="{Binding MoveDownCommand}"
-                        IsEnabled="{Binding CanMoveDown}"
-                        ToolTip.Tip="Move this section down">
-                  <Path Data="M2,2.5 L6.5,7 L11,2.5"
-                        Stroke="{Binding $parent[Button].Foreground}"
-                        StrokeThickness="1.6"
-                        StrokeLineCap="Round" />
                 </Button>
                 <Button Theme="{StaticResource HeaderToolButton}"
                         Command="{Binding RemoveCommand}"
