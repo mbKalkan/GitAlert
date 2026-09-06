@@ -78,6 +78,12 @@ assignees and milestone under it and a button to the page on GitHub. A comment n
 was left on; a release shows its notes and its tag. The toast says the same in short — the headline,
 the title and the first line — and a batch lists what arrived, one line each.
 
+**Find it again**
+A search box above the list: type a word or two and only the alerts that contain all of them
+stay — in the title, the message, the repository, who did it, or what was said — and the projects
+with none drop out until the box is cleared. A folded project with a match opens for the search
+and folds back after it. Ctrl+F puts the caret there, Escape clears it.
+
 </td>
 <td width="50%" valign="top">
 
@@ -123,15 +129,31 @@ dismissal if you prefer the popup behaviour.
 Desktop notifications land in the Action Centre. The tray icon is drawn as vector art, so it stays
 crisp at every DPI, adapts to a light or dark taskbar, and carries a badge when something is unread.
 
+**Says what it did**
+Settings → Diagnostics lists every repository, board and inbox with when it was last checked and
+how that went — unchanged, read, or failed and why — beside each account's remaining budget and
+when the next check is due. *Copy report* puts the page on the clipboard for an issue; it names
+no token.
+
+**Takes its settings with it**
+*Export settings* writes the accounts, the repositories and boards, the sections, the order and
+folds of the list and every switch to one file; *Import settings* on another machine brings them
+back, and an account already there by login keeps its token. Tokens never go into the file.
+
+**Knows when it is out of date**
+Once a day GitAlert asks GitHub for its own latest release — one unauthenticated request, with
+nothing about you in it — and names a newer version in the footer and on the About page. Nothing
+is downloaded, and the switch is right there if you would rather it did not ask.
+
 </td>
 </tr>
 </table>
 
 <div align="center">
 
-| Light theme | An issue | A board card | Repositories and boards | Notifications |
-|:---:|:---:|:---:|:---:|:---:|
-| <img src="docs/screenshots/flyout-light.png" width="220"> | <img src="docs/screenshots/flyout-dark-issue.png" width="220"> | <img src="docs/screenshots/flyout-dark-board.png" width="220"> | <img src="docs/screenshots/settings-accounts.png" width="180"> | <img src="docs/screenshots/settings-notifications.png" width="180"> |
+| Light theme | An issue | A board card | A search | Repositories and boards | Diagnostics |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/flyout-light.png" width="200"> | <img src="docs/screenshots/flyout-dark-issue.png" width="200"> | <img src="docs/screenshots/flyout-dark-board.png" width="200"> | <img src="docs/screenshots/flyout-dark-search.png" width="200"> | <img src="docs/screenshots/settings-accounts.png" width="160"> | <img src="docs/screenshots/settings-diagnostics.png" width="160"> |
 
 </div>
 
@@ -236,11 +258,13 @@ GitAlert is a polling client that tries hard to be a well-behaved one.
   answers `304 Not Modified`, which costs **nothing** against the hourly rate limit. Watching five
   repositories every two minutes usually consumes a handful of calls per hour rather than hundreds.
 - **`x-poll-interval` is honoured.** If GitHub asks clients to slow down, GitAlert slows down.
-- **High-water marks, not guesswork.** Each repository remembers the newest event id it has seen, so
-  an alert is never shown twice — not after a restart either. The CI watermark deliberately stops
-  advancing at the first unfinished run, so a job that finishes late is still reported.
+- **Ids, not guesswork.** Each repository remembers the events it has handled and the moment it
+  was first read, so an alert is never shown twice — not after a restart either — and an event
+  GitHub publishes late is still reported, marked with when it actually happened. A CI run seen
+  while still going is remembered by id and announced when it finishes.
 - **Failures are local.** A repository you lost access to does not stop the others from being
-  checked; the flyout says how many could not be reached and why.
+  checked; the flyout says how many could not be reached, and the Diagnostics page says which
+  and why.
 
 - **Every account is polled with its own token**, and one account failing (an expired token, a lost
   permission) never stops the others from being checked.
@@ -268,8 +292,11 @@ twin) for each board, and `/notifications` for each account's inbox.
   with every request. That copy cannot be scrubbed, which is the same trade every desktop client
   makes; it is only ever readable by a process running as you.
 - Settings, sync state and alert history live in `%APPDATA%\GitAlert` as plain JSON you can read
-  (`~/Library/Application Support/GitAlert` on macOS, `~/.config/GitAlert` on Linux).
-- GitAlert talks to `api.github.com` and nothing else. No telemetry, no analytics, no update pings.
+  (`~/Library/Application Support/GitAlert` on macOS, `~/.config/GitAlert` on Linux). *Export
+  settings* in General writes everything but the tokens to a file you can import on another machine.
+- GitAlert talks to `api.github.com` and nothing else. No telemetry, no analytics. The one request
+  that is not about your repositories is the daily look at GitAlert's own latest release, made
+  without a token and carrying nothing about you; the About page has the switch for it.
 
 Uninstalling leaves `%APPDATA%\GitAlert` in place so a reinstall picks up where you left off; delete
 that folder to remove every trace.
