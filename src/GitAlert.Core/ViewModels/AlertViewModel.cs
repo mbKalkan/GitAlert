@@ -101,6 +101,12 @@ public sealed partial class AlertViewModel : ObservableObject
             parts.Add(Model.Actor!);
         }
 
+        // A board move has nobody to name, so its line says what moved instead.
+        if (!string.IsNullOrWhiteSpace(Model.Note))
+        {
+            parts.Add(Model.Note!);
+        }
+
         // "deniz · via @deniz" is the same name twice. The account is only worth naming when it
         // is not already obvious from who caused the alert.
         if (ShowAccount
@@ -146,6 +152,7 @@ public sealed partial class AlertViewModel : ObservableObject
         AlertKind.PullRequest or AlertKind.Review => AlertFilter.PullRequests,
         AlertKind.Issue or AlertKind.Comment or AlertKind.Mention => AlertFilter.Issues,
         AlertKind.Workflow => AlertFilter.Ci,
+        AlertKind.Board => AlertFilter.Boards,
         _ => AlertFilter.More,
     };
 }
@@ -157,5 +164,6 @@ public enum AlertFilter
     PullRequests,
     Issues,
     Ci,
+    Boards,
     More,
 }

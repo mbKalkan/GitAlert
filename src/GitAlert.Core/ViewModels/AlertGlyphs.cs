@@ -78,6 +78,12 @@ public static class AlertGlyphs
             "A2.6,2.6 0 0 0 14.7,9 L14.7,8 A6.7,6.7 0 0 0 8,1.3 Z " +
             "M8,6.4 A1.6,1.6 0 1 1 8,9.6 A1.6,1.6 0 1 1 8,6.4 Z",
 
+        // Three columns of a board, the middle one shorter: a kanban.
+        [AlertKind.Board] =
+            "M1.2,1.8 L4.8,1.8 L4.8,14.2 L1.2,14.2 Z " +
+            "M6.2,1.8 L9.8,1.8 L9.8,10 L6.2,10 Z " +
+            "M11.2,1.8 L14.8,1.8 L14.8,12 L11.2,12 Z",
+
         [AlertKind.Other] = "M8,4.4 A3.6,3.6 0 1 0 8,11.6 A3.6,3.6 0 1 0 8,4.4 Z",
     };
 
@@ -98,6 +104,7 @@ public static class AlertGlyphs
         ["KindStar"] = "#D4A022",
         ["KindFork"] = "#8993A1",
         ["KindMention"] = "#E066A6",
+        ["KindBoard"] = "#2AA198",
         ["KindOther"] = "#8993A1",
         ["SeveritySuccess"] = "#34A853",
         ["SeverityWarning"] = "#C7931F",

@@ -99,7 +99,83 @@
       </Border>
     </DataTemplate>
 
-    <!-- One GitHub account, with the repositories watched under it. -->
+    <!-- One watched board inside an account card, listed under the repositories. -->
+    <DataTemplate x:Key="BoardRow" x:DataType="vm:BoardItemViewModel">
+      <Border Background="Transparent" CornerRadius="6" Padding="8,6" Margin="0,1">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+          <CheckBox Grid.Column="0"
+                    Theme="{StaticResource ModernCheckBox}"
+                    Margin="0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding IsEnabled}"
+                    ToolTip.Tip="Read this board during each check" />
+
+          <TextBlock Grid.Column="1"
+                     FontSize="12.5"
+                     Margin="10,0,0,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix}" Foreground="{DynamicResource TextMuted}" /><Run Text="{Binding Title}" /></TextBlock>
+
+          <Border Grid.Column="2"
+                  Background="{DynamicResource ChipBackground}"
+                  CornerRadius="9"
+                  Padding="7,2"
+                  Margin="0,0,6,0"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding Tag}" Classes="muted" FontSize="10.5" />
+          </Border>
+
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Theme="{StaticResource GhostButton}"
+                    Content="Open"
+                    Padding="7,3"
+                    Command="{Binding $parent[ItemsControl].((vm:AccountViewModel)DataContext).OpenBoardCommand}"
+                    CommandParameter="{Binding}" />
+            <Button Theme="{StaticResource GhostButton}"
+                    Content="Remove"
+                    Padding="7,3"
+                    Command="{Binding $parent[ItemsControl].((vm:AccountViewModel)DataContext).RemoveBoardCommand}"
+                    CommandParameter="{Binding}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- A board the token can reach, offered as a tick box. Ticking it edits the watched list above. -->
+    <DataTemplate x:Key="DiscoveredBoardRow" x:DataType="vm:DiscoveredBoardViewModel">
+      <Border Background="Transparent" Padding="2,1">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+          <CheckBox Grid.Column="0"
+                    Theme="{StaticResource ModernCheckBox}"
+                    Margin="0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding IsWatched}" />
+
+          <TextBlock Grid.Column="1"
+                     Margin="4,0,10,0"
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="{Binding Description}"><Run Text="{Binding OwnerPrefix}" Foreground="{DynamicResource TextMuted}" /><Run Text="{Binding Title}" Foreground="{DynamicResource TextPrimary}" /></TextBlock>
+
+          <Border Grid.Column="2"
+                  Margin="0,0,8,0"
+                  Padding="6,1"
+                  CornerRadius="4"
+                  VerticalAlignment="Center"
+                  Background="{DynamicResource ChipBackground}">
+            <TextBlock Text="{Binding Tag}" FontSize="10" Foreground="{DynamicResource TextSecondary}" />
+          </Border>
+
+          <TextBlock Grid.Column="3"
+                     Text="{Binding Activity}"
+                     Classes="muted"
+                     FontSize="11"
+                     VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+    </DataTemplate>
+
+    <!-- One GitHub account, with the repositories and the boards watched under it. -->
     <DataTemplate x:Key="AccountCard" x:DataType="vm:AccountViewModel">
       <Border Background="{DynamicResource SurfaceElevated}"
               BorderBrush="{DynamicResource BorderSubtle}"
@@ -223,6 +299,67 @@
                      Classes="muted"
                      Margin="8,4,0,0"
                      IsVisible="{Binding Repositories.Count, Converter={StaticResource Equals}, ConverterParameter=0}" />
+
+          <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,14,0,12" />
+
+          <TextBlock Text="BOARDS" Classes="section" />
+
+          <Grid Margin="0,0,0,8" ColumnDefinitions="*,Auto">
+            <TextBox Grid.Column="0"
+                     Theme="{StaticResource ModernTextBox}"
+                     PlaceholderText="https://github.com/orgs/owner/projects/12"
+                     Text="{Binding NewBoardInput}">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding AddBoardCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+
+            <Button Grid.Column="1"
+                    Content="Add board"
+                    Theme="{StaticResource SecondaryButton}"
+                    Margin="8,0,0,0"
+                    Command="{Binding AddBoardCommand}"
+                    IsEnabled="{Binding !IsBusy}" />
+          </Grid>
+
+          <ItemsControl ItemsSource="{Binding Boards}" ItemTemplate="{StaticResource BoardRow}" />
+
+          <TextBlock Classes="muted"
+                     Margin="8,4,0,0"
+                     TextWrapping="Wrap"
+                     Text="A card arriving, changing Status, being archived or leaving is reported. The token needs read:project, or Projects: read if it is fine-grained." />
+
+          <Grid Margin="0,12,0,8" ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+              <TextBlock Text="{Binding BoardDiscoverySummary}"
+                         Classes="muted"
+                         IsVisible="{Binding HasDiscoveredBoards}" />
+              <TextBlock Text="Asking GitHub which boards this token can see&#8230;"
+                         Classes="muted"
+                         IsVisible="{Binding IsDiscoveringBoards}" />
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    Content="Find boards"
+                    Theme="{StaticResource SecondaryButton}"
+                    Command="{Binding DiscoverBoardsCommand}"
+                    IsEnabled="{Binding !IsDiscoveringBoards}" />
+          </Grid>
+
+          <Border BorderBrush="{DynamicResource BorderSubtle}"
+                  BorderThickness="1"
+                  CornerRadius="8"
+                  Padding="4"
+                  IsVisible="{Binding HasDiscoveredBoards}">
+            <ScrollViewer MaxHeight="200">
+              <ItemsControl ItemsSource="{Binding DiscoveredBoards}" ItemTemplate="{StaticResource DiscoveredBoardRow}" />
+            </ScrollViewer>
+          </Border>
+
+          <TextBlock Classes="muted inlineMessage"
+                     Classes.error="{Binding IsBoardMessageError}"
+                     Text="{Binding BoardMessage}"
+                     IsVisible="{Binding HasBoardMessage}" />
 
           <Border Height="1" Background="{DynamicResource BorderSubtle}" Margin="0,14,0,12" />
 
@@ -387,7 +524,7 @@
             <StackPanel Grid.Column="0" Margin="0,0,16,0">
               <TextBlock Text="GitHub accounts" Classes="pageTitle" />
               <TextBlock Classes="pageSubtitle"
-                         Text="Add an account for each token you have, then add repositories under the account whose token can see them. A work account and a personal account sit side by side." />
+                         Text="Add an account for each token you have, then add repositories and boards under the account whose token can see them. A work account and a personal account sit side by side." />
             </StackPanel>
 
             <Button Grid.Column="1"
@@ -412,7 +549,7 @@
               <TextBlock Classes="muted"
                          TextWrapping="Wrap"
                          Margin="0,0,0,10"
-                         Text="Public repositories need no scopes. Add repo for private repositories, and notifications for mentions and review requests. A fine-grained token works too, with read access to Metadata, Contents and Actions on the repositories you watch." />
+                         Text="Public repositories need no scopes. Add repo for private repositories, notifications for mentions and review requests, and read:project for boards. A fine-grained token works too, with read access to Metadata, Contents and Actions on the repositories you watch, and to Projects for the boards." />
               <TextBlock Classes="muted"
                          TextWrapping="Wrap"
                          Margin="0,-6,0,10"
@@ -500,7 +637,7 @@
             <TextBlock Classes="muted"
                        TextWrapping="Wrap"
                        Margin="0,0,0,12"
-                       Text="Each account decides for itself whether its inbox is watched; that switch lives on the account card." />
+                       Text="Each account decides for itself whether its inbox is watched; that switch lives on the account card, and so does the list of boards." />
 
             <CheckBox Theme="{StaticResource ModernCheckBox}"
                       IsChecked="{Binding WatchWorkflowRuns}"
@@ -513,13 +650,22 @@
                       Content="Only tell me when a run fails" />
 
             <CheckBox Theme="{StaticResource ModernCheckBox}"
+                      IsChecked="{Binding OnlyStatusChangesOnBoards}"
+                      Content="Only tell me when a board card changes Status" />
+
+            <TextBlock Classes="muted"
+                       TextWrapping="Wrap"
+                       Margin="26,-4,0,10"
+                       Text="On by default. Switch it off to hear about every field on a card: priority, iteration, dates. A card arriving, being archived or leaving is always news." />
+
+            <CheckBox Theme="{StaticResource ModernCheckBox}"
                       IsChecked="{Binding IgnoreOwnActivity}"
                       Content="Ignore activity I caused myself" />
 
             <TextBlock Classes="muted"
                        TextWrapping="Wrap"
                        Margin="26,-4,0,10"
-                       Text="Off by default, so you see your own pushes too. Turn it on once the echo of your own work stops being useful." />
+                       Text="Off by default, so you see your own pushes too. Turn it on once the echo of your own work stops being useful. Board moves carry no author, so this cannot filter them." />
 
             <Border Classes="rule" Margin="0,8,0,18" />
 

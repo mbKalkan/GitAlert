@@ -74,6 +74,36 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     /// <summary>Everything the token can reach, before the search box and the sort are applied.</summary>
     private readonly List<DiscoveredRepoViewModel> _discovered = [];
 
+    [ObservableProperty]
+    private string _newBoardInput = string.Empty;
+
+    /// <summary>The line under the boards, apart from the card's own: a board's news is about boards.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBoardMessage))]
+    private string _boardMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _isBoardMessageError;
+
+    [ObservableProperty]
+    private bool _isDiscoveringBoards;
+
+    [ObservableProperty]
+    private bool _hasDiscoveredBoards;
+
+    [ObservableProperty]
+    private string _boardDiscoverySummary = string.Empty;
+
+    /// <summary>
+    /// What a token without the project scope is told. GitHub answers such a token 404 rather
+    /// than 403, so "not found" on a board is far more often this than a wrong link.
+    /// </summary>
+    public const string BoardScopeHint =
+        "This token cannot read boards. Replace it with one that has read:project, or Projects: read if it is fine-grained.";
+
+    /// <summary>Guards the board lists the way <see cref="_syncingWatchState"/> guards the repository lists.</summary>
+    private bool _syncingBoardState;
+
     /// <summary>
     /// Coalesces keystrokes in the search box.
     /// </summary>
@@ -135,6 +165,11 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<RepoItemViewModel> Repositories { get; } = [];
 
+    public ObservableCollection<BoardItemViewModel> Boards { get; } = [];
+
+    /// <summary>The boards this token can reach: the user's own and the organisations'.</summary>
+    public ObservableCollection<DiscoveredBoardViewModel> DiscoveredBoards { get; } = [];
+
     /// <summary>The repositories this token can reach, filtered and sorted for display.</summary>
     public ObservableCollection<DiscoveredRepoViewModel> DiscoveredRepositories { get; } = [];
 
@@ -150,6 +185,8 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
     public bool HasMessage => !string.IsNullOrEmpty(Message);
 
+    public bool HasBoardMessage => !string.IsNullOrEmpty(BoardMessage);
+
     /// <summary>
     /// False when the token could not be decrypted, which needs the user to re-enter it. Observable,
     /// because the notice that says so is bound to it and has to go away once a new token works.
@@ -157,12 +194,25 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasStoredToken;
 
-    public string RepositorySummary => Repositories.Count switch
+    public string RepositorySummary
     {
-        0 => "No repositories yet",
-        1 => "1 repository",
-        _ => $"{Repositories.Count} repositories",
-    };
+        get
+        {
+            var repositories = Repositories.Count switch
+            {
+                0 => "No repositories yet",
+                1 => "1 repository",
+                _ => $"{Repositories.Count} repositories",
+            };
+
+            return Boards.Count switch
+            {
+                0 => repositories,
+                1 => $"{repositories} · 1 board",
+                _ => $"{repositories} · {Boards.Count} boards",
+            };
+        }
+    }
 
     partial void OnRepositoryFilterChanged(string value)
     {
@@ -338,6 +388,211 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private static void OpenRepository(RepoItemViewModel? repository) => Browser.Open(repository?.Url);
 
+    // ---- Boards ----------------------------------------------------------------
+
+    /// <summary>
+    /// Adds a board from its link. A link that does not say whether the owner is an organisation
+    /// or a user is tried both ways, since the two live on different endpoints.
+    /// </summary>
+    [RelayCommand]
+    private async Task AddBoardAsync()
+    {
+        if (!BoardRef.TryParse(NewBoardInput, out var board))
+        {
+            ReportBoard("Paste a board link, like https://github.com/orgs/acme/projects/12.", isError: true);
+            return;
+        }
+
+        if (Boards.Any(b => b.Ref == board))
+        {
+            ReportBoard($"{board.Key} is already watched by this account.", isError: true);
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            var (resolved, project) = await ResolveBoardAsync(board).ConfigureAwait(true);
+
+            Boards.Add(new BoardItemViewModel(resolved, project.Title));
+            NewBoardInput = string.Empty;
+            OnPropertyChanged(nameof(RepositorySummary));
+            SyncBoardWatchState();
+            ReportBoard($"Watching {resolved.Owner} / {project.Title}.", isError: false);
+        }
+        catch (GitHubException ex)
+        {
+            ReportBoard(DescribeBoardFailure(board, ex), isError: true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>The board as GitHub knows it, with the owner kind settled if the link left it open.</summary>
+    private async Task<(BoardRef Board, GhProject Project)> ResolveBoardAsync(BoardRef board)
+    {
+        if (board.OwnerKind != BoardOwnerKind.Unknown)
+        {
+            return (board, await _client.GetProjectAsync(board).ConfigureAwait(true));
+        }
+
+        try
+        {
+            var asOrganization = board.AsOrganization();
+            return (asOrganization, await _client.GetProjectAsync(asOrganization).ConfigureAwait(true));
+        }
+        catch (GitHubException ex) when (ex.Kind == GitHubErrorKind.NotFound)
+        {
+            var asUser = board.AsUser();
+            return (asUser, await _client.GetProjectAsync(asUser).ConfigureAwait(true));
+        }
+    }
+
+    private static string DescribeBoardFailure(BoardRef board, GitHubException error) => error.Kind switch
+    {
+        GitHubErrorKind.NotFound => $"{board.Key} was not found. {BoardScopeHint}",
+        GitHubErrorKind.Forbidden => BoardScopeHint,
+        _ => error.UserMessage,
+    };
+
+    [RelayCommand]
+    private void RemoveBoard(BoardItemViewModel? board)
+    {
+        if (board is not null && Boards.Remove(board))
+        {
+            OnPropertyChanged(nameof(RepositorySummary));
+            SyncBoardWatchState();
+        }
+    }
+
+    [RelayCommand]
+    private static void OpenBoard(BoardItemViewModel? board) => Browser.Open(board?.Url);
+
+    /// <summary>
+    /// Lists the boards this token can reach: the user's own, then each organisation's. Open
+    /// boards only; a closed one has nothing left to move.
+    /// </summary>
+    [RelayCommand]
+    private async Task DiscoverBoardsAsync()
+    {
+        if (!HasStoredToken && string.IsNullOrWhiteSpace(PendingToken))
+        {
+            ReportBoard("Add a token for this account first.", isError: true);
+            return;
+        }
+
+        IsDiscoveringBoards = true;
+
+        try
+        {
+            var login = string.IsNullOrWhiteSpace(Login)
+                ? (await _client.GetAuthenticatedUserAsync().ConfigureAwait(true)).Login
+                : Login;
+
+            var found = new List<DiscoveredBoardViewModel>();
+
+            foreach (var project in await _client.GetProjectsAsync(login, BoardOwnerKind.User).ConfigureAwait(true))
+            {
+                Offer(found, new BoardRef(login, BoardOwnerKind.User, project.Number), project);
+            }
+
+            foreach (var organization in await _client.GetMyOrganizationsAsync().ConfigureAwait(true))
+            {
+                foreach (var project in await _client.GetProjectsAsync(organization.Login, BoardOwnerKind.Organization).ConfigureAwait(true))
+                {
+                    Offer(found, new BoardRef(organization.Login, BoardOwnerKind.Organization, project.Number), project);
+                }
+            }
+
+            DiscoveredBoards.Clear();
+
+            foreach (var board in found.OrderByDescending(b => b.UpdatedAt))
+            {
+                DiscoveredBoards.Add(board);
+            }
+
+            HasDiscoveredBoards = true;
+            BoardDiscoverySummary = found.Count switch
+            {
+                0 => "This token can reach no boards.",
+                1 => "1 board available",
+                _ => $"{found.Count} boards available",
+            };
+
+            SyncBoardWatchState();
+            ReportBoard(string.Empty, isError: false);
+        }
+        catch (GitHubException ex)
+        {
+            ReportBoard(ex.Kind is GitHubErrorKind.NotFound or GitHubErrorKind.Forbidden ? BoardScopeHint : ex.UserMessage, isError: true);
+        }
+        finally
+        {
+            IsDiscoveringBoards = false;
+        }
+    }
+
+    private void Offer(List<DiscoveredBoardViewModel> found, BoardRef board, GhProject project)
+    {
+        if (!project.IsClosed)
+        {
+            found.Add(new DiscoveredBoardViewModel(board, project, OnBoardWatchToggled));
+        }
+    }
+
+    /// <summary>A box was ticked or cleared: start or stop watching that board.</summary>
+    private void OnBoardWatchToggled(DiscoveredBoardViewModel board, bool watched)
+    {
+        if (_syncingBoardState)
+        {
+            return;
+        }
+
+        var existing = Boards.FirstOrDefault(b => b.Ref == board.Board);
+
+        if (watched)
+        {
+            if (existing is null)
+            {
+                // The list came from the token itself, so there is nothing left to verify.
+                Boards.Add(new BoardItemViewModel(board.Board, board.Title));
+            }
+        }
+        else if (existing is not null)
+        {
+            Boards.Remove(existing);
+        }
+
+        OnPropertyChanged(nameof(RepositorySummary));
+    }
+
+    /// <summary>Re-ticks the board boxes from the watched list, after it changed some other way.</summary>
+    private void SyncBoardWatchState()
+    {
+        _syncingBoardState = true;
+
+        try
+        {
+            foreach (var candidate in DiscoveredBoards)
+            {
+                candidate.IsWatched = Boards.Any(b => b.Ref == candidate.Board);
+            }
+        }
+        finally
+        {
+            _syncingBoardState = false;
+        }
+    }
+
+    private void ReportBoard(string message, bool isError)
+    {
+        BoardMessage = message;
+        IsBoardMessageError = isError;
+    }
+
     [RelayCommand]
     private void BeginReplaceToken()
     {
@@ -405,6 +660,9 @@ public sealed partial class AccountViewModel : ObservableObject, IDisposable
 
     public IEnumerable<RepoSubscription> ToSubscriptions() =>
         Repositories.Select(r => r.ToSubscription(Id));
+
+    public IEnumerable<BoardSubscription> ToBoardSubscriptions() =>
+        Boards.Select(b => b.ToSubscription(Id));
 
     private void Report(string message, bool isError)
     {

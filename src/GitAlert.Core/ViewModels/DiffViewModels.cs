@@ -254,6 +254,12 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(Caption))]
     private string? _notice;
 
+    /// <summary>The card behind a board alert, shown in place of a diff.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCard))]
+    [NotifyPropertyChangedFor(nameof(Caption))]
+    private BoardCardViewModel? _card;
+
     /// <summary>
     /// How many changed files are waiting behind "show all". A merge across hundreds of files
     /// would otherwise push every other project off the bottom of the list the files unfold in.
@@ -289,6 +295,8 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
 
     public bool HasNotice => !string.IsNullOrEmpty(Notice);
 
+    public bool HasCard => Card is not null;
+
     /// <summary>How many files unfold under the alert before the rest wait behind a click.</summary>
     public const int InlineLimit = 30;
 
@@ -305,6 +313,7 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
         { IsLoading: true } => "Fetching the changed files…",
         { HasError: true } => "The changed files could not be fetched",
         { HasSummary: true } => Summary,
+        { HasCard: true } => Card!.Board,
         { HasNotice: true } => "No changed files",
         _ => string.Empty,
     };
@@ -326,6 +335,7 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
         Error = null;
         Summary = string.Empty;
         Notice = null;
+        Card = null;
         IsLoading = false;
 
         if (alert is null)
@@ -334,6 +344,20 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
         }
 
         var model = alert.Model;
+
+        // A card has no diff; what it has is the fields it was read with, which came along.
+        if (model.Kind == AlertKind.Board)
+        {
+            var board = _monitor.WatchedBoards
+                .FirstOrDefault(b => string.Equals(b.Key, model.Repository, StringComparison.OrdinalIgnoreCase));
+
+            var name = board is not null ? $"{board.Board.Owner} / {board.Title}" : model.Repository;
+            var url = board?.Url
+                ?? (BoardRef.TryParse(model.Repository, out var parsed) ? parsed.HtmlUrl : $"https://github.com/{model.Repository}");
+
+            Card = new BoardCardViewModel(model, name, url);
+            return;
+        }
 
         if (!model.HasDiff)
         {
@@ -515,6 +539,7 @@ public sealed partial class AlertDetailViewModel : ObservableObject, IDisposable
         AlertKind.Branch => "branch or tag alert",
         AlertKind.Star => "star",
         AlertKind.Fork => "fork",
+        AlertKind.Board => "board change",
         _ => "alert of this kind",
     };
 

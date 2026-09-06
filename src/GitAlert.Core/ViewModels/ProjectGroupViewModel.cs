@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GitAlert.Core;
 
 namespace GitAlert.ViewModels;
 
@@ -86,7 +87,8 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         string? accountId,
         Func<ProjectGroupViewModel, int, Task<GroupPage>>? loadPage = null,
         Action<ProjectGroupViewModel, int>? move = null,
-        Action<ProjectGroupViewModel>? markRead = null)
+        Action<ProjectGroupViewModel>? markRead = null,
+        string? displayName = null)
     {
         Repository = repository;
         AccountId = accountId;
@@ -94,11 +96,17 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
         _move = move;
         _markRead = markRead;
 
+        // Only a repository has a history to page through; a board's past is not on offer.
+        _canLoadMore = loadPage is not null;
+
         var cut = repository.IndexOf('/');
         Owner = cut > 0 ? repository[..cut] : string.Empty;
         Name = cut > 0 ? repository[(cut + 1)..] : repository;
+        IsBoard = BoardRef.IsKey(repository);
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? Name : displayName;
     }
 
+    /// <summary>The name the group is keyed by: a repository's full name, or a board's key.</summary>
     public string Repository { get; }
 
     public string? AccountId { get; }
@@ -106,6 +114,15 @@ public sealed partial class ProjectGroupViewModel : ObservableObject
     public string Owner { get; }
 
     public string Name { get; }
+
+    /// <summary>What the header calls it: the repository's name, or the board's title.</summary>
+    public string DisplayName { get; }
+
+    /// <summary>True for a project board, which the header tags so it is not taken for a repository.</summary>
+    public bool IsBoard { get; }
+
+    /// <summary>The word after the name on a board's header, and nothing on a repository's.</summary>
+    public string Tag => IsBoard ? "  board" : string.Empty;
 
     /// <summary>The owner with its slash, dimmed in front of the name the way GitHub writes it.</summary>
     public string OwnerPrefix => Owner.Length == 0 ? string.Empty : $"{Owner}/";

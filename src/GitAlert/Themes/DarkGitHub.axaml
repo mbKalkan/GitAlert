@@ -52,6 +52,7 @@
   <SolidColorBrush x:Key="KindStar" Color="#E3B341" />
   <SolidColorBrush x:Key="KindFork" Color="#8B949E" />
   <SolidColorBrush x:Key="KindMention" Color="#DB61A2" />
+  <SolidColorBrush x:Key="KindBoard" Color="#39C5CF" />
   <SolidColorBrush x:Key="KindOther" Color="#8B949E" />
   <SolidColorBrush x:Key="SeveritySuccess" Color="#3FB950" />
   <SolidColorBrush x:Key="SeverityWarning" Color="#D29922" />

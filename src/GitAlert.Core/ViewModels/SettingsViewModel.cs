@@ -33,9 +33,12 @@ public interface ISettingsHost
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 {
-    /// <summary>The token needs <c>repo</c> for private repositories and <c>notifications</c> for the inbox.</summary>
+    /// <summary>
+    /// The token needs <c>repo</c> for private repositories, <c>notifications</c> for the inbox
+    /// and <c>read:project</c> for boards.
+    /// </summary>
     public const string TokenUrl =
-        "https://github.com/settings/tokens/new?scopes=repo,notifications&description=GitAlert";
+        "https://github.com/settings/tokens/new?scopes=repo,notifications,read:project&description=GitAlert";
 
     private readonly SettingsStore _settingsStore;
     private readonly ISecretStore _tokenStore;
@@ -69,6 +72,9 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _onlyFailedWorkflowRuns;
+
+    [ObservableProperty]
+    private bool _onlyStatusChangesOnBoards = true;
 
     [ObservableProperty]
     private bool _ignoreOwnActivity;
@@ -126,6 +132,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _pollIntervalMinutes = _settings.PollIntervalMinutes;
         _watchWorkflowRuns = _settings.WatchWorkflowRuns;
         _onlyFailedWorkflowRuns = _settings.OnlyFailedWorkflowRuns;
+        _onlyStatusChangesOnBoards = _settings.OnlyStatusChangesOnBoards;
         _ignoreOwnActivity = _settings.IgnoreOwnActivity;
         _showToasts = _settings.ShowToasts;
         _playSound = _settings.PlaySound;
@@ -145,6 +152,11 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
                 viewModel.Repositories.Add(new RepoItemViewModel(repository));
             }
 
+            foreach (var board in _settings.BoardsFor(account.Id))
+            {
+                viewModel.Boards.Add(new BoardItemViewModel(board));
+            }
+
             Accounts.Add(viewModel);
         }
 
@@ -161,6 +173,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
             new KindToggleViewModel(AlertKind.Branch, "Branches and tags", !_settings.IsMuted(AlertKind.Branch)),
             new KindToggleViewModel(AlertKind.Star, "Stars", !_settings.IsMuted(AlertKind.Star)),
             new KindToggleViewModel(AlertKind.Fork, "Forks", !_settings.IsMuted(AlertKind.Fork)),
+            new KindToggleViewModel(AlertKind.Board, "Board changes", !_settings.IsMuted(AlertKind.Board)),
         ];
     }
 
@@ -317,6 +330,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
         _settings.PollIntervalMinutes = PollIntervalMinutes;
         _settings.WatchWorkflowRuns = WatchWorkflowRuns;
         _settings.OnlyFailedWorkflowRuns = OnlyFailedWorkflowRuns;
+        _settings.OnlyStatusChangesOnBoards = OnlyStatusChangesOnBoards;
         _settings.IgnoreOwnActivity = IgnoreOwnActivity;
         _settings.ShowToasts = ShowToasts;
         _settings.PlaySound = PlaySound;
@@ -330,6 +344,7 @@ public sealed partial class SettingsViewModel : ObservableObject, IDisposable
 
         _settings.Accounts = [.. Accounts.Select(a => a.ToAccount())];
         _settings.Repositories = [.. Accounts.SelectMany(a => a.ToSubscriptions())];
+        _settings.Boards = [.. Accounts.SelectMany(a => a.ToBoardSubscriptions())];
 
         if (!_settingsStore.Save(_settings))
         {

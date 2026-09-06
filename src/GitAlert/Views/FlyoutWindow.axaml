@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:GitAlert.ViewModels"
+        xmlns:core="using:GitAlert.Core"
         xmlns:gfx="using:GitAlert.Graphics"
         x:Class="GitAlert.Views.FlyoutWindow"
         x:DataType="vm:FlyoutViewModel"
@@ -270,7 +271,7 @@
                        VerticalAlignment="Center"
                        FontSize="12.5"
                        FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" /></TextBlock>
+                       TextTrimming="CharacterEllipsis"><Run Text="{Binding OwnerPrefix}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" /><Run Text="{Binding DisplayName}" Foreground="{DynamicResource TextPrimary}" /><Run Text="{Binding Tag}" Foreground="{DynamicResource TextMuted}" FontWeight="Normal" FontSize="10.5" /></TextBlock>
 
             <StackPanel Name="HeaderTools"
                         Grid.Column="2"
@@ -955,6 +956,74 @@
             </StackPanel>
 
             <Grid IsVisible="{Binding HasSelection}">
+
+              <!-- A board card has no diff. What it has is the card itself: what happened to it,
+                   the fields it was read with, and the way to the issue behind it. -->
+              <ScrollViewer IsVisible="{Binding HasCard}" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Name="BoardCard"
+                            Margin="20,18,20,20"
+                            DataContext="{Binding Card}"
+                            x:DataType="vm:BoardCardViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,12">
+                    <TextBlock Text="{Binding Board}" Classes="muted" />
+                    <TextBlock Text="&#183;" Classes="muted" />
+                    <TextBlock Text="{Binding When}" Classes="muted" />
+                  </StackPanel>
+
+                  <TextBlock Text="{Binding Headline}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+
+                  <TextBlock Text="{Binding Item}"
+                             Classes="secondary"
+                             FontSize="12.5"
+                             Margin="0,4,0,0"
+                             TextWrapping="Wrap" />
+
+                  <TextBlock Text="{Binding Note}"
+                             Classes="muted"
+                             Margin="0,4,0,0"
+                             TextWrapping="Wrap"
+                             IsVisible="{Binding HasNote}" />
+
+                  <Border Height="1"
+                          Background="{DynamicResource BorderSubtle}"
+                          Margin="0,16,0,14"
+                          IsVisible="{Binding HasFields}" />
+
+                  <ItemsControl ItemsSource="{Binding Fields}" IsVisible="{Binding HasFields}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="core:AlertField">
+                        <StackPanel Width="150" Margin="0,0,16,12">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="11"
+                                     FontWeight="SemiBold"
+                                     Foreground="{DynamicResource TextMuted}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Value}"
+                                     FontSize="12.5"
+                                     Margin="0,3,0,0"
+                                     TextWrapping="Wrap" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                    <Button Content="{Binding ItemLabel}"
+                            Theme="{StaticResource SecondaryButton}"
+                            Command="{Binding OpenItemCommand}"
+                            IsVisible="{Binding HasItemUrl}" />
+                    <Button Content="Open board"
+                            Theme="{StaticResource SecondaryButton}"
+                            Command="{Binding OpenBoardCommand}" />
+                  </StackPanel>
+                </StackPanel>
+              </ScrollViewer>
+
               <Grid IsVisible="{Binding HasSelectedFile}" RowDefinitions="Auto,*,Auto">
 
                 <!-- The file bar: where the file lives, dimmed, then its name, then its counts. -->

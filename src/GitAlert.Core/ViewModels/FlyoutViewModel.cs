@@ -136,6 +136,7 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
             new FilterChipViewModel(AlertFilter.PullRequests, "PRs"),
             new FilterChipViewModel(AlertFilter.Issues, "Issues"),
             new FilterChipViewModel(AlertFilter.Ci, "CI"),
+            new FilterChipViewModel(AlertFilter.Boards, "Boards"),
             new FilterChipViewModel(AlertFilter.More, "More"),
         ];
 
@@ -1007,10 +1008,14 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
     {
         var accountId = AccountIdFor(repository);
 
+        var board = BoardOf(repository);
+
         // A project whose account changed has to start over: its history would be fetched
-        // with a token that no longer reaches it.
+        // with a token that no longer reaches it. A board renamed in settings starts over too,
+        // since the header carries the name.
         if (_projects.TryGetValue(repository, out var group)
-            && !string.Equals(group.AccountId, accountId, StringComparison.Ordinal))
+            && (!string.Equals(group.AccountId, accountId, StringComparison.Ordinal)
+                || board is not null && !string.Equals(group.DisplayName, board.Title, StringComparison.Ordinal)))
         {
             _projects.Remove(repository);
             group = null;
@@ -1018,7 +1023,11 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
 
         if (group is null)
         {
-            group = new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject, MarkProjectRead);
+            // A board has no commit history to page through, so it gets no loader.
+            group = BoardRef.IsKey(repository)
+                ? new ProjectGroupViewModel(repository, accountId, null, MoveProject, MarkProjectRead, board?.Title)
+                : new ProjectGroupViewModel(repository, accountId, LoadHistoryPageAsync, MoveProject, MarkProjectRead);
+
             _projects[repository] = group;
 
             group.SetAlerts(alerts);
@@ -1100,11 +1109,12 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         ];
     }
 
-    /// <summary>Every project GitAlert knows about, in the user's order.</summary>
+    /// <summary>Every project GitAlert knows about - repositories and boards - in the user's order.</summary>
     private List<string> AllProjects()
     {
         var known = _monitor.Watched
             .Select(w => w.FullName)
+            .Concat(_monitor.WatchedBoards.Select(b => b.Key))
             .Concat(_all.Select(a => a.Repository))
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
@@ -1147,7 +1157,14 @@ public sealed partial class FlyoutViewModel : ObservableObject, IDisposable
         _monitor.Watched
             .FirstOrDefault(w => string.Equals(w.FullName, repository, StringComparison.OrdinalIgnoreCase))
             ?.AccountId
+        ?? BoardOf(repository)?.AccountId
         ?? AccountIdOfAlertsIn(repository);
+
+    /// <summary>The watched board behind a group name, when the name is a board's key.</summary>
+    private WatchedBoard? BoardOf(string key) =>
+        BoardRef.IsKey(key)
+            ? _monitor.WatchedBoards.FirstOrDefault(b => string.Equals(b.Key, key, StringComparison.OrdinalIgnoreCase))
+            : null;
 
     /// <summary>Keeps the in-memory list aligned with the trimmed, persisted history.</summary>
     private void TrimToStore()

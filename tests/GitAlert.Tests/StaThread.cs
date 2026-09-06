@@ -41,4 +41,14 @@ internal static class StaThread
             throw new XunitException(failure.ToString());
         }
     }
+
+    /// <summary>
+    /// The same for work that awaits. Nothing installs a synchronization context on the thread, so
+    /// the continuations land on the pool and waiting for them here cannot deadlock.
+    /// </summary>
+    public static Task RunAsync(Func<Task> work)
+    {
+        Run(() => work().GetAwaiter().GetResult());
+        return Task.CompletedTask;
+    }
 }
